@@ -264,14 +264,13 @@ function renderTable(sel, ways) {
     '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border);">Highway</th>' +
     "</tr></thead><tbody>";
   rows.forEach((w) => {
-    const tags = w.tags || {};
     const wayId = w.id || "?";
     html +=
       "<tr>" +
       `<td style="padding:5px 8px;border-bottom:1px solid var(--border);"><a href="https://www.openstreetmap.org/way/${wayId}" target="_blank" style="color:var(--accent);">${wayId}</a></td>` +
-      `<td style="padding:5px 8px;border-bottom:1px solid var(--border);">${tags.name || tags["tiger:name_base"] || "—"}</td>` +
-      `<td style="padding:5px 8px;border-bottom:1px solid var(--border);">${tags.oneway || "—"}</td>` +
-      `<td style="padding:5px 8px;border-bottom:1px solid var(--border);">${tags.highway || "—"}</td>` +
+      `<td style="padding:5px 8px;border-bottom:1px solid var(--border);">${w.name_display || w.tiger_name_base || "—"}</td>` +
+      `<td style="padding:5px 8px;border-bottom:1px solid var(--border);">${w.oneway || "—"}</td>` +
+      `<td style="padding:5px 8px;border-bottom:1px solid var(--border);">${w.highway || "—"}</td>` +
       "</tr>";
   });
   html += "</tbody></table>";

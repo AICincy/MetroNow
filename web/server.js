@@ -20,7 +20,7 @@ const PYTHON = (() => {
   return process.platform === "win32" ? "python.exe" : "python3";
 })();
 const OSM_PKG = path.resolve(__dirname, "..", "src");
-const CONFIG_DIR = path.join(process.env.USERPROFILE || "", ".config", "osm");
+const CONFIG_DIR = path.join(process.env.USERPROFILE || process.env.HOME || "", ".config", "osm");
 const TOKEN_PATH = path.join(CONFIG_DIR, "token.json");
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 
@@ -79,13 +79,12 @@ app.post("/api/auth/exchange", async (req, res) => {
   if (!code || !verifier)
     return res.status(400).json({ error: "Missing code or verifier" });
   try {
-    const safeCode = code.replace(/'/g, "\\'");
-    const safeVerifier = verifier.replace(/'/g, "\\'");
     const pyCode = [
       "import json, sys",
       "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
       "from osm.auth import exchange_code",
-      "token = exchange_code('" + safeCode + "', '" + safeVerifier + "')",
+      "_args = json.loads(" + JSON.stringify(JSON.stringify({ code, verifier })) + ")",
+      "token = exchange_code(_args['code'], _args['verifier'])",
       'print(json.dumps({"success": True, "scope": token.get("scope", "")}))',
     ].join("\n");
     const out = await runPython(pyCode);
