@@ -167,7 +167,8 @@ def analyse_way_history(way_record: dict) -> dict:
     if result is not None:
         return result
 
-    history_data = fetch_way_history(way_record.get("id"))
+    way_id = way_record.get("id")
+    history_data = fetch_way_history(way_id) if way_id is not None else None
     return _tier2_analyse(way_record, history_data)
 
 
@@ -284,7 +285,8 @@ def filter_by_history(
         histories = batch_fetch_way_histories(way_ids, max_concurrent=max_concurrent)
 
         for i, w in enumerate(tier2_ways):
-            history_data = histories.get(w.get("id"))
+            way_id: int | None = w.get("id")
+            history_data = histories.get(way_id) if way_id is not None else None
             result = _tier2_analyse(w, history_data)
             w["review_status"] = result["review_status"].value
             w["review_confidence"] = result["review_confidence"]

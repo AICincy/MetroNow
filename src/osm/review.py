@@ -78,9 +78,9 @@ def review_defects(classified: dict) -> list[dict]:
     if mode == "quit":
         return []
     if mode == "batch-accept":
-        accepted = [proposed_fix(w) for w in fixable]
-        console.print(f"[green]Accepted all {len(accepted)} fixes.[/green]")
-        return [f for f in accepted if f is not None]
+        batch = [proposed_fix(w) for w in fixable]
+        console.print(f"[green]Accepted all {len(batch)} fixes.[/green]")
+        return [f for f in batch if f is not None]
     if mode == "batch-reject":
         console.print("[red]Rejected all fixes.[/red]")
         return []
