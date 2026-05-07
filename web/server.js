@@ -167,11 +167,10 @@ app.post("/api/scan", async (req, res) => {
   const skipHistory = req.body.skip_history !== false;
   try {
     const pyCode = [
-      "import json, sys, io, os",
+      "import json, sys, os",
       "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
       "from pathlib import Path",
-      "_real_stdout = sys.stdout",
-      "sys.stdout = io.TextIOWrapper(os.fdopen(os.dup(2), 'wb'), encoding='utf-8')",
+      "sys.stdout = open(os.devnull, 'w')",
       "from osm.fetch import fetch_overpass",
       "from osm.classify import classify",
       "from osm.history_filter import filter_by_history",
@@ -195,7 +194,7 @@ app.post("/api/scan", async (req, res) => {
       "}",
       "with open(results_path, 'w', encoding='utf-8') as fh:",
       "    json.dump(ser, fh, ensure_ascii=False)",
-      "sys.stdout = _real_stdout",
+      "sys.stdout = sys.__stdout__",
       "print(json.dumps(classified['summary_stats']))",
     ].join("\n");
     const out = await runPython(pyCode);
@@ -232,11 +231,10 @@ app.post("/api/reports", async (req, res) => {
   if (!validateZone(zone, res)) return;
   try {
     const pyCode = [
-      "import json, sys, io, os, datetime as dt",
+      "import json, sys, os, datetime as dt",
       "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
       "from pathlib import Path",
-      "_real_stdout = sys.stdout",
-      "sys.stdout = io.TextIOWrapper(os.fdopen(os.dup(2), 'wb'), encoding='utf-8')",
+      "sys.stdout = open(os.devnull, 'w')",
       "from osm.zones import ZONES",
       "from osm.csv_export import write_csvs",
       "from osm.dashboard import write_dashboard",
@@ -260,7 +258,7 @@ app.post("/api/reports", async (req, res) => {
       "files = []",
       "if xlsx_path.exists(): files.append(str(xlsx_path))",
       "if dash_path.exists(): files.append(str(dash_path))",
-      "sys.stdout = _real_stdout",
+      "sys.stdout = sys.__stdout__",
       "print(json.dumps({'success': True, 'files': files}))",
     ].join("\n");
     const out = await runPython(pyCode);
@@ -324,14 +322,13 @@ app.post("/api/fix", async (req, res) => {
   try {
     const fixesJson = JSON.stringify(fixes);
     const pyCode = [
-      "import json, sys, io, os",
+      "import json, sys, os",
       "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
-      "_real_stdout = sys.stdout",
-      "sys.stdout = io.TextIOWrapper(os.fdopen(os.dup(2), 'wb'), encoding='utf-8')",
+      "sys.stdout = open(os.devnull, 'w')",
       "from osm.changeset import submit_fixes",
       "_args = json.loads(" + JSON.stringify(fixesJson) + ")",
       "result = submit_fixes(_args, dry_run=" + (dry_run ? "True" : "False") + ")",
-      "sys.stdout = _real_stdout",
+      "sys.stdout = sys.__stdout__",
       "print(json.dumps(result))",
     ].join("\n");
     const out = await runPython(pyCode);
