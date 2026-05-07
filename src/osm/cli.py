@@ -9,7 +9,7 @@ from pathlib import Path
 
 import click
 
-from .config import CLASS_ORDER, PROJECT_ROOT, ensure_config_dirs
+from .config import PROJECT_ROOT
 from .zones import DEFAULT_ZONE, ZONE_KEYS, ZONES
 
 
@@ -48,7 +48,7 @@ def auth_login():
         login()
     except FileNotFoundError as e:
         click.echo(str(e), err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @auth.command("status")
@@ -81,7 +81,7 @@ def scan(zone: str, from_cache: bool, skip_history: bool):
     from .xlsx import write_xlsx
 
     zones_to_run = ZONE_KEYS if zone == "all" else [zone]
-    audit_ts = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    audit_ts = dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     for zk in zones_to_run:
         z = ZONES[zk]
@@ -106,8 +106,8 @@ def scan(zone: str, from_cache: bool, skip_history: bool):
             with Progress() as progress:
                 task = progress.add_task("History analysis", total=len(classified["all_ways"]))
 
-                def _progress(done, total):
-                    progress.update(task, completed=done)
+                def _progress(done, total, _task=task):
+                    progress.update(_task, completed=done)
 
                 filter_by_history(classified["all_ways"], skip_history=False, progress_callback=_progress)
 
@@ -202,7 +202,7 @@ def report(zone: str):
 
     z = ZONES[zone]
     classified = _load_scan_results(results_path)
-    audit_ts = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    audit_ts = dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     zone_name_hyphen = z["name"].replace(" / ", "-").replace(" ", "-")
     query_text = overpass_query(z["bbox"])
     out_dir = _output_dir(zone)

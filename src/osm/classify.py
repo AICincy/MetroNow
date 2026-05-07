@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 
-log = logging.getLogger(__name__)
-
 from .config import CLASS_A, CLASS_AB, CLASS_B, CLASS_C, CRITICAL, HIGH, LOW
 from .gaps import detect_gaps
 from .geo import norm_name, valid_latlon
+
+log = logging.getLogger(__name__)
 
 
 def classify(raw: dict) -> dict:

@@ -7,12 +7,12 @@ analyses the actual edit history to produce a review_status and confidence score
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from .history import batch_fetch_way_histories, extract_versions, fetch_way_history
 
 
-class ReviewStatus(str, Enum):
+class ReviewStatus(StrEnum):
     UNREVIEWED = "UNREVIEWED"
     LIKELY_REVIEWED = "LIKELY_REVIEWED"
     INCONCLUSIVE = "INCONCLUSIVE"
@@ -178,10 +178,10 @@ def _is_tiger_tag(key: str) -> bool:
 def _only_tiger_tags_changed(prev_tags: dict, curr_tags: dict) -> bool:
     """Return True if all differences between two tag sets are tiger:* or source tags."""
     all_keys = set(prev_tags.keys()) | set(curr_tags.keys())
-    for k in all_keys:
-        if prev_tags.get(k) != curr_tags.get(k) and not _is_tiger_tag(k):
-            return False
-    return True
+    return all(
+        prev_tags.get(k) == curr_tags.get(k) or _is_tiger_tag(k)
+        for k in all_keys
+    )
 
 
 def _check_meaningful_changes(

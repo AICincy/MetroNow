@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
 
 from .config import CACHE_KEEP_NEWEST

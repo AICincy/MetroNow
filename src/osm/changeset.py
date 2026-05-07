@@ -289,5 +289,5 @@ def submit_fixes(
 
 
 def _xml_escape(text: str) -> str:
-    from xml.sax.saxutils import escape, quoteattr
+    from xml.sax.saxutils import escape
     return escape(text, {'"': "&quot;", "'": "&apos;"})

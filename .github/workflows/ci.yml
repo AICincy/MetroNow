@@ -52,4 +52,4 @@ jobs:
         run: cd web && npm install
 
       - name: Lint app.js
-        run: cd web && npx eslint public/js/app.js --no-eslintrc --rule '{"no-undef":"off","no-unused-vars":"warn"}'
+        run: cd web && npx eslint@8 public/js/app.js --no-eslintrc --rule '{"no-undef":"off","no-unused-vars":"warn"}'

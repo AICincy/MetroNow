@@ -11,10 +11,9 @@ import json
 import logging
 from pathlib import Path
 
+from .config import CLASS_C
+
 log = logging.getLogger(__name__)
-
-from .config import CLASS_AB, CLASS_A, CLASS_B, CLASS_C
-
 _TEMPLATE_PATH = Path(__file__).parent / "templates" / "dashboard.html"
 
 

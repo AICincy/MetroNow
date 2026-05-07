@@ -44,8 +44,7 @@ def display_issue(way: dict, index: int, total: int) -> None:
 def proposed_fix(way: dict) -> dict | None:
     """Generate a proposed fix for a classified defect."""
     defect = way.get("defect_class")
-    if defect in ("A", "AB"):
-        if way.get("oneway") == "yes" and way.get("highway") == "residential":
+    if defect in ("A", "AB") and way.get("oneway") == "yes" and way.get("highway") == "residential":
             return {
                 "action": "remove_tag",
                 "tag": "oneway",

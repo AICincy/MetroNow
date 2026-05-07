@@ -10,8 +10,6 @@ from pathlib import Path
 
 import requests
 
-log = logging.getLogger(__name__)
-
 from .cache import newest_cache, prune_old_cache
 from .config import (
     OVERPASS_HEADERS,
@@ -20,6 +18,8 @@ from .config import (
     SANITY_THRESHOLD,
 )
 from .zones import ZONES
+
+log = logging.getLogger(__name__)
 
 
 def overpass_query(bbox: tuple[float, float, float, float]) -> str:
@@ -40,7 +40,7 @@ def overpass_query(bbox: tuple[float, float, float, float]) -> str:
 
 
 def _utc_stamp() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
 
 
 def _post_overpass(url: str, query: str) -> requests.Response:
