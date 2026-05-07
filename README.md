@@ -61,7 +61,7 @@ web/server.js      Bridges the web UI to the Python backend
 
 ## Background
 
-Successor to [AICincy/Tiger](https://github.com/AICincy/Tiger). Key improvement per OSM community feedback from [Minh Nguyen](https://wiki.openstreetmap.org/wiki/User:Mxn): the `tiger:reviewed=no` tag is unreliable because most mappers don't remove it after correcting data. This pipeline uses revision history analysis and the `DaveHansenTiger` import-timestamp filter instead.
+Successor to [AICincy/Tiger](https://github.com/AICincy/Tiger). Key improvement per OSM community feedback from [Minh Nguyen](https://wiki.openstreetmap.org/wiki/User:Mxn): the `tiger:reviewed=no` tag is unreliable because most mappers don't remove it after correcting data. The current pipeline still uses `tiger:reviewed=no` to fetch initial candidate road segments from Overpass, then supplements that baseline with revision history analysis and the `DaveHansenTiger` import-timestamp filter to better identify likely TIGER import artifacts.
 
 See [RESEARCH-FINDINGS.md](RESEARCH-FINDINGS.md) for the full technical investigation into Via's data architecture, TIGER defect taxonomy, and OSM community integration requirements.
 
