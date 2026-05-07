@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import xml.etree.ElementTree as ET
 
 import requests
 
 from .auth import get_access_token
 from .config import OSM_API_BASE
+
+log = logging.getLogger(__name__)
 
 
 def _auth_headers() -> dict:
@@ -130,20 +133,72 @@ def upload_way(changeset_id: int, way_id: int, way_xml_str: str) -> int:
     return int(resp.text.strip())
 
 
-def _apply_single_fix(fix: dict, changeset_id: int) -> None:
-    """Apply one fix to an open changeset."""
-    changes = fix.get("changes", {})
+def _resolve_changes(fix: dict) -> dict:
+    """Extract the tag changes dict from a fix descriptor."""
     if fix["action"] == "remove_tag":
-        changes = {fix["tag"]: None}
-    elif fix["action"] == "modify_tag":
-        pass
-    else:
-        raise ValueError(f"Unknown action: {fix['action']}")
+        return {fix["tag"]: None}
+    if fix["action"] == "modify_tag":
+        return fix.get("changes", {})
+    raise ValueError(f"Unknown action: {fix['action']}")
 
-    way_xml = fetch_current_way(fix["element_id"])
-    modified = apply_tag_changes(way_xml, changeset_id, changes)
-    new_version = upload_way(changeset_id, fix["element_id"], modified)
-    print(f"  Fixed way {fix['element_id']} → v{new_version}")
+
+def _build_osmchange(fixes: list[dict], changeset_id: int) -> tuple[str, list[str]]:
+    """Fetch current state of each way, apply changes, and build an osmChange XML.
+
+    Returns (osmchange_xml_string, list_of_error_messages).
+    Uses one GET per way but a single diff upload for the whole batch.
+    """
+    root = ET.Element("osmChange")
+    modify = ET.SubElement(root, "modify")
+    errors: list[str] = []
+
+    for fix in fixes:
+        way_id = fix["element_id"]
+        try:
+            changes = _resolve_changes(fix)
+            way_xml = fetch_current_way(way_id)
+            way_el = way_xml.find("way")
+            if way_el is None:
+                raise ValueError("No <way> element in API response")
+
+            way_el.set("changeset", str(changeset_id))
+
+            for key, value in changes.items():
+                existing = None
+                for tag in way_el.findall("tag"):
+                    if tag.get("k") == key:
+                        existing = tag
+                        break
+                if value is None:
+                    if existing is not None:
+                        way_el.remove(existing)
+                elif existing is not None:
+                    existing.set("v", str(value))
+                else:
+                    new_tag = ET.SubElement(way_el, "tag")
+                    new_tag.set("k", key)
+                    new_tag.set("v", str(value))
+
+            modify.append(way_el)
+        except Exception as exc:
+            msg = f"Way {way_id}: {exc}"
+            errors.append(msg)
+            log.warning("Skipping fix: %s", msg)
+
+    return ET.tostring(root, encoding="unicode"), errors
+
+
+def upload_diff(changeset_id: int, osmchange_xml: str) -> None:
+    """Upload an osmChange document to a changeset via diff upload."""
+    headers = _auth_headers()
+    headers["Content-Type"] = "text/xml"
+    resp = requests.post(
+        f"{OSM_API_BASE}/changeset/{changeset_id}/upload",
+        data=osmchange_xml,
+        headers=headers,
+        timeout=120,
+    )
+    resp.raise_for_status()
 
 
 def submit_fixes(
@@ -164,11 +219,11 @@ def submit_fixes(
         return {"changeset_ids": [], "fixes_applied": 0, "errors": []}
 
     if dry_run:
-        print(f"\n[DRY RUN] Would submit {len(accepted_fixes)} fix(es):")
+        log.info("[DRY RUN] Would submit %d fix(es)", len(accepted_fixes))
         for fix in accepted_fixes:
-            print(f"  - {fix['description']}")
+            log.info("  - %s", fix["description"])
         batches = (len(accepted_fixes) + batch_size - 1) // batch_size
-        print(f"  ({batches} changeset(s) of up to {batch_size} elements each)")
+        log.info("  (%d changeset(s) of up to %d elements each)", batches, batch_size)
         return {
             "changeset_ids": [],
             "fixes_applied": len(accepted_fixes),
@@ -192,25 +247,33 @@ def submit_fixes(
             batch_comment, source=source, wiki_url=wiki_url
         )
         changeset_ids.append(changeset_id)
-        print(f"Opened changeset {changeset_id} (batch {batch_num}/{total_batches}, {len(batch)} fixes)")
+        log.info(
+            "Opened changeset %d (batch %d/%d, %d fixes)",
+            changeset_id, batch_num, total_batches, len(batch),
+        )
 
-        applied = 0
-        for fix in batch:
+        osmchange_xml, fetch_errors = _build_osmchange(batch, changeset_id)
+        all_errors.extend(fetch_errors)
+
+        applied = len(batch) - len(fetch_errors)
+        if applied > 0:
             try:
-                _apply_single_fix(fix, changeset_id)
-                applied += 1
+                upload_diff(changeset_id, osmchange_xml)
             except Exception as exc:
-                msg = f"Way {fix.get('element_id', '?')}: {exc}"
+                msg = f"Diff upload for changeset {changeset_id}: {exc}"
                 all_errors.append(msg)
-                print(f"  ERROR: {msg}")
+                log.error("Diff upload failed: %s", msg)
+                applied = 0
 
         close_changeset(changeset_id)
         total_applied += applied
-        url = f"https://www.openstreetmap.org/changeset/{changeset_id}"
-        print(f"Closed changeset {changeset_id}: {applied} fix(es) — {url}")
+        log.info(
+            "Closed changeset %d: %d fix(es) — https://www.openstreetmap.org/changeset/%d",
+            changeset_id, applied, changeset_id,
+        )
 
     if all_errors:
-        print(f"\n{len(all_errors)} error(s) total across all batches")
+        log.warning("%d error(s) total across all batches", len(all_errors))
 
     return {
         "changeset_ids": changeset_ids,

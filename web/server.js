@@ -49,6 +49,15 @@ function appendHistory(entry) {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+const SAFE_ZONE_RE = /^[a-z0-9_]+$/;
+function validateZone(zone, res) {
+  if (!zone || !SAFE_ZONE_RE.test(zone)) {
+    res.status(400).json({ error: "Invalid zone identifier" });
+    return false;
+  }
+  return true;
+}
+
 function runPython(script) {
   return new Promise((resolve, reject) => {
     execFile(
@@ -154,6 +163,7 @@ app.get("/api/zones", async (_req, res) => {
 
 app.post("/api/scan", async (req, res) => {
   const zone = req.body.zone || "blue_ash_montgomery";
+  if (!validateZone(zone, res)) return;
   const skipHistory = req.body.skip_history !== false;
   try {
     const pyCode = [
@@ -200,6 +210,7 @@ app.post("/api/scan", async (req, res) => {
 // ---- results ----
 
 app.get("/api/results/:zone", (req, res) => {
+  if (!validateZone(req.params.zone, res)) return;
   const p = path.join(
     PROJECT_ROOT,
     "osm_audit_" + req.params.zone,
@@ -218,6 +229,7 @@ app.get("/api/results/:zone", (req, res) => {
 
 app.post("/api/reports", async (req, res) => {
   const zone = req.body.zone || "blue_ash_montgomery";
+  if (!validateZone(zone, res)) return;
   try {
     const pyCode = [
       "import json, sys, io, os, datetime as dt",
@@ -261,6 +273,7 @@ app.post("/api/reports", async (req, res) => {
 });
 
 app.get("/api/dashboard/:zone", (req, res) => {
+  if (!validateZone(req.params.zone, res)) return;
   const dir = path.join(
     PROJECT_ROOT,
     "osm_audit_" + req.params.zone,
@@ -278,6 +291,7 @@ app.get("/api/dashboard/:zone", (req, res) => {
 
 app.get("/api/review/:zone", async (req, res) => {
   const zone = req.params.zone;
+  if (!validateZone(zone, res)) return;
   const p = path.join(PROJECT_ROOT, "osm_audit_" + zone, "scan_results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results. Run a scan first." });
@@ -293,7 +307,7 @@ app.get("/api/review/:zone", async (req, res) => {
       "    fix = proposed_fix(w)",
       "    if fix:",
       "        fixable.append({'way': w, 'fix': fix})",
-      "print(json.dumps({'count': len(fixable), 'fixes': fixable[:100]}))",
+      "print(json.dumps({'count': len(fixable), 'fixes': fixable}))",
     ].join("\n");
     const out = await runPython(pyCode);
     res.json(JSON.parse(out.trim()));
@@ -306,6 +320,7 @@ app.post("/api/fix", async (req, res) => {
   const { zone, fixes, dry_run } = req.body;
   if (!zone || !fixes || !fixes.length)
     return res.status(400).json({ error: "Missing zone or fixes" });
+  if (!validateZone(zone, res)) return;
   try {
     const fixesJson = JSON.stringify(fixes);
     const pyCode = [
@@ -345,6 +360,7 @@ app.get("/api/history", (_req, res) => {
 // ---- export ----
 
 app.get("/api/export/:zone/csv", (req, res) => {
+  if (!validateZone(req.params.zone, res)) return;
   const p = path.join(PROJECT_ROOT, "osm_audit_" + req.params.zone, "scan_results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results." });
@@ -371,6 +387,7 @@ app.get("/api/export/:zone/csv", (req, res) => {
 });
 
 app.get("/api/export/:zone/json", (req, res) => {
+  if (!validateZone(req.params.zone, res)) return;
   const p = path.join(PROJECT_ROOT, "osm_audit_" + req.params.zone, "scan_results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results." });

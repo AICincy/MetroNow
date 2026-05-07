@@ -1,6 +1,12 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
+function esc(str) {
+  const d = document.createElement("div");
+  d.textContent = str == null ? "" : String(str);
+  return d.innerHTML;
+}
+
 // ---- state ----
 let authVerifier = null;
 let currentZone = null;
@@ -43,14 +49,14 @@ function updateMapData(ways) {
       opacity: 0.85,
     });
     const reviewHtml = w.review_status
-      ? `<br><span class="review-badge ${reviewClass(w.review_status)}">${w.review_status.replace("_", " ")}</span>`
+      ? `<br><span class="review-badge ${reviewClass(w.review_status)}">${esc(w.review_status.replace("_", " "))}</span>`
       : "";
     line.bindPopup(
       `<div class="defect-popup">` +
-        `<strong>${w.name_display || "Unnamed"}</strong>` +
-        `<span class="popup-class ${cls.toLowerCase()}">${cls}</span><br>` +
-        `Way <a href="https://www.openstreetmap.org/way/${w.id}" target="_blank">${w.id}</a><br>` +
-        `${w.highway || "?"} &middot; oneway=${w.oneway || "no"}` +
+        `<strong>${esc(w.name_display || "Unnamed")}</strong>` +
+        `<span class="popup-class ${cls.toLowerCase()}">${esc(cls)}</span><br>` +
+        `Way <a href="https://www.openstreetmap.org/way/${encodeURIComponent(w.id)}" target="_blank">${esc(w.id)}</a><br>` +
+        `${esc(w.highway || "?")} &middot; oneway=${esc(w.oneway || "no")}` +
         `${reviewHtml}` +
         `</div>`
     );
@@ -444,7 +450,7 @@ function renderResultsStats(stats) {
 function reviewBadge(status) {
   if (!status) return "";
   const cls = reviewClass(status);
-  return `<span class="review-badge ${cls}">${status.replace("_", " ")}</span>`;
+  return `<span class="review-badge ${cls}">${esc(status.replace("_", " "))}</span>`;
 }
 
 function renderTable(sel, ways) {
@@ -464,10 +470,10 @@ function renderTable(sel, ways) {
     const wayId = w.id || "?";
     html +=
       "<tr>" +
-      `<td><a href="https://www.openstreetmap.org/way/${wayId}" target="_blank">${wayId}</a></td>` +
-      `<td>${w.name_display || w.tiger_name_base || "—"}</td>` +
-      `<td>${w.oneway || "—"}</td>` +
-      `<td>${w.highway || "—"}</td>` +
+      `<td><a href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank">${esc(wayId)}</a></td>` +
+      `<td>${esc(w.name_display || w.tiger_name_base || "—")}</td>` +
+      `<td>${esc(w.oneway || "—")}</td>` +
+      `<td>${esc(w.highway || "—")}</td>` +
       (hasReview ? `<td>${reviewBadge(w.review_status)}</td>` : "") +
       "</tr>";
   });
@@ -508,19 +514,23 @@ function renderFixTable(fixes) {
     '<th><input type="checkbox" id="fixSelectAll" checked /></th>' +
     "<th>Way ID</th><th>Street</th><th>Class</th><th>Proposed Fix</th>" +
     "</tr></thead><tbody>";
-  fixes.forEach((f, i) => {
+  const showCount = Math.min(fixes.length, 200);
+  for (let i = 0; i < showCount; i++) {
+    const f = fixes[i];
     const w = f.way;
     const wayId = w.id || "?";
     html +=
       "<tr>" +
       `<td><input type="checkbox" class="fix-check" data-idx="${i}" checked /></td>` +
-      `<td><a href="https://www.openstreetmap.org/way/${wayId}" target="_blank">${wayId}</a></td>` +
-      `<td>${w.name_display || "—"}</td>` +
-      `<td>${w.defect_class || "?"}</td>` +
-      `<td>${f.fix.description}</td>` +
+      `<td><a href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank">${esc(wayId)}</a></td>` +
+      `<td>${esc(w.name_display || "—")}</td>` +
+      `<td>${esc(w.defect_class || "?")}</td>` +
+      `<td>${esc(f.fix.description)}</td>` +
       "</tr>";
-  });
+  }
   html += "</tbody></table>";
+  if (fixes.length > showCount)
+    html += `<p class="table-count">Showing ${showCount} of ${fixes.length}. All ${fixes.length} will be included when submitting.</p>`;
   container.innerHTML = html;
 
   $("#fixSelectAll").addEventListener("change", (e) => {
@@ -529,6 +539,10 @@ function renderFixTable(fixes) {
 }
 
 function getSelectedFixes() {
+  const selectAll = document.getElementById("fixSelectAll");
+  if (selectAll && selectAll.checked && pendingFixes.length > $$(".fix-check").length) {
+    return pendingFixes.map((f) => f.fix);
+  }
   const selected = [];
   $$(".fix-check").forEach((cb) => {
     if (cb.checked) selected.push(pendingFixes[parseInt(cb.dataset.idx)].fix);
@@ -629,19 +643,19 @@ function renderHistory(entries) {
 
     let detail = "";
     if (e.action === "scan" && e.stats) {
-      detail = `Zone: ${e.zone} &middot; ${e.stats.total || 0} ways, ${e.stats.class_ab_count || 0} AB, ${e.stats.class_a_count || 0} A`;
+      detail = `Zone: ${esc(e.zone)} &middot; ${Number(e.stats.total) || 0} ways, ${Number(e.stats.class_ab_count) || 0} AB, ${Number(e.stats.class_a_count) || 0} A`;
     } else if (e.action === "submit") {
       const ids = (e.changeset_ids || [])
-        .map((id) => `<a href="https://www.openstreetmap.org/changeset/${id}" target="_blank">#${id}</a>`)
+        .map((id) => `<a href="https://www.openstreetmap.org/changeset/${encodeURIComponent(id)}" target="_blank">#${esc(id)}</a>`)
         .join(", ");
-      detail = `${e.fixes_applied || 0} fix(es) applied` + (ids ? ` &middot; Changesets: ${ids}` : "");
-      if (e.errors) detail += ` &middot; ${e.errors} error(s)`;
+      detail = `${Number(e.fixes_applied) || 0} fix(es) applied` + (ids ? ` &middot; Changesets: ${ids}` : "");
+      if (e.errors) detail += ` &middot; ${Number(e.errors)} error(s)`;
     } else if (e.action === "dry_run") {
-      detail = `${e.fixes_applied || 0} fix(es) previewed`;
+      detail = `${Number(e.fixes_applied) || 0} fix(es) previewed`;
     } else if (e.action === "report") {
-      detail = `Zone: ${e.zone}`;
+      detail = `Zone: ${esc(e.zone)}`;
     } else if (e.zone) {
-      detail = `Zone: ${e.zone}`;
+      detail = `Zone: ${esc(e.zone)}`;
     }
 
     return (
