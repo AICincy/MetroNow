@@ -6,12 +6,19 @@ const fs = require("fs");
 const app = express();
 const PORT = 3000;
 
-const PYTHON = path.join(
-  process.env.LOCALAPPDATA || "",
-  "Python",
-  "pythoncore-3.14-64",
-  "python.exe"
-);
+const PYTHON = (() => {
+  const { execFileSync } = require("child_process");
+  for (const cmd of ["python3", "python"]) {
+    try {
+      const p = execFileSync(process.platform === "win32" ? "where" : "which", [cmd], {
+        encoding: "utf-8",
+        timeout: 5000,
+      }).trim().split(/\r?\n/)[0];
+      if (p) return p;
+    } catch {}
+  }
+  return process.platform === "win32" ? "python.exe" : "python3";
+})();
 const OSM_PKG = path.resolve(__dirname, "..", "src");
 const CONFIG_DIR = path.join(process.env.USERPROFILE || "", ".config", "osm");
 const TOKEN_PATH = path.join(CONFIG_DIR, "token.json");
