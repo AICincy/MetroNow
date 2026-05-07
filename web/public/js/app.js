@@ -75,9 +75,10 @@ function updateMapBounds(bbox) {
 }
 
 const CHUNK_SIZE = 150;
-let mapDataQueue = null;
+let currentUpdateId = 0;
 
 function updateMapData(ways) {
+  currentUpdateId++;
   Object.values(mapLayers).forEach((l) => l.clearLayers());
   const items = [];
   for (let i = 0; i < ways.length; i++) {
@@ -92,13 +93,12 @@ function updateMapData(ways) {
     return;
   }
   $("#mapEmpty").classList.add("hidden");
-  mapDataQueue = items;
-  processMapChunk(0);
+  const updateId = currentUpdateId;
+  processMapChunk(0, updateId, items);
 }
 
-function processMapChunk(start) {
-  const items = mapDataQueue;
-  if (!items) return;
+function processMapChunk(start, updateId, items) {
+  if (updateId !== currentUpdateId) return;
   const end = Math.min(start + CHUNK_SIZE, items.length);
   for (let i = start; i < end; i++) {
     const w = items[i];
@@ -116,9 +116,7 @@ function processMapChunk(start) {
     mapLayers[group].addLayer(line);
   }
   if (end < items.length) {
-    setTimeout(() => processMapChunk(end), 0);
-  } else {
-    mapDataQueue = null;
+    setTimeout(() => processMapChunk(end, updateId, items), 0);
   }
 }
 
