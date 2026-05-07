@@ -18,6 +18,7 @@
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="scan">Scan</button>
       <button class="tab-btn" data-tab="results">Results</button>
+      <button class="tab-btn" data-tab="fix">Fix</button>
       <button class="tab-btn" data-tab="auth">Authenticate</button>
     </div>
 
@@ -81,6 +82,29 @@
       <div class="card">
         <div class="card-title">Class A &mdash; False Oneway</div>
         <div id="tableA" style="overflow-x:auto;"></div>
+      </div>
+    </div>
+
+    <!-- ======== FIX TAB ======== -->
+    <div id="tab-fix" class="tab-panel">
+      <div class="card">
+        <div class="card-title">Review Proposed Corrections</div>
+        <p id="fixIntro" style="color:var(--text-secondary);font-size:14px;margin-bottom:12px;">
+          Load fixable defects from scan results, review them, and submit corrections to OpenStreetMap.
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+          <button id="loadFixesBtn" class="btn btn-primary btn-sm">Load Fixes</button>
+          <span id="fixCount" style="font-size:13px;color:var(--text-secondary);"></span>
+        </div>
+        <div id="fixTable" style="overflow-x:auto;"></div>
+      </div>
+      <div id="fixActions" class="card hidden">
+        <div class="card-title">Submit</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="dryRunBtn" class="btn btn-sm">Dry Run</button>
+          <button id="submitFixesBtn" class="btn btn-primary btn-sm">Submit to OSM</button>
+        </div>
+        <div id="fixResult" style="margin-top:12px;font-size:13px;"></div>
       </div>
     </div>
 

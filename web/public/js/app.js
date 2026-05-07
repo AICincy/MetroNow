@@ -302,6 +302,123 @@ $$(".tab-btn").forEach((btn) => {
   });
 });
 
+// ---- fix tab ----
+let pendingFixes = [];
+
+$("#loadFixesBtn").addEventListener("click", async () => {
+  const zone = $("#zoneSelect").value;
+  $("#loadFixesBtn").disabled = true;
+  try {
+    const data = await api("/api/review/" + zone);
+    pendingFixes = data.fixes || [];
+    $("#fixCount").textContent = `${data.count} fixable defect(s) found`;
+    renderFixTable(pendingFixes);
+    if (pendingFixes.length > 0) {
+      $("#fixActions").classList.remove("hidden");
+    }
+  } catch (e) {
+    $("#fixCount").textContent = e.message;
+    pendingFixes = [];
+  } finally {
+    $("#loadFixesBtn").disabled = false;
+  }
+});
+
+function renderFixTable(fixes) {
+  const container = $("#fixTable");
+  if (!fixes.length) {
+    container.innerHTML =
+      '<p style="color:var(--text-secondary);font-size:14px;">No fixable defects in scan results.</p>';
+    return;
+  }
+  const th = "text-align:left;padding:6px 8px;border-bottom:2px solid var(--border);";
+  const td = "padding:5px 8px;border-bottom:1px solid var(--border);";
+  let html =
+    '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+    "<thead><tr>" +
+    `<th style="${th}"><input type="checkbox" id="fixSelectAll" checked /></th>` +
+    `<th style="${th}">Way ID</th>` +
+    `<th style="${th}">Street</th>` +
+    `<th style="${th}">Class</th>` +
+    `<th style="${th}">Proposed Fix</th>` +
+    "</tr></thead><tbody>";
+  fixes.forEach((f, i) => {
+    const w = f.way;
+    const wayId = w.id || "?";
+    html +=
+      "<tr>" +
+      `<td style="${td}"><input type="checkbox" class="fix-check" data-idx="${i}" checked /></td>` +
+      `<td style="${td}"><a href="https://www.openstreetmap.org/way/${wayId}" target="_blank" style="color:var(--accent);">${wayId}</a></td>` +
+      `<td style="${td}">${w.name_display || "—"}</td>` +
+      `<td style="${td}">${w.defect_class || "?"}</td>` +
+      `<td style="${td}">${f.fix.description}</td>` +
+      "</tr>";
+  });
+  html += "</tbody></table>";
+  container.innerHTML = html;
+
+  $("#fixSelectAll").addEventListener("change", (e) => {
+    $$(".fix-check").forEach((cb) => (cb.checked = e.target.checked));
+  });
+}
+
+function getSelectedFixes() {
+  const selected = [];
+  $$(".fix-check").forEach((cb) => {
+    if (cb.checked) selected.push(pendingFixes[parseInt(cb.dataset.idx)].fix);
+  });
+  return selected;
+}
+
+$("#dryRunBtn").addEventListener("click", async () => {
+  const fixes = getSelectedFixes();
+  if (!fixes.length) return toast("No fixes selected", "error");
+  const zone = $("#zoneSelect").value;
+  $("#dryRunBtn").disabled = true;
+  try {
+    const data = await api("/api/fix", {
+      method: "POST",
+      body: { zone, fixes, dry_run: true },
+    });
+    $("#fixResult").innerHTML =
+      `<p style="color:var(--text-secondary);">[DRY RUN] Would submit <strong>${data.fixes_applied}</strong> fix(es). No changes made.</p>`;
+    toast("Dry run complete");
+  } catch (e) {
+    $("#fixResult").innerHTML = `<p style="color:var(--danger);">${e.message}</p>`;
+  } finally {
+    $("#dryRunBtn").disabled = false;
+  }
+});
+
+$("#submitFixesBtn").addEventListener("click", async () => {
+  const fixes = getSelectedFixes();
+  if (!fixes.length) return toast("No fixes selected", "error");
+  if (!confirm(`Submit ${fixes.length} correction(s) to OpenStreetMap? This cannot be undone.`))
+    return;
+  const zone = $("#zoneSelect").value;
+  $("#submitFixesBtn").disabled = true;
+  try {
+    const data = await api("/api/fix", {
+      method: "POST",
+      body: { zone, fixes, dry_run: false },
+    });
+    const ids = (data.changeset_ids || [])
+      .map((id) => `<a href="https://www.openstreetmap.org/changeset/${id}" target="_blank" style="color:var(--accent);">${id}</a>`)
+      .join(", ");
+    let html = `<p style="color:var(--success);font-weight:500;">Submitted ${data.fixes_applied} fix(es).</p>`;
+    if (ids) html += `<p>Changeset(s): ${ids}</p>`;
+    if (data.errors && data.errors.length)
+      html += `<p style="color:var(--danger);">${data.errors.length} error(s): ${data.errors.join("; ")}</p>`;
+    $("#fixResult").innerHTML = html;
+    toast("Corrections submitted to OSM");
+  } catch (e) {
+    $("#fixResult").innerHTML = `<p style="color:var(--danger);">${e.message}</p>`;
+    toast("Submission failed", "error");
+  } finally {
+    $("#submitFixesBtn").disabled = false;
+  }
+});
+
 // ---- init ----
 checkAuth();
 loadZones();

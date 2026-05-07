@@ -235,6 +235,56 @@ app.get("/api/dashboard/:zone", (req, res) => {
   res.sendFile(path.join(dir, files[0]));
 });
 
+app.get("/api/review/:zone", async (req, res) => {
+  const zone = req.params.zone;
+  const p = path.join(PROJECT_ROOT, "osm_audit_" + zone, "scan_results.json");
+  if (!fs.existsSync(p))
+    return res.status(404).json({ error: "No scan results. Run a scan first." });
+  try {
+    const pyCode = [
+      "import json, sys",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "from osm.review import proposed_fix",
+      "with open(" + JSON.stringify(p.replace(/\\/g, "/")) + ") as fh:",
+      "    data = json.load(fh)",
+      "fixable = []",
+      "for w in data['all_ways']:",
+      "    fix = proposed_fix(w)",
+      "    if fix:",
+      "        fixable.append({'way': w, 'fix': fix})",
+      "print(json.dumps({'count': len(fixable), 'fixes': fixable[:100]}))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    res.json(JSON.parse(out.trim()));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/fix", async (req, res) => {
+  const { zone, fixes, dry_run } = req.body;
+  if (!zone || !fixes || !fixes.length)
+    return res.status(400).json({ error: "Missing zone or fixes" });
+  try {
+    const fixesJson = JSON.stringify(fixes);
+    const pyCode = [
+      "import json, sys, io, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "_real_stdout = sys.stdout",
+      "sys.stdout = io.TextIOWrapper(os.fdopen(os.dup(2), 'wb'), encoding='utf-8')",
+      "from osm.changeset import submit_fixes",
+      "_args = json.loads(" + JSON.stringify(fixesJson) + ")",
+      "result = submit_fixes(_args, dry_run=" + (dry_run ? "True" : "False") + ")",
+      "sys.stdout = _real_stdout",
+      "print(json.dumps(result))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    res.json(JSON.parse(out.trim()));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.use((_req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
