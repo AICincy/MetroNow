@@ -1,19 +1,21 @@
-# MetroNow — TIGER Audit & Correction Pipeline
+# MetroNow
 
-Detects and corrects unreviewed TIGER/Line Census import defects in OpenStreetMap road data across Hamilton County, OH MetroNow microtransit service zones.
+Improving on-demand transit routing in Hamilton County, OH by detecting and correcting OpenStreetMap road defects in SORTA's MetroNow microtransit service zones.
 
-Successor to [AICincy/Tiger](https://github.com/AICincy/Tiger).
+## Why this matters
 
-## What it does
+[MetroNow](https://www.go-metro.com/metronow) is Hamilton County's on-demand microtransit service, operated by [Via Transportation](https://ridewithvia.com/) for SORTA (Southwest Ohio Regional Transit Authority). Via's routing engine — ViaAlgo — builds its road network from OpenStreetMap through a custom layer called ViaMapping.
 
-The 2007-2008 TIGER/Line Census import added road geometry to OpenStreetMap across the United States. Many segments in Hamilton County were never reviewed, leaving behind defects that cause routing failures in Via Transportation's MetroNow microtransit service.
+In 2007-2008, the U.S. Census Bureau's TIGER/Line road data was bulk-imported into OpenStreetMap. Many segments in the northern suburban arc of Hamilton County — where MetroNow operates — were never reviewed. These import artifacts include false one-way tags on residential streets, disconnected road segments, and incorrect highway classifications. They cause real routing failures: missed pickups, circuitous detours, and service denials.
 
-This pipeline:
+Fixing OSM in the MetroNow zones feeds directly into Via's routing tiles, improving service for riders.
 
-1. **Scans** — Queries Overpass API for unreviewed road segments with full metadata
-2. **Analyzes** — Classifies defects by severity (Class AB, A, B, C) and detects node disconnects
-3. **Reports** — Generates XLSX workbooks, Leaflet dashboards, and CSV exports
-4. **Corrects** — Submits fixes to OpenStreetMap via API v0.6 changesets (OAuth 2.0)
+## How it works
+
+1. **Scan** — Queries Overpass API for road segments untouched since the 2007 TIGER import, using the `DaveHansenTiger` user+timestamp filter
+2. **Classify** — Ranks defects by severity and detects node disconnects via haversine endpoint analysis
+3. **Report** — Generates XLSX workbooks, interactive Leaflet dashboards, and CSV exports
+4. **Correct** — Submits fixes to OpenStreetMap via API v0.6 changesets (OAuth 2.0)
 
 ## Defect classes
 
@@ -26,42 +28,43 @@ This pipeline:
 
 ## Service zones
 
-- Blue Ash / Montgomery
-- Springdale / Sharonville
-- Northgate / Mt. Healthy
-- Forest Park / Pleasant Run
+| Zone | Coverage |
+|------|----------|
+| Blue Ash / Montgomery | Blue Ash, Montgomery, Deer Park, Silverton, Kenwood, Madeira |
+| Springdale / Sharonville | Springdale, Sharonville |
+| Northgate / Mt. Healthy | Northgate, Mt. Healthy |
+| Forest Park / Pleasant Run | Forest Park, Pleasant Run |
 
-## Setup
+## Getting started
 
 Requires Python 3.12+ and Node.js 20+.
 
 ```
 pip install -e .
-cd web && npm install
+cd web && npm install && npm start
 ```
 
-## Usage
+Open `http://localhost:3000` in your browser.
 
-Open the web UI at `http://localhost:3000` after starting the server:
-
-```
-cd web && npm start
-```
-
-- **Scan tab** — Select a zone and run an audit
-- **Results tab** — View defect tables with links to OSM
-- **Authenticate tab** — Connect to OpenStreetMap for submitting corrections
+- **Scan** — Pick a zone and run an audit
+- **Results** — Browse defect tables with direct links to OpenStreetMap
+- **Authenticate** — Connect your OSM account to submit corrections
 
 ## Architecture
 
-- `src/osm/` — Python package handling Overpass queries, defect classification, gap detection, history analysis, changeset submission
-- `web/` — Express.js server + vanilla HTML/CSS/JS frontend
-- OAuth 2.0 with OOB redirect for authentication
+```
+src/osm/          Python package — Overpass queries, classification,
+                   gap detection, history analysis, changeset submission
+web/               Express.js API + vanilla HTML/CSS/JS frontend
+web/server.js      Bridges the web UI to the Python backend
+```
 
-## Key improvement over Tiger
+## Background
 
-Per feedback from OSM community member Minh Nguyen: the `tiger:reviewed=no` tag is unreliable because most mappers don't remove it after correcting data. This pipeline optionally analyzes revision history via the OSM API to determine whether ways have actually been reviewed, producing a higher-confidence defect set.
+Successor to [AICincy/Tiger](https://github.com/AICincy/Tiger). Key improvement per OSM community feedback from [Minh Nguyen](https://wiki.openstreetmap.org/wiki/User:Mxn): the `tiger:reviewed=no` tag is unreliable because most mappers don't remove it after correcting data. This pipeline uses revision history analysis and the `DaveHansenTiger` import-timestamp filter instead.
+
+See [RESEARCH-FINDINGS.md](RESEARCH-FINDINGS.md) for the full technical investigation into Via's data architecture, TIGER defect taxonomy, and OSM community integration requirements.
 
 ## License
 
-MIT
+[MIT](LICENSE)
