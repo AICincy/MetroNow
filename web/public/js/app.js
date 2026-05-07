@@ -336,7 +336,7 @@ async function tryLoadExistingResults() {
       $("#reportsBtn").disabled = false;
       $("#dashboardBtn").disabled = false;
       $("#exportCSVBtn").disabled = false;
-      log("Loaded existing scan results for " + currentZone, "info");
+      log("Loaded existing scan results for " + zoneName(currentZone), "info");
     }
   } catch {}
 }
@@ -363,7 +363,7 @@ $("#scanBtn").addEventListener("click", async () => {
     if (elapsed === 30 && !skipHistory) $("#scanStatusText").textContent = "Analyzing history...";
   }, 1000);
 
-  log("Starting scan for " + zone + "...", "info");
+  log("Starting scan for " + zoneName(zone) + "...", "info");
 
   try {
     const data = await api("/api/scan", {
@@ -688,6 +688,10 @@ async function loadHistory() {
   }
 }
 
+function zoneName(key) {
+  return (zoneData[key] && zoneData[key].name) || (key || "").replace(/_/g, " ");
+}
+
 function renderHistory(entries) {
   const container = $("#historyList");
   if (!entries || entries.length === 0) {
@@ -722,7 +726,7 @@ function renderHistory(entries) {
 
     let detail = "";
     if (e.action === "scan" && e.stats) {
-      detail = `Zone: ${esc(e.zone)} &middot; ${Number(e.stats.total) || 0} ways, ${Number(e.stats.class_ab_count) || 0} AB, ${Number(e.stats.class_a_count) || 0} A`;
+      detail = `${esc(zoneName(e.zone))} &middot; ${Number(e.stats.total) || 0} ways, ${Number(e.stats.class_ab_count) || 0} AB, ${Number(e.stats.class_a_count) || 0} A`;
     } else if (e.action === "submit") {
       const ids = (e.changeset_ids || [])
         .map((id) => `<a href="https://www.openstreetmap.org/changeset/${encodeURIComponent(id)}" target="_blank">#${esc(id)}</a>`)
@@ -732,9 +736,9 @@ function renderHistory(entries) {
     } else if (e.action === "dry_run") {
       detail = `${Number(e.fixes_applied) || 0} fix(es) previewed`;
     } else if (e.action === "report") {
-      detail = `Zone: ${esc(e.zone)}`;
+      detail = esc(zoneName(e.zone));
     } else if (e.zone) {
-      detail = `Zone: ${esc(e.zone)}`;
+      detail = esc(zoneName(e.zone));
     }
 
     return (
