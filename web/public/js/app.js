@@ -247,6 +247,17 @@ function renderResultsStats(stats) {
   });
 }
 
+function reviewBadge(status) {
+  if (!status) return "";
+  const colors = {
+    UNREVIEWED: "var(--danger, #e53935)",
+    LIKELY_REVIEWED: "var(--success, #43a047)",
+    INCONCLUSIVE: "var(--warning, #f9a825)",
+  };
+  const color = colors[status] || "var(--text-secondary)";
+  return `<span style="display:inline-block;padding:2px 6px;border-radius:3px;font-size:11px;font-weight:600;background:${color}20;color:${color};">${status.replace("_", " ")}</span>`;
+}
+
 function renderTable(sel, ways) {
   const container = $(sel);
   if (!ways || ways.length === 0) {
@@ -254,23 +265,28 @@ function renderTable(sel, ways) {
       '<p style="color:var(--text-secondary);font-size:14px;padding:4px 0;">None found.</p>';
     return;
   }
+  const hasReview = ways.some((w) => w.review_status);
   const rows = ways.slice(0, 50);
+  const th = "text-align:left;padding:6px 8px;border-bottom:2px solid var(--border);";
   let html =
     '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
     "<thead><tr>" +
-    '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border);">Way ID</th>' +
-    '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border);">Street</th>' +
-    '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border);">Oneway</th>' +
-    '<th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border);">Highway</th>' +
+    `<th style="${th}">Way ID</th>` +
+    `<th style="${th}">Street</th>` +
+    `<th style="${th}">Oneway</th>` +
+    `<th style="${th}">Highway</th>` +
+    (hasReview ? `<th style="${th}">Review</th>` : "") +
     "</tr></thead><tbody>";
+  const td = "padding:5px 8px;border-bottom:1px solid var(--border);";
   rows.forEach((w) => {
     const wayId = w.id || "?";
     html +=
       "<tr>" +
-      `<td style="padding:5px 8px;border-bottom:1px solid var(--border);"><a href="https://www.openstreetmap.org/way/${wayId}" target="_blank" style="color:var(--accent);">${wayId}</a></td>` +
-      `<td style="padding:5px 8px;border-bottom:1px solid var(--border);">${w.name_display || w.tiger_name_base || "—"}</td>` +
-      `<td style="padding:5px 8px;border-bottom:1px solid var(--border);">${w.oneway || "—"}</td>` +
-      `<td style="padding:5px 8px;border-bottom:1px solid var(--border);">${w.highway || "—"}</td>` +
+      `<td style="${td}"><a href="https://www.openstreetmap.org/way/${wayId}" target="_blank" style="color:var(--accent);">${wayId}</a></td>` +
+      `<td style="${td}">${w.name_display || w.tiger_name_base || "—"}</td>` +
+      `<td style="${td}">${w.oneway || "—"}</td>` +
+      `<td style="${td}">${w.highway || "—"}</td>` +
+      (hasReview ? `<td style="${td}">${reviewBadge(w.review_status)}</td>` : "") +
       "</tr>";
   });
   html += "</tbody></table>";

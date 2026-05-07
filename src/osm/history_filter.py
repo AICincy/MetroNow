@@ -25,9 +25,13 @@ KNOWN_IMPORT_USERS = {
     "DaveHansen-TIGER",
     "Yellowbkpk",
     "TIGER_Ohio_Mapper",
+    "emacsen",
+    "woodpeck_fixbot",
+    "balrog-kun",
+    "Sundance",
 }
 
-KNOWN_BOT_PREFIXES = ("JOSM", "bot-", "import")
+KNOWN_BOT_PREFIXES = ("JOSM", "bot-", "import", "fix", "cleanup")
 
 TAGS_THAT_INDICATE_REVIEW = {
     "surface",
@@ -37,10 +41,21 @@ TAGS_THAT_INDICATE_REVIEW = {
     "cycleway",
     "lit",
     "turn:lanes",
+    "turn:lanes:forward",
+    "turn:lanes:backward",
     "parking:lane",
     "width",
     "foot",
     "bicycle",
+    "access",
+    "motor_vehicle",
+    "hgv",
+    "bridge",
+    "tunnel",
+    "layer",
+    "service",
+    "destination",
+    "note",
 }
 
 
@@ -66,7 +81,7 @@ def analyse_way_history(way_record: dict) -> dict:
     user = way_record.get("user")
     timestamp = way_record.get("timestamp")
 
-    # Tier 1 — fast metadata check
+    # Tier 1 — fast metadata check using out-meta fields
     if version == 1:
         return {
             "review_status": ReviewStatus.UNREVIEWED,
@@ -74,10 +89,11 @@ def analyse_way_history(way_record: dict) -> dict:
             "review_reason": "Version 1 — never edited since import",
         }
 
-    if version is not None and version >= 5 and not _is_import_user(user):
+    if version is not None and version >= 2 and not _is_import_user(user):
+        confidence = min(0.6 + (version - 2) * 0.05, 0.85)
         return {
             "review_status": ReviewStatus.LIKELY_REVIEWED,
-            "review_confidence": 0.8,
+            "review_confidence": confidence,
             "review_reason": f"Version {version}, last editor '{user}' is not an import bot",
         }
 
@@ -142,12 +158,26 @@ def analyse_way_history(way_record: dict) -> dict:
     }
 
 
+def _is_tiger_tag(key: str) -> bool:
+    return key.startswith("tiger:") or key in ("source", "source:name")
+
+
+def _only_tiger_tags_changed(prev_tags: dict, curr_tags: dict) -> bool:
+    """Return True if all differences between two tag sets are tiger:* or source tags."""
+    all_keys = set(prev_tags.keys()) | set(curr_tags.keys())
+    for k in all_keys:
+        if prev_tags.get(k) != curr_tags.get(k) and not _is_tiger_tag(k):
+            return False
+    return True
+
+
 def _check_meaningful_changes(
     versions: list[dict], import_tags: dict
 ) -> str | None:
     """Check whether any version introduced meaningful changes to the way.
 
     Returns a reason string if meaningful changes found, else None.
+    Edits that only add/remove tiger:* or source tags are not meaningful.
     """
     if len(versions) < 2:
         return None
@@ -161,15 +191,19 @@ def _check_meaningful_changes(
         prev_tags = prev.get("tags", {})
         curr_tags = curr.get("tags", {})
 
+        if _only_tiger_tags_changed(prev_tags, curr_tags) and prev.get("nodes") == curr.get("nodes"):
+            continue
+
         added_tags = set(curr_tags.keys()) - set(prev_tags.keys())
-        review_tags_added = added_tags & TAGS_THAT_INDICATE_REVIEW
+        non_tiger_added = {t for t in added_tags if not _is_tiger_tag(t)}
+        review_tags_added = non_tiger_added & TAGS_THAT_INDICATE_REVIEW
         if review_tags_added:
             return (
                 f"Version {curr['version']} by '{curr.get('user')}' added "
                 f"review-indicating tags: {', '.join(sorted(review_tags_added))}"
             )
 
-        for tag in ("oneway", "highway", "name", "junction"):
+        for tag in ("oneway", "highway", "name", "junction", "access"):
             if prev_tags.get(tag) != curr_tags.get(tag):
                 old_val = prev_tags.get(tag, "(absent)")
                 new_val = curr_tags.get(tag, "(removed)")
@@ -180,7 +214,7 @@ def _check_meaningful_changes(
 
         prev_nodes = prev.get("nodes", [])
         curr_nodes = curr.get("nodes", [])
-        if prev_nodes != curr_nodes and not _is_import_user(curr.get("user")):
+        if prev_nodes != curr_nodes:
             added_nodes = len(set(curr_nodes) - set(prev_nodes))
             removed_nodes = len(set(prev_nodes) - set(curr_nodes))
             if added_nodes or removed_nodes:
