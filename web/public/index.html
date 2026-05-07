@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OSM Audit</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>OSM <span>TIGER Audit</span></h1>
+    <div class="header-right">
+      <span id="authBadge" class="auth-badge none">Not connected</span>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="scan">Scan</button>
+      <button class="tab-btn" data-tab="results">Results</button>
+      <button class="tab-btn" data-tab="auth">Authenticate</button>
+    </div>
+
+    <!-- ======== SCAN TAB ======== -->
+    <div id="tab-scan" class="tab-panel active">
+
+      <div class="section-row">
+        <div class="card">
+          <div class="card-title">Run Scan</div>
+          <div class="form-group">
+            <label for="zoneSelect">Zone</label>
+            <select id="zoneSelect"></select>
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" id="skipHistory" checked style="width:auto;" />
+            <label for="skipHistory" style="margin:0;">Skip history analysis (fast)</label>
+          </div>
+          <button id="scanBtn" class="btn btn-primary" style="margin-top:4px;">
+            Run Scan
+          </button>
+          <div id="scanProgress" class="progress-bar hidden" style="margin-top:12px;">
+            <div class="progress-fill indeterminate"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Actions</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button id="reportsBtn" class="btn" disabled>
+              Generate Reports
+            </button>
+            <button id="dashboardBtn" class="btn" disabled>
+              Open Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="statsCard" class="card hidden">
+        <div class="card-title">Scan Results</div>
+        <div id="statsGrid" class="stats-grid"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Log</div>
+        <div id="logArea" class="log-area">Ready.
+</div>
+      </div>
+    </div>
+
+    <!-- ======== RESULTS TAB ======== -->
+    <div id="tab-results" class="tab-panel">
+      <div class="card">
+        <div class="card-title">Defect Summary</div>
+        <div id="resultsStats" class="stats-grid"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Class AB &mdash; Compound Defects (Highest Risk)</div>
+        <div id="tableAB" style="overflow-x:auto;"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Class A &mdash; False Oneway</div>
+        <div id="tableA" style="overflow-x:auto;"></div>
+      </div>
+    </div>
+
+    <!-- ======== AUTH TAB ======== -->
+    <div id="tab-auth" class="tab-panel">
+      <div class="card" style="max-width:540px;">
+        <div class="card-title">OpenStreetMap Authentication</div>
+
+        <div id="authLoggedIn" class="hidden" style="margin-bottom:16px;">
+          <p style="color:var(--success);font-weight:500;margin-bottom:12px;">
+            Authenticated successfully.
+          </p>
+          <button id="logoutBtn" class="btn btn-danger btn-sm">
+            Log out
+          </button>
+        </div>
+
+        <div id="authFlow" class="auth-steps">
+          <div class="auth-step">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <p>Click below to open the OSM authorization page.</p>
+              <button id="authStartBtn" class="btn btn-primary btn-sm">
+                Authorize with OSM
+              </button>
+            </div>
+          </div>
+          <div class="auth-step">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <p>After authorizing, OSM will display a code. Paste it here:</p>
+              <div class="code-input-row">
+                <input id="authCode" type="text" placeholder="Paste authorization code" />
+                <button id="authSubmitBtn" class="btn btn-primary btn-sm" disabled>
+                  Submit
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
