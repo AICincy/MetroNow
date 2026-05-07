@@ -69,8 +69,8 @@ def auth_status():
 @click.option("--zone", type=click.Choice(ZONE_KEYS + ["all"]), default=DEFAULT_ZONE, help="Zone to audit")
 @click.option("--from-cache", is_flag=True, help="Use cached Overpass data instead of live query")
 @click.option("--skip-history", is_flag=True, help="Skip revision history analysis (legacy tiger:reviewed=no mode)")
-@click.option("--legacy-query", is_flag=True, help="Use deprecated tiger:reviewed=no tag instead of user/timestamp filter")
-def scan(zone: str, from_cache: bool, skip_history: bool, legacy_query: bool):
+@click.option("--import-only", is_flag=True, help="Only find ways still on original TIGER import version (smaller, high-confidence set)")
+def scan(zone: str, from_cache: bool, skip_history: bool, import_only: bool):
     """Fetch OSM data, analyse history, classify defects, and generate reports."""
     from rich.progress import Progress
 
@@ -93,9 +93,9 @@ def scan(zone: str, from_cache: bool, skip_history: bool, legacy_query: bool):
         out_dir = _output_dir(zk)
 
         # Phase 1: Fetch
-        query_mode = "legacy (tiger:reviewed=no)" if legacy_query else "user/timestamp"
+        query_mode = "import-only (user/timestamp)" if import_only else "tiger:reviewed=no"
         click.echo(f"\nPhase 1: Fetching Overpass data ({query_mode})...")
-        raw = fetch_overpass(zk, out_dir, legacy_query=legacy_query)
+        raw = fetch_overpass(zk, out_dir, import_only=import_only)
 
         # Phase 2: History analysis
         click.echo("\nPhase 2: Classifying defects...")
@@ -118,7 +118,7 @@ def scan(zone: str, from_cache: bool, skip_history: bool, legacy_query: bool):
         zone_name_hyphen = z["name"].replace(" / ", "-").replace(" ", "-")
 
         from .fetch import overpass_query
-        query_text = overpass_query(z["bbox"], legacy=legacy_query)
+        query_text = overpass_query(z["bbox"], import_only=import_only)
 
         xlsx_path = out_dir / "reports" / f"OSM-Audit-{zone_name_hyphen}.xlsx"
         write_xlsx(classified, zk, xlsx_path, query_text, audit_ts, output_root=PROJECT_ROOT)

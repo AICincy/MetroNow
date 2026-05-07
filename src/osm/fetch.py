@@ -28,38 +28,40 @@ log = logging.getLogger(__name__)
 def overpass_query(
     bbox: tuple[float, float, float, float],
     *,
-    legacy: bool = False,
+    import_only: bool = False,
 ) -> str:
     """Build the Overpass QL query for TIGER-import ways with metadata.
 
-    Default mode uses user/timestamp filters to find ways still on their
-    original TIGER import version — more reliable than ``tiger:reviewed=no``
-    which most mappers leave in place even after correcting the data.
+    Default mode selects ways carrying ``tiger:reviewed=no`` to identify
+    TIGER-origin roads.  The tag is an origin marker, not a review-status
+    indicator — the history_filter module analyses actual edit history to
+    determine whether each way has been meaningfully reviewed.
 
-    Legacy mode (``legacy=True``) falls back to the ``tiger:reviewed=no``
-    tag filter for backwards compatibility.
+    Import-only mode (``import_only=True``) uses user/timestamp filters to
+    find ways still on their original TIGER import version — a much smaller
+    set of definitely-unreviewed ways.
     """
     s, w, n, e = bbox
-    if legacy:
+    if import_only:
+        user_filters = "\n".join(
+            f'  way["highway"](user:"{user}")'
+            f'(if:timestamp()>"{TIGER_IMPORT_START}"'
+            f'&&timestamp()<"{TIGER_IMPORT_END}")'
+            f"({s},{w},{n},{e});"
+            for user in TIGER_IMPORT_USERS
+        )
         return (
             "[out:json][timeout:180];\n"
-            'way["highway"]["tiger:reviewed"="no"]\n'
-            f"  ({s},{w},{n},{e});\n"
+            "(\n"
+            f"{user_filters}\n"
+            ");\n"
             "out meta geom;\n"
         )
 
-    user_filters = "\n".join(
-        f'  way["highway"](user:"{user}")'
-        f'(if:timestamp()>"{TIGER_IMPORT_START}"'
-        f'&&timestamp()<"{TIGER_IMPORT_END}")'
-        f"({s},{w},{n},{e});"
-        for user in TIGER_IMPORT_USERS
-    )
     return (
         "[out:json][timeout:180];\n"
-        "(\n"
-        f"{user_filters}\n"
-        ");\n"
+        'way["highway"]["tiger:reviewed"="no"]\n'
+        f"  ({s},{w},{n},{e});\n"
         "out meta geom;\n"
     )
 
@@ -86,7 +88,7 @@ def _bounded_payload_snippet(payload, *, max_chars: int = 200) -> str:
     return repr(payload)[:max_chars]
 
 
-def fetch_overpass(zone_key: str, out_dir: Path, *, legacy_query: bool = False) -> dict:
+def fetch_overpass(zone_key: str, out_dir: Path, *, import_only: bool = False) -> dict:
     """Fetch Overpass data for a zone with retry, mirror fallback, and cache.
 
     Returns the parsed JSON payload (dict with 'elements' list).
@@ -94,7 +96,7 @@ def fetch_overpass(zone_key: str, out_dir: Path, *, legacy_query: bool = False) 
     uid, changeset, and full geometry.
     """
     zone = ZONES[zone_key]
-    query = overpass_query(zone["bbox"], legacy=legacy_query)
+    query = overpass_query(zone["bbox"], import_only=import_only)
     data_dir = out_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
