@@ -20,12 +20,17 @@ from .zones import ZONES
 
 
 def overpass_query(bbox: tuple[float, float, float, float]) -> str:
-    """Build the Overpass QL query for DaveHansenTiger import ways with metadata."""
+    """Build the Overpass QL query for TIGER-import ways with metadata.
+
+    Selects all highways carrying ``tiger:reviewed=no`` — the standard tag
+    indicating TIGER/Line import origin.  The history_filter module then
+    determines which of these have actually been reviewed despite keeping
+    the tag.
+    """
     s, w, n, e = bbox
     return (
         "[out:json][timeout:180];\n"
-        'way["highway"](user:"DaveHansenTiger")\n'
-        '  (if: timestamp() > "2007-08-03" && timestamp() < "2008-05-04")\n'
+        'way["highway"]["tiger:reviewed"="no"]\n'
         f"  ({s},{w},{n},{e});\n"
         "out meta geom;\n"
     )

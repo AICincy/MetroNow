@@ -3,66 +3,106 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>OSM Audit</title>
+  <title>OSM TIGER Audit</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
+
   <header class="app-header">
-    <h1>OSM <span>TIGER Audit</span></h1>
+    <div class="header-left">
+      <h1>OSM <span>TIGER Audit</span></h1>
+    </div>
+    <div class="header-center">
+      <label for="zoneSelect" class="zone-label">Zone</label>
+      <select id="zoneSelect"></select>
+    </div>
     <div class="header-right">
-      <span id="authBadge" class="auth-badge none">Not connected</span>
+      <span id="authBadge" class="badge badge-warn">Not connected</span>
     </div>
   </header>
 
+  <!-- ======== MAP ======== -->
+  <div id="mapContainer" class="map-container">
+    <div id="map"></div>
+    <div id="mapLegend" class="map-legend">
+      <span class="legend-item" data-cls="ab"><i style="background:#dc2626"></i> AB Compound</span>
+      <span class="legend-item" data-cls="a"><i style="background:#ea580c"></i> A False Oneway</span>
+      <span class="legend-item" data-cls="b"><i style="background:#2563eb"></i> B Multi-segment</span>
+    </div>
+    <button id="mapToggle" class="map-toggle" title="Toggle map">Map</button>
+    <div id="mapEmpty" class="map-empty">
+      <p>Run a scan to see defects on the map</p>
+    </div>
+  </div>
+
+  <!-- ======== MAIN ======== -->
   <div class="container">
-    <div class="tab-bar">
+    <nav class="tab-bar">
       <button class="tab-btn active" data-tab="scan">Scan</button>
       <button class="tab-btn" data-tab="results">Results</button>
-      <button class="tab-btn" data-tab="auth">Authenticate</button>
-    </div>
+      <button class="tab-btn" data-tab="fix">Fix</button>
+      <button class="tab-btn" data-tab="history">History</button>
+      <button class="tab-btn" data-tab="auth">Auth</button>
+    </nav>
 
     <!-- ======== SCAN TAB ======== -->
     <div id="tab-scan" class="tab-panel active">
-
-      <div class="section-row">
+      <div class="grid-2">
         <div class="card">
-          <div class="card-title">Run Scan</div>
-          <div class="form-group">
-            <label for="zoneSelect">Zone</label>
-            <select id="zoneSelect"></select>
+          <div class="card-header">
+            <h2 class="card-title">Run Scan</h2>
           </div>
-          <div class="form-group" style="display:flex;align-items:center;gap:8px;">
-            <input type="checkbox" id="skipHistory" checked style="width:auto;" />
-            <label for="skipHistory" style="margin:0;">Skip history analysis (fast)</label>
+          <p id="zoneDescription" class="zone-desc"></p>
+          <div class="form-row">
+            <input type="checkbox" id="skipHistory" checked />
+            <label for="skipHistory">Skip history analysis (faster)</label>
           </div>
-          <button id="scanBtn" class="btn btn-primary" style="margin-top:4px;">
+          <button id="scanBtn" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 2l10 6-10 6V2z" fill="currentColor"/></svg>
             Run Scan
           </button>
-          <div id="scanProgress" class="progress-bar hidden" style="margin-top:12px;">
-            <div class="progress-fill indeterminate"></div>
-          </div>
         </div>
 
         <div class="card">
-          <div class="card-title">Actions</div>
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            <button id="reportsBtn" class="btn" disabled>
-              Generate Reports
-            </button>
-            <button id="dashboardBtn" class="btn" disabled>
-              Open Dashboard
-            </button>
+          <div class="card-header">
+            <h2 class="card-title">Actions</h2>
+          </div>
+          <div class="action-stack">
+            <button id="reportsBtn" class="btn" disabled>Generate Reports</button>
+            <button id="dashboardBtn" class="btn" disabled>Open Dashboard</button>
+            <button id="exportCSVBtn" class="btn" disabled>Download CSV</button>
           </div>
         </div>
       </div>
 
+      <!-- Scan progress -->
+      <div id="scanStatus" class="card scan-status hidden">
+        <div class="scan-status-row">
+          <div class="spinner"></div>
+          <span id="scanStatusText">Starting scan...</span>
+          <span id="scanTimer" class="scan-timer">0s</span>
+        </div>
+        <div class="progress-bar">
+          <div id="scanProgress" class="progress-fill indeterminate"></div>
+        </div>
+      </div>
+
+      <!-- Stats after scan -->
       <div id="statsCard" class="card hidden">
-        <div class="card-title">Scan Results</div>
+        <div class="card-header">
+          <h2 class="card-title">Scan Results</h2>
+          <span id="scanTimestamp" class="timestamp"></span>
+        </div>
         <div id="statsGrid" class="stats-grid"></div>
       </div>
 
+      <!-- Log -->
       <div class="card">
-        <div class="card-title">Log</div>
+        <div class="card-header">
+          <h2 class="card-title">Log</h2>
+          <button id="clearLogBtn" class="btn btn-xs">Clear</button>
+        </div>
         <div id="logArea" class="log-area">Ready.
 </div>
       </div>
@@ -70,32 +110,87 @@
 
     <!-- ======== RESULTS TAB ======== -->
     <div id="tab-results" class="tab-panel">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <h2 class="card-title" style="margin:0;">Defect Summary</h2>
+        </div>
+        <div class="toolbar-right">
+          <button id="resultExportCSV" class="btn btn-sm">CSV</button>
+          <button id="resultExportJSON" class="btn btn-sm">JSON</button>
+          <button id="resultShare" class="btn btn-sm">Share</button>
+        </div>
+      </div>
+      <div id="resultsStats" class="stats-grid" style="margin-bottom:20px;"></div>
       <div class="card">
-        <div class="card-title">Defect Summary</div>
-        <div id="resultsStats" class="stats-grid"></div>
+        <div class="card-header">
+          <h2 class="card-title">Class AB &mdash; Compound Defects</h2>
+          <span class="severity-badge critical">Highest Risk</span>
+        </div>
+        <div id="tableAB" class="table-wrap"></div>
       </div>
       <div class="card">
-        <div class="card-title">Class AB &mdash; Compound Defects (Highest Risk)</div>
-        <div id="tableAB" style="overflow-x:auto;"></div>
+        <div class="card-header">
+          <h2 class="card-title">Class A &mdash; False Oneway</h2>
+          <span class="severity-badge high">High Risk</span>
+        </div>
+        <div id="tableA" class="table-wrap"></div>
       </div>
+    </div>
+
+    <!-- ======== FIX TAB ======== -->
+    <div id="tab-fix" class="tab-panel">
       <div class="card">
-        <div class="card-title">Class A &mdash; False Oneway</div>
-        <div id="tableA" style="overflow-x:auto;"></div>
+        <div class="card-header">
+          <h2 class="card-title">Review Proposed Corrections</h2>
+        </div>
+        <p class="muted" style="margin-bottom:12px;">
+          Load fixable defects from scan results, review them, then submit corrections to OpenStreetMap.
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
+          <button id="loadFixesBtn" class="btn btn-primary btn-sm">Load Fixes</button>
+          <span id="fixCount" class="muted"></span>
+        </div>
+        <div id="fixTable" class="table-wrap"></div>
+      </div>
+      <div id="fixActions" class="card hidden">
+        <div class="card-header">
+          <h2 class="card-title">Submit</h2>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="dryRunBtn" class="btn btn-sm">Dry Run</button>
+          <button id="submitFixesBtn" class="btn btn-primary btn-sm">Submit to OSM</button>
+        </div>
+        <div id="fixResult" style="margin-top:12px;"></div>
+      </div>
+    </div>
+
+    <!-- ======== HISTORY TAB ======== -->
+    <div id="tab-history" class="tab-panel">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Edit History</h2>
+          <button id="refreshHistoryBtn" class="btn btn-xs">Refresh</button>
+        </div>
+        <p class="muted" style="margin-bottom:16px;">
+          Every scan, report, dry run, and OSM submission is recorded here.
+        </p>
+        <div id="historyList"></div>
       </div>
     </div>
 
     <!-- ======== AUTH TAB ======== -->
     <div id="tab-auth" class="tab-panel">
       <div class="card" style="max-width:540px;">
-        <div class="card-title">OpenStreetMap Authentication</div>
+        <div class="card-header">
+          <h2 class="card-title">OpenStreetMap Authentication</h2>
+        </div>
 
         <div id="authLoggedIn" class="hidden" style="margin-bottom:16px;">
-          <p style="color:var(--success);font-weight:500;margin-bottom:12px;">
-            Authenticated successfully.
-          </p>
-          <button id="logoutBtn" class="btn btn-danger btn-sm">
-            Log out
-          </button>
+          <div class="auth-ok">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="10" fill="#dcfce7"/><path d="M6 10l3 3 5-6" stroke="#16a34a" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+            <span>Authenticated. Ready to submit corrections.</span>
+          </div>
+          <button id="logoutBtn" class="btn btn-danger btn-sm" style="margin-top:12px;">Log out</button>
         </div>
 
         <div id="authFlow" class="auth-steps">
@@ -103,20 +198,16 @@
             <div class="step-num">1</div>
             <div class="step-content">
               <p>Click below to open the OSM authorization page.</p>
-              <button id="authStartBtn" class="btn btn-primary btn-sm">
-                Authorize with OSM
-              </button>
+              <button id="authStartBtn" class="btn btn-primary btn-sm">Authorize with OSM</button>
             </div>
           </div>
           <div class="auth-step">
             <div class="step-num">2</div>
             <div class="step-content">
-              <p>After authorizing, OSM will display a code. Paste it here:</p>
+              <p>After authorizing, paste the code here:</p>
               <div class="code-input-row">
                 <input id="authCode" type="text" placeholder="Paste authorization code" />
-                <button id="authSubmitBtn" class="btn btn-primary btn-sm" disabled>
-                  Submit
-                </button>
+                <button id="authSubmitBtn" class="btn btn-primary btn-sm" disabled>Submit</button>
               </div>
             </div>
           </div>
@@ -127,6 +218,7 @@
 
   <div id="toast" class="toast"></div>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

@@ -23,9 +23,40 @@ const OSM_PKG = path.resolve(__dirname, "..", "src");
 const CONFIG_DIR = path.join(process.env.USERPROFILE || process.env.HOME || "", ".config", "osm");
 const TOKEN_PATH = path.join(CONFIG_DIR, "token.json");
 const PROJECT_ROOT = path.resolve(__dirname, "..");
+const HISTORY_PATH = path.join(PROJECT_ROOT, "edit_history.json");
+
+function loadHistory() {
+  try {
+    if (fs.existsSync(HISTORY_PATH))
+      return JSON.parse(fs.readFileSync(HISTORY_PATH, "utf-8"));
+  } catch {}
+  return [];
+}
+
+function appendHistory(entry) {
+  const history = loadHistory();
+  history.unshift({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    timestamp: new Date().toISOString(),
+    ...entry,
+  });
+  if (history.length > 500) history.length = 500;
+  try {
+    fs.writeFileSync(HISTORY_PATH, JSON.stringify(history, null, 2));
+  } catch {}
+}
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+const SAFE_ZONE_RE = /^[a-z0-9_]+$/;
+function validateZone(zone, res) {
+  if (!zone || !SAFE_ZONE_RE.test(zone)) {
+    res.status(400).json({ error: "Invalid zone identifier" });
+    return false;
+  }
+  return true;
+}
 
 function runPython(script) {
   return new Promise((resolve, reject) => {
@@ -40,6 +71,8 @@ function runPython(script) {
     );
   });
 }
+
+// ---- auth ----
 
 app.get("/api/auth/status", (_req, res) => {
   try {
@@ -89,6 +122,7 @@ app.post("/api/auth/exchange", async (req, res) => {
     ].join("\n");
     const out = await runPython(pyCode);
     res.json(JSON.parse(out.trim()));
+    try { appendHistory({ action: "auth_login" }); } catch {}
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -98,10 +132,13 @@ app.post("/api/auth/logout", (_req, res) => {
   try {
     if (fs.existsSync(TOKEN_PATH)) fs.unlinkSync(TOKEN_PATH);
     res.json({ success: true });
+    try { appendHistory({ action: "auth_logout" }); } catch {}
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
+
+// ---- zones ----
 
 app.get("/api/zones", async (_req, res) => {
   try {
@@ -111,7 +148,8 @@ app.get("/api/zones", async (_req, res) => {
       "from osm.zones import ZONES, ZONE_KEYS, DEFAULT_ZONE",
       "out = {'zones': {}, 'keys': ZONE_KEYS, 'default': DEFAULT_ZONE}",
       "for k in ZONE_KEYS:",
-      "    out['zones'][k] = {'name': ZONES[k]['name'], 'bbox': ZONES[k]['bbox']}",
+      "    z = ZONES[k]",
+      "    out['zones'][k] = {'name': z['name'], 'bbox': z['bbox'], 'description': z.get('description', '')}",
       "print(json.dumps(out))",
     ].join("\n");
     const out = await runPython(pyCode);
@@ -121,8 +159,11 @@ app.get("/api/zones", async (_req, res) => {
   }
 });
 
+// ---- scan ----
+
 app.post("/api/scan", async (req, res) => {
   const zone = req.body.zone || "blue_ash_montgomery";
+  if (!validateZone(zone, res)) return;
   const skipHistory = req.body.skip_history !== false;
   try {
     const pyCode = [
@@ -158,13 +199,18 @@ app.post("/api/scan", async (req, res) => {
       "print(json.dumps(classified['summary_stats']))",
     ].join("\n");
     const out = await runPython(pyCode);
-    res.json({ success: true, stats: JSON.parse(out.trim()) });
+    const stats = JSON.parse(out.trim());
+    res.json({ success: true, stats });
+    try { appendHistory({ action: "scan", zone, stats }); } catch {}
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
+// ---- results ----
+
 app.get("/api/results/:zone", (req, res) => {
+  if (!validateZone(req.params.zone, res)) return;
   const p = path.join(
     PROJECT_ROOT,
     "osm_audit_" + req.params.zone,
@@ -179,8 +225,11 @@ app.get("/api/results/:zone", (req, res) => {
   }
 });
 
+// ---- reports ----
+
 app.post("/api/reports", async (req, res) => {
   const zone = req.body.zone || "blue_ash_montgomery";
+  if (!validateZone(zone, res)) return;
   try {
     const pyCode = [
       "import json, sys, io, os, datetime as dt",
@@ -215,13 +264,16 @@ app.post("/api/reports", async (req, res) => {
       "print(json.dumps({'success': True, 'files': files}))",
     ].join("\n");
     const out = await runPython(pyCode);
-    res.json(JSON.parse(out.trim()));
+    const result = JSON.parse(out.trim());
+    res.json(result);
+    try { appendHistory({ action: "report", zone, files: result.files }); } catch {}
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
 app.get("/api/dashboard/:zone", (req, res) => {
+  if (!validateZone(req.params.zone, res)) return;
   const dir = path.join(
     PROJECT_ROOT,
     "osm_audit_" + req.params.zone,
@@ -234,6 +286,122 @@ app.get("/api/dashboard/:zone", (req, res) => {
     return res.status(404).json({ error: "No dashboard found." });
   res.sendFile(path.join(dir, files[0]));
 });
+
+// ---- review + fix ----
+
+app.get("/api/review/:zone", async (req, res) => {
+  const zone = req.params.zone;
+  if (!validateZone(zone, res)) return;
+  const p = path.join(PROJECT_ROOT, "osm_audit_" + zone, "scan_results.json");
+  if (!fs.existsSync(p))
+    return res.status(404).json({ error: "No scan results. Run a scan first." });
+  try {
+    const pyCode = [
+      "import json, sys",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "from osm.review import proposed_fix",
+      "with open(" + JSON.stringify(p.replace(/\\/g, "/")) + ") as fh:",
+      "    data = json.load(fh)",
+      "fixable = []",
+      "for w in data['all_ways']:",
+      "    fix = proposed_fix(w)",
+      "    if fix:",
+      "        fixable.append({'way': w, 'fix': fix})",
+      "print(json.dumps({'count': len(fixable), 'fixes': fixable}))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    res.json(JSON.parse(out.trim()));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/fix", async (req, res) => {
+  const { zone, fixes, dry_run } = req.body;
+  if (!zone || !fixes || !fixes.length)
+    return res.status(400).json({ error: "Missing zone or fixes" });
+  if (!validateZone(zone, res)) return;
+  try {
+    const fixesJson = JSON.stringify(fixes);
+    const pyCode = [
+      "import json, sys, io, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "_real_stdout = sys.stdout",
+      "sys.stdout = io.TextIOWrapper(os.fdopen(os.dup(2), 'wb'), encoding='utf-8')",
+      "from osm.changeset import submit_fixes",
+      "_args = json.loads(" + JSON.stringify(fixesJson) + ")",
+      "result = submit_fixes(_args, dry_run=" + (dry_run ? "True" : "False") + ")",
+      "sys.stdout = _real_stdout",
+      "print(json.dumps(result))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    const result = JSON.parse(out.trim());
+    res.json(result);
+    try {
+      appendHistory({
+        action: dry_run ? "dry_run" : "submit",
+        zone,
+        fixes_applied: result.fixes_applied,
+        changeset_ids: result.changeset_ids || [],
+        errors: (result.errors || []).length,
+      });
+    } catch {}
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ---- history ----
+
+app.get("/api/history", (_req, res) => {
+  res.json(loadHistory());
+});
+
+// ---- export ----
+
+app.get("/api/export/:zone/csv", (req, res) => {
+  if (!validateZone(req.params.zone, res)) return;
+  const p = path.join(PROJECT_ROOT, "osm_audit_" + req.params.zone, "scan_results.json");
+  if (!fs.existsSync(p))
+    return res.status(404).json({ error: "No scan results." });
+  try {
+    const data = JSON.parse(fs.readFileSync(p, "utf-8"));
+    const ways = data.all_ways || [];
+    const cols = ["id", "name", "highway", "oneway", "defect_class", "severity", "review_status", "review_confidence", "version", "user", "timestamp"];
+    const header = cols.join(",") + "\n";
+    const esc = (v) => {
+      const s = String(v == null ? "" : v);
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? '"' + s.replace(/"/g, '""') + '"'
+        : s;
+    };
+    const rows = ways.map((w) =>
+      cols.map((c) => esc(c === "name" ? w.name_display : w[c])).join(",")
+    ).join("\n");
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="osm-audit-${req.params.zone}.csv"`);
+    res.send(header + rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/export/:zone/json", (req, res) => {
+  if (!validateZone(req.params.zone, res)) return;
+  const p = path.join(PROJECT_ROOT, "osm_audit_" + req.params.zone, "scan_results.json");
+  if (!fs.existsSync(p))
+    return res.status(404).json({ error: "No scan results." });
+  try {
+    const data = JSON.parse(fs.readFileSync(p, "utf-8"));
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="osm-audit-${req.params.zone}.json"`);
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ---- fallback ----
 
 app.use((_req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
