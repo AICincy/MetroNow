@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from .config import TIGER_IMPORT_USERS
 from .history import batch_fetch_way_histories, extract_versions, fetch_way_history
 
 
@@ -18,12 +19,7 @@ class ReviewStatus(StrEnum):
     INCONCLUSIVE = "INCONCLUSIVE"
 
 
-KNOWN_IMPORT_USERS = {
-    "bot-mode",
-    "TIGERcnl",
-    "DaveHansenTiger",
-    "DaveHansen-TIGER",
-    "Yellowbkpk",
+KNOWN_IMPORT_USERS = set(TIGER_IMPORT_USERS) | {
     "TIGER_Ohio_Mapper",
     "emacsen",
     "woodpeck_fixbot",

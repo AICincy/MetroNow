@@ -54,6 +54,20 @@ CACHE_KEEP_NEWEST = 3
 # Sanity threshold — warn if Overpass returns fewer elements than this
 SANITY_THRESHOLD = 100
 
+# TIGER import metadata — used by Overpass query and history filter
+TIGER_IMPORT_USERS = [
+    "DaveHansenTiger",
+    "DaveHansen-TIGER",
+    "TIGERcnl",
+    "bot-mode",
+    "Yellowbkpk",
+]
+TIGER_IMPORT_START = "2007-08-03T00:00:00Z"
+TIGER_IMPORT_END = "2008-05-04T00:00:00Z"
+
+# Project wiki URL for changeset documentation
+WIKI_URL = "https://wiki.openstreetmap.org/wiki/Hamilton_County_TIGER_Audit"
+
 
 def ensure_config_dirs() -> None:
     """Create config directories if they don't exist."""

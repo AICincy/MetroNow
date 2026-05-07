@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 import requests
 
 from .auth import get_access_token
-from .config import OSM_API_BASE
+from .config import OSM_API_BASE, WIKI_URL
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +29,34 @@ def _auth_headers() -> dict:
 CHANGESET_BATCH_SIZE = 500
 
 DEFAULT_SOURCE = "survey;CAGIS Open Data Hub;ODOT TIMS"
-DEFAULT_WIKI_URL = ""
+DEFAULT_WIKI_URL = WIKI_URL
+
+
+def check_api_status() -> dict:
+    """Query OSM API capabilities and rate limit status.
+
+    Returns a dict with max_elements (per changeset) and rate limit info.
+    Useful before submitting large batches.
+    """
+    resp = requests.get(
+        f"{OSM_API_BASE}/capabilities",
+        headers={"User-Agent": "osm-audit-pipeline/0.1"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    root = ET.fromstring(resp.text)
+
+    result: dict = {}
+    changesets = root.find(".//changesets")
+    if changesets is not None:
+        result["max_elements"] = int(changesets.get("maximum_elements", "10000"))
+
+    status = root.find(".//status")
+    if status is not None:
+        result["database"] = status.get("database", "offline")
+        result["api"] = status.get("api", "offline")
+
+    return result
 
 
 def create_changeset(

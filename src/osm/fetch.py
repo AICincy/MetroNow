@@ -16,25 +16,50 @@ from .config import (
     OVERPASS_MIRROR,
     OVERPASS_PRIMARY,
     SANITY_THRESHOLD,
+    TIGER_IMPORT_END,
+    TIGER_IMPORT_START,
+    TIGER_IMPORT_USERS,
 )
 from .zones import ZONES
 
 log = logging.getLogger(__name__)
 
 
-def overpass_query(bbox: tuple[float, float, float, float]) -> str:
+def overpass_query(
+    bbox: tuple[float, float, float, float],
+    *,
+    legacy: bool = False,
+) -> str:
     """Build the Overpass QL query for TIGER-import ways with metadata.
 
-    Selects all highways carrying ``tiger:reviewed=no`` — the standard tag
-    indicating TIGER/Line import origin.  The history_filter module then
-    determines which of these have actually been reviewed despite keeping
-    the tag.
+    Default mode uses user/timestamp filters to find ways still on their
+    original TIGER import version — more reliable than ``tiger:reviewed=no``
+    which most mappers leave in place even after correcting the data.
+
+    Legacy mode (``legacy=True``) falls back to the ``tiger:reviewed=no``
+    tag filter for backwards compatibility.
     """
     s, w, n, e = bbox
+    if legacy:
+        return (
+            "[out:json][timeout:180];\n"
+            'way["highway"]["tiger:reviewed"="no"]\n'
+            f"  ({s},{w},{n},{e});\n"
+            "out meta geom;\n"
+        )
+
+    user_filters = "\n".join(
+        f'  way["highway"](user:"{user}")'
+        f'(if:timestamp()>"{TIGER_IMPORT_START}"'
+        f'&&timestamp()<"{TIGER_IMPORT_END}")'
+        f"({s},{w},{n},{e});"
+        for user in TIGER_IMPORT_USERS
+    )
     return (
         "[out:json][timeout:180];\n"
-        'way["highway"]["tiger:reviewed"="no"]\n'
-        f"  ({s},{w},{n},{e});\n"
+        "(\n"
+        f"{user_filters}\n"
+        ");\n"
         "out meta geom;\n"
     )
 
@@ -61,7 +86,7 @@ def _bounded_payload_snippet(payload, *, max_chars: int = 200) -> str:
     return repr(payload)[:max_chars]
 
 
-def fetch_overpass(zone_key: str, out_dir: Path) -> dict:
+def fetch_overpass(zone_key: str, out_dir: Path, *, legacy_query: bool = False) -> dict:
     """Fetch Overpass data for a zone with retry, mirror fallback, and cache.
 
     Returns the parsed JSON payload (dict with 'elements' list).
@@ -69,7 +94,7 @@ def fetch_overpass(zone_key: str, out_dir: Path) -> dict:
     uid, changeset, and full geometry.
     """
     zone = ZONES[zone_key]
-    query = overpass_query(zone["bbox"])
+    query = overpass_query(zone["bbox"], legacy=legacy_query)
     data_dir = out_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 

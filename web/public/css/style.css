@@ -901,3 +901,22 @@ textarea:focus {
   color: var(--text-tertiary);
   margin-top: 8px;
 }
+
+/* ---- footer ---- */
+
+.app-footer {
+  text-align: center;
+  padding: 16px 20px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  border-top: 1px solid var(--border);
+}
+
+.app-footer a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+
+.app-footer a:hover {
+  color: var(--accent);
+}
