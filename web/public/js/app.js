@@ -170,9 +170,15 @@ $("#mapToggle").addEventListener("click", () => {
 // ---- tabs ----
 $$(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
-    $$(".tab-btn").forEach((b) => b.classList.remove("active"));
+    $$(".tab-btn").forEach((b) => {
+      b.classList.remove("active");
+      b.setAttribute("aria-selected", "false");
+      b.setAttribute("tabindex", "-1");
+    });
     $$(".tab-panel").forEach((p) => p.classList.remove("active"));
     btn.classList.add("active");
+    btn.setAttribute("aria-selected", "true");
+    btn.setAttribute("tabindex", "0");
     $(`#tab-${btn.dataset.tab}`).classList.add("active");
     if (btn.dataset.tab === "results") loadResults();
     if (btn.dataset.tab === "history") loadHistory();
@@ -185,6 +191,17 @@ function toast(msg, type = "success") {
   el.textContent = msg;
   el.className = `toast ${type} show`;
   setTimeout(() => el.classList.remove("show"), 3500);
+}
+
+// ---- screen reader announcements ----
+function announceToScreenReader(msg) {
+  const el = document.createElement("div");
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  el.className = "sr-only";
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
 }
 
 // ---- log ----
@@ -362,6 +379,7 @@ $("#scanBtn").addEventListener("click", async () => {
   }, 1000);
 
   log("Starting scan for " + zoneName(zone) + "...", "info");
+  $("#statsCard").setAttribute("aria-busy", "true");
 
   try {
     const data = await api("/api/scan", {
@@ -375,16 +393,19 @@ $("#scanBtn").addEventListener("click", async () => {
 
     log("Scan complete.", "ok");
     renderStats(data.stats);
+    $("#statsCard").setAttribute("aria-busy", "false");
     $("#reportsBtn").disabled = false;
     $("#dashboardBtn").disabled = false;
     $("#exportCSVBtn").disabled = false;
     toast("Scan finished — " + (data.stats.total || 0) + " ways analyzed");
+    announceToScreenReader("Scan complete. " + (data.stats.total || 0) + " ways analyzed, " + (data.stats.class_ab_count || 0) + " compound defects found.");
 
     const results = await api("/api/results/" + zone);
     if (results.all_ways) updateMapData(results.all_ways);
   } catch (e) {
     clearInterval(scanTimerInterval);
     $("#scanStatusText").textContent = "Scan failed";
+    $("#statsCard").setAttribute("aria-busy", "false");
     log("Scan failed: " + e.message, "err");
     toast("Scan failed", "error");
   } finally {

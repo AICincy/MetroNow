@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import csv
+import logging
 from pathlib import Path
 
 from .config import CLASS_ORDER
+
+log = logging.getLogger(__name__)
 
 
 def _csv_row(w: dict) -> dict:
@@ -42,19 +45,19 @@ def write_csvs(classified: dict, csv_dir: Path) -> None:
         classified["all_ways"],
         key=lambda w: (class_rank[w["defect_class"]], w.get("name_display", "").lower(), w["id"] or 0),
     )
-    _write_csv(csv_dir / "all_ways.csv", ALL_FIELDS, [_csv_row(w) for w in sorted_ways])
+    _write_csv(csv_dir / "all-ways.csv", ALL_FIELDS, [_csv_row(w) for w in sorted_ways])
 
-    # class_a_false_oneway.csv
+    # class-a-false-oneway.csv
     class_a = [w for w in classified["all_ways"] if w["defect_class"] in ("A", "AB")]
     class_a.sort(key=lambda w: (w.get("name_display", "").lower(), w["id"] or 0))
-    _write_csv(csv_dir / "class_a_false_oneway.csv", ALL_FIELDS, [_csv_row(w) for w in class_a])
+    _write_csv(csv_dir / "class-a-false-oneway.csv", ALL_FIELDS, [_csv_row(w) for w in class_a])
 
-    # class_ab_compound.csv
+    # class-ab-compound.csv
     class_ab = [w for w in classified["all_ways"] if w["defect_class"] == "AB"]
     class_ab.sort(key=lambda w: (w.get("name_display", "").lower(), w["id"] or 0))
-    _write_csv(csv_dir / "class_ab_compound.csv", ALL_FIELDS, [_csv_row(w) for w in class_ab])
+    _write_csv(csv_dir / "class-ab-compound.csv", ALL_FIELDS, [_csv_row(w) for w in class_ab])
 
-    # class_b_multi_segment.csv — sorted by gap count then segment count
+    # class-b-multi-segment.csv — sorted by gap count then segment count
     gap_count_by_street: dict[str, int] = {}
     for g in classified.get("gaps", []):
         street = g.get("street", "")
@@ -67,9 +70,9 @@ def write_csvs(classified: dict, csv_dir: Path) -> None:
             row["_street_gap_count"] = gap_count_by_street.get(street, 0)
             multi_seg_rows.append(row)
     multi_seg_rows.sort(key=lambda r: (-r["_street_gap_count"], r["name"].lower(), r["way_id"] or 0))
-    _write_csv(csv_dir / "class_b_multi_segment.csv", MULTI_SEG_FIELDS, multi_seg_rows)
+    _write_csv(csv_dir / "class-b-multi-segment.csv", MULTI_SEG_FIELDS, multi_seg_rows)
 
-    print(f"  CSVs saved: {csv_dir}")
+    log.info("CSVs saved: %s", csv_dir)
 
 
 def _write_csv(path: Path, fields: list[str], rows: list[dict]) -> None:

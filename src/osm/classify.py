@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
+
+log = logging.getLogger(__name__)
 
 from .config import CLASS_A, CLASS_AB, CLASS_B, CLASS_C, CRITICAL, HIGH, LOW
 from .gaps import detect_gaps
@@ -99,9 +102,9 @@ def classify(raw: dict) -> dict:
     gaps = detect_gaps(class_b_streets)
 
     if skipped_geom:
-        print(
-            f"  WARNING: {skipped_geom} ways had missing or invalid geometry "
-            f"(rendered without polylines)."
+        log.warning(
+            "%d ways had missing or invalid geometry (rendered without polylines).",
+            skipped_geom,
         )
 
     summary_stats = {

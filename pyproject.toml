@@ -18,5 +18,8 @@ dependencies = [
 [project.scripts]
 osm = "osm.cli:main"
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov"]
+
 [tool.setuptools.packages.find]
 where = ["src"]

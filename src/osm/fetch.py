@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import time
 from pathlib import Path
 
 import requests
+
+log = logging.getLogger(__name__)
 
 from .cache import newest_cache, prune_old_cache
 from .config import (
@@ -81,13 +84,13 @@ def fetch_overpass(zone_key: str, out_dir: Path) -> dict:
 
     for endpoint, presleep in attempts:
         if presleep:
-            print(f"  Waiting {presleep}s before retry...")
+            log.info("Waiting %ds before retry...", presleep)
             time.sleep(presleep)
         try:
-            print(f"  POST {endpoint}")
+            log.debug("POST %s", endpoint)
             resp = _post_overpass(endpoint, query)
             if resp.status_code == 429:
-                print("  HTTP 429 rate limit; sleeping 60s before next attempt")
+                log.warning("HTTP 429 rate limit; sleeping 60s before next attempt")
                 time.sleep(60)
                 last_error = RuntimeError("429 rate limited")
                 continue
@@ -110,7 +113,7 @@ def fetch_overpass(zone_key: str, out_dir: Path) -> dict:
             RuntimeError,
         ) as exc:
             last_error = exc
-            print(f"  Attempt failed: {exc}")
+            log.warning("Attempt failed: %s", exc)
             continue
 
     fresh_fetch = payload is not None
@@ -120,14 +123,14 @@ def fetch_overpass(zone_key: str, out_dir: Path) -> dict:
         if latest:
             age_s = time.time() - latest.stat().st_mtime
             age_label = f"{age_s / 3600:.1f}h" if age_s < 86400 else f"{age_s / 86400:.1f}d"
-            print(
-                f"Using cached data from {latest.name} (age {age_label}). "
-                f"Live query failed."
+            log.info(
+                "Using cached data from %s (age %s). Live query failed.",
+                latest.name, age_label,
             )
             if age_s > 14 * 86400:
-                print(
-                    f"  WARNING: cache is {age_label} old — re-run with network "
-                    f"access for fresh data when possible."
+                log.warning(
+                    "Cache is %s old — re-run with network access for fresh data when possible.",
+                    age_label,
                 )
             with latest.open("r", encoding="utf-8") as fh:
                 payload = json.load(fh)
@@ -163,20 +166,20 @@ def fetch_overpass(zone_key: str, out_dir: Path) -> dict:
             f"Top-level keys ({len(payload)}): {keys_preview}"
         )
     if len(elements) < SANITY_THRESHOLD:
-        print(
-            f"  WARNING: only {len(elements)} elements (sanity threshold "
-            f"{SANITY_THRESHOLD}) — audit may be based on truncated data."
+        log.warning(
+            "Only %d elements (sanity threshold %d) — audit may be based on truncated data.",
+            len(elements), SANITY_THRESHOLD,
         )
         payload["_under_threshold"] = True
         payload["_element_count"] = len(elements)
 
     if fresh_fetch:
-        out_file = data_dir / f"{zone_key}_raw_{_utc_stamp()}.json"
+        out_file = data_dir / f"{zone_key}-raw-{_utc_stamp()}.json"
         with out_file.open("w", encoding="utf-8") as fh:
             json.dump(payload, fh, ensure_ascii=False, indent=2)
-        print(f"  Saved raw JSON to {out_file}")
+        log.info("Saved raw JSON to %s", out_file)
         prune_old_cache(data_dir, zone_key)
 
     n = len(payload.get("elements", []))
-    print(f"Fetched {n} elements for {zone['name']}")
+    log.info("Fetched %d elements for %s", n, zone["name"])
     return payload

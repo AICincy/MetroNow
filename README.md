@@ -40,15 +40,28 @@ Fixing OSM in the MetroNow zones feeds directly into Via's routing tiles, improv
 Requires Python 3.12+ and Node.js 20+.
 
 ```
-pip install -e .
+pip install -e ".[dev]"
 cd web && npm install && npm start
 ```
 
 Open `http://localhost:3000` in your browser.
 
-- **Scan** — Pick a zone and run an audit
-- **Results** — Browse defect tables with direct links to OpenStreetMap
-- **Authenticate** — Connect your OSM account to submit corrections
+- **Scan** -- Pick a zone and run an audit
+- **Results** -- Browse defect tables with direct links to OpenStreetMap
+- **Authenticate** -- Connect your OSM account to submit corrections
+
+To submit corrections, you need OSM OAuth 2.0 credentials. See `.env.example` for configuration and [CONTRIBUTING.md](CONTRIBUTING.md) for full setup instructions.
+
+## Testing
+
+Run the test suite and linter:
+
+```
+pytest tests/ -v
+ruff check src/
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for PR conventions and project structure details.
 
 ## Architecture
 

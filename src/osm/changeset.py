@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import xml.etree.ElementTree as ET
 
 import requests
@@ -48,6 +49,7 @@ def create_changeset(
     ]
     if mechanical:
         tags.append('<tag k="mechanical" v="yes"/>')
+        tags.append('<tag k="bot" v="yes"/>')
     if wiki_url:
         tags.append(f'<tag k="description" v="{_xml_escape(wiki_url)}"/>')
 
@@ -152,9 +154,11 @@ def _build_osmchange(fixes: list[dict], changeset_id: int) -> tuple[str, list[st
     modify = ET.SubElement(root, "modify")
     errors: list[str] = []
 
-    for fix in fixes:
+    for i, fix in enumerate(fixes):
         way_id = fix["element_id"]
         try:
+            if i > 0:
+                time.sleep(0.5)
             changes = _resolve_changes(fix)
             way_xml = fetch_current_way(way_id)
             way_el = way_xml.find("way")
@@ -266,6 +270,8 @@ def submit_fixes(
                 applied = 0
 
         close_changeset(changeset_id)
+        if applied == 0:
+            log.warning("Changeset %d closed empty — all fixes in batch errored", changeset_id)
         total_applied += applied
         log.info(
             "Closed changeset %d: %d fix(es) — https://www.openstreetmap.org/changeset/%d",
@@ -283,4 +289,5 @@ def submit_fixes(
 
 
 def _xml_escape(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    from xml.sax.saxutils import escape, quoteattr
+    return escape(text, {'"': "&quot;", "'": "&apos;"})

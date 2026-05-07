@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from pathlib import Path
 
@@ -17,6 +18,8 @@ from .config import (
     SANITY_THRESHOLD,
 )
 from .zones import ZONES
+
+log = logging.getLogger(__name__)
 
 # --- Styles ---
 
@@ -204,7 +207,7 @@ def write_xlsx(
         ws3.cell(row=1, column=col, value=h)
     _style_header_row(ws3, 1, len(headers3))
     widths3: dict[int, int] = {i + 1: len(h) for i, h in enumerate(headers3)}
-    index_street = (zone.get("index_case_street") or "").strip()
+    index_street = (zone.get("index-case-street") or "").strip()
     for idx, w in enumerate(a_only_sorted, start=1):
         row = idx + 1
         is_index = bool(index_street) and (w["name"] or "").strip() == index_street
@@ -353,14 +356,14 @@ def write_xlsx(
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out_path)
-    print(f"  XLSX saved: {out_path}")
+    log.info("XLSX saved: %s", out_path)
 
 
 def _find_other_zone_csv(zone_key: str, output_root: Path | None) -> int | None:
     """Check if another zone's all_ways.csv exists and return its row count."""
     if output_root is None:
         return None
-    csv_path = output_root / f"osm_audit_{zone_key}" / "csv" / "all_ways.csv"
+    csv_path = output_root / f"osm-audit-{zone_key}" / "csv" / "all-ways.csv"
     if not csv_path.exists():
         return None
     try:

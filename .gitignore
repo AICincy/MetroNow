@@ -29,7 +29,8 @@ Desktop.ini
 .DS_Store
 
 # Project outputs
-osm_audit_*/
+osm-audit-*/
+edit-history.json
 
 # Config with secrets
 .env

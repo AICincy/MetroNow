@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 from pathlib import Path
 
 import click
@@ -13,14 +14,19 @@ from .zones import DEFAULT_ZONE, ZONE_KEYS, ZONES
 
 
 def _output_dir(zone_key: str) -> Path:
-    return PROJECT_ROOT / f"osm_audit_{zone_key}"
+    return PROJECT_ROOT / f"osm-audit-{zone_key}"
 
 
 @click.group()
 @click.version_option(package_name="osm")
-def main():
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def main(verbose):
     """OSM — TIGER/OSM audit and correction pipeline."""
-    pass
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
 
 
 # --- auth ---
@@ -122,7 +128,7 @@ def scan(zone: str, from_cache: bool, skip_history: bool):
         write_csvs(classified, csv_dir)
 
         # Save scan results for later fix/report commands
-        results_path = out_dir / "scan_results.json"
+        results_path = out_dir / "scan-results.json"
         _save_scan_results(classified, results_path)
 
         # Summary
@@ -152,7 +158,7 @@ def fix(zone: str, dry_run: bool):
     from .changeset import submit_fixes
     from .review import review_defects
 
-    results_path = _output_dir(zone) / "scan_results.json"
+    results_path = _output_dir(zone) / "scan-results.json"
     if not results_path.exists():
         click.echo(f"No scan results found for {zone}. Run 'osm scan --zone {zone}' first.")
         raise SystemExit(1)
@@ -189,7 +195,7 @@ def report(zone: str):
     from .fetch import overpass_query
     from .xlsx import write_xlsx
 
-    results_path = _output_dir(zone) / "scan_results.json"
+    results_path = _output_dir(zone) / "scan-results.json"
     if not results_path.exists():
         click.echo(f"No scan results found for {zone}. Run 'osm scan --zone {zone}' first.")
         raise SystemExit(1)

@@ -56,7 +56,8 @@ def save_token(token_data: dict) -> None:
     ensure_config_dirs()
     with TOKEN_PATH.open("w", encoding="utf-8") as fh:
         json.dump(token_data, fh, indent=2)
-    os.chmod(TOKEN_PATH, 0o600)
+    if os.name != "nt":
+        os.chmod(TOKEN_PATH, 0o600)
 
 
 def get_access_token() -> str | None:

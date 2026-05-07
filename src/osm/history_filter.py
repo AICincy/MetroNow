@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from .history import extract_versions, fetch_way_history
+from .history import batch_fetch_way_histories, extract_versions, fetch_way_history
 
 
 class ReviewStatus(str, Enum):
@@ -31,7 +31,7 @@ KNOWN_IMPORT_USERS = {
     "Sundance",
 }
 
-KNOWN_BOT_PREFIXES = ("JOSM", "bot-", "import", "fix", "cleanup")
+KNOWN_BOT_PREFIXES = ("josm", "bot-", "import", "fix", "cleanup")
 
 TAGS_THAT_INDICATE_REVIEW = {
     "surface",
@@ -68,20 +68,14 @@ def _is_import_user(user: str | None) -> bool:
     return any(lower.startswith(p) for p in KNOWN_BOT_PREFIXES)
 
 
-def analyse_way_history(way_record: dict) -> dict:
-    """Analyse a single way's edit history and assign a review status.
+def _tier1_check(way_record: dict) -> dict | None:
+    """Fast metadata check using fields from ``out meta``.
 
-    Tier 1: fast check using metadata already present from ``out meta``.
-    Tier 2: if ambiguous, fetch full history from OSM API and inspect
-    what changed between versions.
-
-    Returns a dict with review_status, review_confidence, and review_reason.
+    Returns a result dict if the status is clear, or None if Tier 2 is needed.
     """
     version = way_record.get("version")
     user = way_record.get("user")
-    timestamp = way_record.get("timestamp")
 
-    # Tier 1 — fast metadata check using out-meta fields
     if version == 1:
         return {
             "review_status": ReviewStatus.UNREVIEWED,
@@ -97,16 +91,18 @@ def analyse_way_history(way_record: dict) -> dict:
             "review_reason": f"Version {version}, last editor '{user}' is not an import bot",
         }
 
-    # Tier 2 — fetch and inspect full history
-    way_id = way_record.get("id")
-    if way_id is None:
+    return None
+
+
+def _tier2_analyse(way_record: dict, history_data: dict | None) -> dict:
+    """Complete analysis given fetched history data."""
+    if way_record.get("id") is None:
         return {
             "review_status": ReviewStatus.INCONCLUSIVE,
             "review_confidence": 0.0,
             "review_reason": "No way ID available",
         }
 
-    history_data = fetch_way_history(way_id)
     if history_data is None:
         return {
             "review_status": ReviewStatus.INCONCLUSIVE,
@@ -156,6 +152,23 @@ def analyse_way_history(way_record: dict) -> dict:
             f"meaningful tag or geometry changes detected"
         ),
     }
+
+
+def analyse_way_history(way_record: dict) -> dict:
+    """Analyse a single way's edit history and assign a review status.
+
+    Tier 1: fast check using metadata already present from ``out meta``.
+    Tier 2: if ambiguous, fetch full history from OSM API and inspect
+    what changed between versions.
+
+    Returns a dict with review_status, review_confidence, and review_reason.
+    """
+    result = _tier1_check(way_record)
+    if result is not None:
+        return result
+
+    history_data = fetch_way_history(way_record.get("id"))
+    return _tier2_analyse(way_record, history_data)
 
 
 def _is_tiger_tag(key: str) -> bool:
@@ -231,25 +244,52 @@ def filter_by_history(
     *,
     skip_history: bool = False,
     progress_callback=None,
+    max_concurrent: int = 10,
 ) -> list[dict]:
     """Annotate each way with review_status and filter to actionable ways.
 
     If skip_history is True, all ways pass through (legacy tiger:reviewed=no mode).
-    Returns the full list with review annotations added to each record.
+    Otherwise uses a two-pass strategy: Tier 1 metadata checks first, then
+    batch-fetches histories for ambiguous ways concurrently via httpx.
     """
     total = len(all_ways)
-    for i, w in enumerate(all_ways):
-        if skip_history:
+
+    if skip_history:
+        for i, w in enumerate(all_ways):
             w["review_status"] = ReviewStatus.UNREVIEWED.value
             w["review_confidence"] = 0.0
             w["review_reason"] = "History analysis skipped (legacy mode)"
-        else:
-            result = analyse_way_history(w)
+            if progress_callback:
+                progress_callback(i + 1, total)
+        return all_ways
+
+    # Pass 1: Tier 1 fast checks — no HTTP calls
+    tier2_ways: list[dict] = []
+    for w in all_ways:
+        result = _tier1_check(w)
+        if result is not None:
             w["review_status"] = result["review_status"].value
             w["review_confidence"] = result["review_confidence"]
             w["review_reason"] = result["review_reason"]
+        else:
+            tier2_ways.append(w)
 
-        if progress_callback:
-            progress_callback(i + 1, total)
+    tier1_done = total - len(tier2_ways)
+    if progress_callback:
+        progress_callback(tier1_done, total)
+
+    # Pass 2: batch fetch histories for Tier 2 ways concurrently
+    if tier2_ways:
+        way_ids = [w["id"] for w in tier2_ways if w.get("id") is not None]
+        histories = batch_fetch_way_histories(way_ids, max_concurrent=max_concurrent)
+
+        for i, w in enumerate(tier2_ways):
+            history_data = histories.get(w.get("id"))
+            result = _tier2_analyse(w, history_data)
+            w["review_status"] = result["review_status"].value
+            w["review_confidence"] = result["review_confidence"]
+            w["review_reason"] = result["review_reason"]
+            if progress_callback:
+                progress_callback(tier1_done + i + 1, total)
 
     return all_ways

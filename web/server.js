@@ -2,9 +2,16 @@ const express = require("express");
 const { execFile } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const helmet = require("helmet");
+const cors = require("cors");
+const rateLimit = require("express-rate-limit");
 
 const app = express();
 const PORT = 3000;
+
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors({ origin: "http://localhost:3000" }));
+app.use(rateLimit({ windowMs: 60000, max: 100, standardHeaders: true }));
 
 const PYTHON = (() => {
   const { execFileSync } = require("child_process");
@@ -23,7 +30,7 @@ const OSM_PKG = path.resolve(__dirname, "..", "src");
 const CONFIG_DIR = path.join(process.env.USERPROFILE || process.env.HOME || "", ".config", "osm");
 const TOKEN_PATH = path.join(CONFIG_DIR, "token.json");
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const HISTORY_PATH = path.join(PROJECT_ROOT, "edit_history.json");
+const HISTORY_PATH = path.join(PROJECT_ROOT, "edit-history.json");
 
 function loadHistory() {
   try {
@@ -49,13 +56,20 @@ function appendHistory(entry) {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-const SAFE_ZONE_RE = /^[a-z0-9_]+$/;
+const SAFE_ZONE_RE = /^[a-z0-9-]+$/;
 function validateZone(zone, res) {
   if (!zone || !SAFE_ZONE_RE.test(zone)) {
     res.status(400).json({ error: "Invalid zone identifier" });
     return false;
   }
   return true;
+}
+
+function safeError(e) {
+  const msg = (e && e.message) || "Unknown error";
+  const lines = msg.split(/\r?\n/).filter((l) => l.trim());
+  const last = lines[lines.length - 1] || msg;
+  return last.replace(/File ".*?",/g, "").trim();
 }
 
 function runPython(script) {
@@ -71,6 +85,21 @@ function runPython(script) {
     );
   });
 }
+
+// ---- fix validation ----
+
+function validateFix(fix) {
+  if (!fix || typeof fix !== "object") return false;
+  if (typeof fix.element_id !== "number" || fix.element_id <= 0) return false;
+  if (!["remove_tag", "modify_tag"].includes(fix.action)) return false;
+  if (fix.action === "remove_tag" && typeof fix.tag !== "string") return false;
+  if (fix.action === "modify_tag" && (typeof fix.changes !== "object" || fix.changes === null)) return false;
+  return true;
+}
+
+// ---- concurrency control ----
+
+let scanInProgress = false;
 
 // ---- auth ----
 
@@ -103,7 +132,7 @@ app.post("/api/auth/url", async (_req, res) => {
     const out = await runPython(pyCode);
     res.json(JSON.parse(out.trim()));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: safeError(e) });
   }
 });
 
@@ -124,7 +153,7 @@ app.post("/api/auth/exchange", async (req, res) => {
     res.json(JSON.parse(out.trim()));
     try { appendHistory({ action: "auth_login" }); } catch {}
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: safeError(e) });
   }
 });
 
@@ -134,7 +163,7 @@ app.post("/api/auth/logout", (_req, res) => {
     res.json({ success: true });
     try { appendHistory({ action: "auth_logout" }); } catch {}
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: safeError(e) });
   }
 });
 
@@ -155,16 +184,19 @@ app.get("/api/zones", async (_req, res) => {
     const out = await runPython(pyCode);
     res.json(JSON.parse(out.trim()));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: safeError(e) });
   }
 });
 
 // ---- scan ----
 
 app.post("/api/scan", async (req, res) => {
-  const zone = req.body.zone || "blue_ash_montgomery";
+  if (scanInProgress)
+    return res.status(409).json({ error: "A scan is already in progress" });
+  const zone = req.body.zone || "blue-ash-montgomery";
   if (!validateZone(zone, res)) return;
   const skipHistory = req.body.skip_history !== false;
+  scanInProgress = true;
   try {
     const pyCode = [
       "import json, sys, os",
@@ -175,13 +207,13 @@ app.post("/api/scan", async (req, res) => {
       "from osm.classify import classify",
       "from osm.history_filter import filter_by_history",
       "zone_key = " + JSON.stringify(zone),
-      "out_dir = Path(" + JSON.stringify(PROJECT_ROOT) + ") / f'osm_audit_{zone_key}'",
+      "out_dir = Path(" + JSON.stringify(PROJECT_ROOT) + ") / f'osm-audit-{zone_key}'",
       "raw = fetch_overpass(zone_key, out_dir)",
       "classified = classify(raw)",
       "skip = " + (skipHistory ? "True" : "False"),
       "if not skip:",
       "    filter_by_history(classified['all_ways'], skip_history=False)",
-      "results_path = out_dir / 'scan_results.json'",
+      "results_path = out_dir / 'scan-results.json'",
       "results_path.parent.mkdir(parents=True, exist_ok=True)",
       "ser = {",
       "    'all_ways': classified['all_ways'],",
@@ -202,7 +234,9 @@ app.post("/api/scan", async (req, res) => {
     res.json({ success: true, stats });
     try { appendHistory({ action: "scan", zone, stats }); } catch {}
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: safeError(e) });
+  } finally {
+    scanInProgress = false;
   }
 });
 
@@ -212,22 +246,22 @@ app.get("/api/results/:zone", (req, res) => {
   if (!validateZone(req.params.zone, res)) return;
   const p = path.join(
     PROJECT_ROOT,
-    "osm_audit_" + req.params.zone,
-    "scan_results.json"
+    "osm-audit-" + req.params.zone,
+    "scan-results.json"
   );
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results. Run a scan first." });
   try {
     res.json(JSON.parse(fs.readFileSync(p, "utf-8")));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: safeError(e) });
   }
 });
 
 // ---- reports ----
 
 app.post("/api/reports", async (req, res) => {
-  const zone = req.body.zone || "blue_ash_montgomery";
+  const zone = req.body.zone || "blue-ash-montgomery";
   if (!validateZone(zone, res)) return;
   try {
     const pyCode = [
@@ -243,8 +277,8 @@ app.post("/api/reports", async (req, res) => {
       "zone_key = " + JSON.stringify(zone),
       "z = ZONES[zone_key]",
       "proj = Path(" + JSON.stringify(PROJECT_ROOT) + ")",
-      "out_dir = proj / f'osm_audit_{zone_key}'",
-      "results_path = out_dir / 'scan_results.json'",
+      "out_dir = proj / f'osm-audit-{zone_key}'",
+      "results_path = out_dir / 'scan-results.json'",
       "with open(results_path, 'r', encoding='utf-8') as fh:",
       "    classified = json.load(fh)",
       "audit_ts = dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')",
@@ -266,7 +300,7 @@ app.post("/api/reports", async (req, res) => {
     res.json(result);
     try { appendHistory({ action: "report", zone, files: result.files }); } catch {}
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: safeError(e) });
   }
 });
 
@@ -274,7 +308,7 @@ app.get("/api/dashboard/:zone", (req, res) => {
   if (!validateZone(req.params.zone, res)) return;
   const dir = path.join(
     PROJECT_ROOT,
-    "osm_audit_" + req.params.zone,
+    "osm-audit-" + req.params.zone,
     "reports"
   );
   if (!fs.existsSync(dir))
@@ -290,7 +324,7 @@ app.get("/api/dashboard/:zone", (req, res) => {
 app.get("/api/review/:zone", async (req, res) => {
   const zone = req.params.zone;
   if (!validateZone(zone, res)) return;
-  const p = path.join(PROJECT_ROOT, "osm_audit_" + zone, "scan_results.json");
+  const p = path.join(PROJECT_ROOT, "osm-audit-" + zone, "scan-results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results. Run a scan first." });
   try {
@@ -310,7 +344,7 @@ app.get("/api/review/:zone", async (req, res) => {
     const out = await runPython(pyCode);
     res.json(JSON.parse(out.trim()));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: safeError(e) });
   }
 });
 
@@ -319,6 +353,9 @@ app.post("/api/fix", async (req, res) => {
   if (!zone || !fixes || !fixes.length)
     return res.status(400).json({ error: "Missing zone or fixes" });
   if (!validateZone(zone, res)) return;
+  const invalid = fixes.filter((f) => !validateFix(f));
+  if (invalid.length)
+    return res.status(400).json({ error: `${invalid.length} invalid fix(es) in payload` });
   try {
     const fixesJson = JSON.stringify(fixes);
     const pyCode = [
@@ -344,7 +381,7 @@ app.post("/api/fix", async (req, res) => {
       });
     } catch {}
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: safeError(e) });
   }
 });
 
@@ -358,7 +395,7 @@ app.get("/api/history", (_req, res) => {
 
 app.get("/api/export/:zone/csv", (req, res) => {
   if (!validateZone(req.params.zone, res)) return;
-  const p = path.join(PROJECT_ROOT, "osm_audit_" + req.params.zone, "scan_results.json");
+  const p = path.join(PROJECT_ROOT, "osm-audit-" + req.params.zone, "scan-results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results." });
   try {
@@ -379,13 +416,13 @@ app.get("/api/export/:zone/csv", (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="osm-audit-${req.params.zone}.csv"`);
     res.send(header + rows);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: safeError(e) });
   }
 });
 
 app.get("/api/export/:zone/json", (req, res) => {
   if (!validateZone(req.params.zone, res)) return;
-  const p = path.join(PROJECT_ROOT, "osm_audit_" + req.params.zone, "scan_results.json");
+  const p = path.join(PROJECT_ROOT, "osm-audit-" + req.params.zone, "scan-results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results." });
   try {
@@ -394,7 +431,7 @@ app.get("/api/export/:zone/json", (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="osm-audit-${req.params.zone}.json"`);
     res.json(data);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: safeError(e) });
   }
 });
 

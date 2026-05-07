@@ -3,32 +3,32 @@
 from __future__ import annotations
 
 ZONES: dict[str, dict] = {
-    "blue_ash_montgomery": {
+    "blue-ash-montgomery": {
         "name": "Blue Ash / Montgomery",
         "bbox": (39.16, -84.44, 39.24, -84.33),
         "description": "Blue Ash, Montgomery, Deer Park, Silverton, Kenwood, Madeira",
-        "index_case_street": "O'Leary Avenue",
+        "index-case-street": "O'Leary Avenue",
     },
-    "springdale_sharonville": {
+    "springdale-sharonville": {
         "name": "Springdale / Sharonville",
         "bbox": (39.24, -84.48, 39.32, -84.38),
         "description": "Springdale, Sharonville, Glendale, Evendale, Lincoln Heights",
-        "index_case_street": None,
+        "index-case-street": None,
     },
-    "northgate_mt_healthy": {
+    "northgate-mt-healthy": {
         "name": "Northgate / Mt. Healthy",
         "bbox": (39.22, -84.58, 39.30, -84.48),
         "description": "Mt. Healthy, North College Hill, Finneytown, Northgate",
-        "index_case_street": None,
+        "index-case-street": None,
     },
-    "forest_park_pleasant_run": {
+    "forest-park-pleasant-run": {
         "name": "Forest Park / Pleasant Run",
         "bbox": (39.26, -84.56, 39.34, -84.46),
         "description": "Forest Park, Pleasant Run, Greenhills",
-        "index_case_street": None,
+        "index-case-street": None,
     },
 }
 
-DEFAULT_ZONE = "blue_ash_montgomery"
+DEFAULT_ZONE = "blue-ash-montgomery"
 
 ZONE_KEYS = list(ZONES.keys())
