@@ -31,9 +31,9 @@ Fixing OSM in the MetroNow zones feeds directly into Via's routing tiles, improv
 | Zone | Coverage |
 |------|----------|
 | Blue Ash / Montgomery | Blue Ash, Montgomery, Deer Park, Silverton, Kenwood, Madeira |
-| Springdale / Sharonville | Springdale, Sharonville |
-| Northgate / Mt. Healthy | Northgate, Mt. Healthy |
-| Forest Park / Pleasant Run | Forest Park, Pleasant Run |
+| Springdale / Sharonville | Springdale, Sharonville, Glendale, Evendale, Lincoln Heights |
+| Northgate / Mt. Healthy | Mt. Healthy, North College Hill, Finneytown, Northgate |
+| Forest Park / Pleasant Run | Forest Park, Pleasant Run, Greenhills |
 
 ## Getting started
 
