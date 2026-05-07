@@ -15,7 +15,8 @@ let pendingFixes = [];
 let scanTimerInterval = null;
 
 // ---- map ----
-const map = L.map("map", { zoomControl: true }).setView([39.20, -84.39], 12);
+const canvasRenderer = L.canvas({ padding: 0.5, tolerance: 8 });
+const map = L.map("map", { zoomControl: true, preferCanvas: true }).setView([39.20, -84.39], 12);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
   maxZoom: 19,
@@ -30,28 +31,107 @@ const mapLayers = {
 const MAP_COLORS = { AB: "#dc2626", A: "#ea580c", B: "#2563eb", C: "#94a3b8" };
 const MAP_WEIGHTS = { AB: 5, A: 4, B: 3, C: 2 };
 
+function simplifyGeom(pts, tolerance) {
+  if (pts.length <= 4) return pts;
+  const sq = tolerance * tolerance;
+  const keep = new Uint8Array(pts.length);
+  keep[0] = 1;
+  keep[pts.length - 1] = 1;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [start, end] = stack.pop();
+    let maxDist = 0, maxIdx = start;
+    const dx = pts[end][0] - pts[start][0];
+    const dy = pts[end][1] - pts[start][1];
+    const lenSq = dx * dx + dy * dy;
+    for (let i = start + 1; i < end; i++) {
+      let d;
+      if (lenSq === 0) {
+        const ex = pts[i][0] - pts[start][0], ey = pts[i][1] - pts[start][1];
+        d = ex * ex + ey * ey;
+      } else {
+        const t = Math.max(0, Math.min(1, ((pts[i][0] - pts[start][0]) * dx + (pts[i][1] - pts[start][1]) * dy) / lenSq));
+        const px = pts[start][0] + t * dx - pts[i][0];
+        const py = pts[start][1] + t * dy - pts[i][1];
+        d = px * px + py * py;
+      }
+      if (d > maxDist) { maxDist = d; maxIdx = i; }
+    }
+    if (maxDist > sq) {
+      keep[maxIdx] = 1;
+      if (maxIdx - start > 1) stack.push([start, maxIdx]);
+      if (end - maxIdx > 1) stack.push([maxIdx, end]);
+    }
+  }
+  const out = [];
+  for (let i = 0; i < pts.length; i++) if (keep[i]) out.push(pts[i]);
+  return out;
+}
+
 function updateMapBounds(bbox) {
   if (!bbox) return;
   const [s, w, n, e] = bbox;
   map.fitBounds([[s, w], [n, e]], { padding: [20, 20] });
 }
 
+const CHUNK_SIZE = 150;
+let mapDataQueue = null;
+
 function updateMapData(ways) {
   Object.values(mapLayers).forEach((l) => l.clearLayers());
-  let count = 0;
-  ways.forEach((w) => {
-    if (!w.geometry || w.geometry.length < 2) return;
+  const items = [];
+  for (let i = 0; i < ways.length; i++) {
+    const w = ways[i];
+    if (!w.geometry || w.geometry.length < 2) continue;
     const cls = w.defect_class || "C";
-    if (cls === "C") return;
-    const line = L.polyline(w.geometry, {
+    if (cls === "C") continue;
+    items.push(w);
+  }
+  if (!items.length) {
+    $("#mapEmpty").classList.remove("hidden");
+    return;
+  }
+  $("#mapEmpty").classList.add("hidden");
+  mapDataQueue = items;
+  processMapChunk(0);
+}
+
+function processMapChunk(start) {
+  const items = mapDataQueue;
+  if (!items) return;
+  const end = Math.min(start + CHUNK_SIZE, items.length);
+  for (let i = start; i < end; i++) {
+    const w = items[i];
+    const cls = w.defect_class;
+    const geom = simplifyGeom(w.geometry, 0.00005);
+    const line = L.polyline(geom, {
       color: MAP_COLORS[cls],
       weight: MAP_WEIGHTS[cls],
       opacity: 0.85,
+      renderer: canvasRenderer,
     });
-    const reviewHtml = w.review_status
-      ? `<br><span class="review-badge ${reviewClass(w.review_status)}">${esc(w.review_status.replace("_", " "))}</span>`
-      : "";
-    line.bindPopup(
+    line.wayData = w;
+    line.on("click", onPolylineClick);
+    const group = cls === "AB" ? "ab" : cls === "A" ? "a" : "b";
+    mapLayers[group].addLayer(line);
+  }
+  if (end < items.length) {
+    setTimeout(() => processMapChunk(end), 0);
+  } else {
+    mapDataQueue = null;
+  }
+}
+
+function onPolylineClick(e) {
+  const w = e.target.wayData;
+  if (!w) return;
+  const cls = w.defect_class || "?";
+  const reviewHtml = w.review_status
+    ? `<br><span class="review-badge ${reviewClass(w.review_status)}">${esc(w.review_status.replace("_", " "))}</span>`
+    : "";
+  L.popup()
+    .setLatLng(e.latlng)
+    .setContent(
       `<div class="defect-popup">` +
         `<strong>${esc(w.name_display || "Unnamed")}</strong>` +
         `<span class="popup-class ${cls.toLowerCase()}">${esc(cls)}</span><br>` +
@@ -59,13 +139,8 @@ function updateMapData(ways) {
         `${esc(w.highway || "?")} &middot; oneway=${esc(w.oneway || "no")}` +
         `${reviewHtml}` +
         `</div>`
-    );
-    const group = cls === "AB" ? "ab" : cls === "A" ? "a" : "b";
-    mapLayers[group].addLayer(line);
-    count++;
-  });
-  if (count > 0) $("#mapEmpty").classList.add("hidden");
-  else $("#mapEmpty").classList.remove("hidden");
+    )
+    .openOn(map);
 }
 
 function reviewClass(status) {
@@ -234,7 +309,11 @@ async function loadZones() {
       updateMapBounds(zoneData[currentZone]?.bbox);
     });
 
-    tryLoadExistingResults();
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(() => tryLoadExistingResults());
+    } else {
+      setTimeout(tryLoadExistingResults, 100);
+    }
   } catch (e) {
     log("Failed to load zones: " + e.message, "err");
   }
