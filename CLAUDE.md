@@ -11,7 +11,7 @@ OSM road defect detection and correction for Hamilton County MetroNow microtrans
 
 ## Paths
 
-- Python: `C:\Users\krass\AppData\Local\Python\pythoncore-3.14-64\python.exe`
+- Python: auto-detected from PATH (`python3` or `python`)
 - Node: `C:\Program Files\nodejs\node.exe`
 - Web server: `node web/server.js` (localhost:3000)
 - OAuth: OOB redirect (`urn:ietf:wg:oauth:2.0:oob`), credentials at `~/.config/osm/credentials.json`
@@ -21,7 +21,7 @@ OSM road defect detection and correction for Hamilton County MetroNow microtrans
 - File names use hyphens, never underscores
 - No CLI instructions to the user — run everything directly
 - Auto mode is the default — make decisions, don't present menus
-- Audit work before declaring done — run seam-level checks, no false-confident sign-offs
+- Audit work before declaring done — verify at module boundaries (e.g. fetch output feeds classify, classify output feeds reports) and spot-check outputs against known data before signing off
 
 ## OSM community requirements
 

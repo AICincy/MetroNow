@@ -20,11 +20,12 @@ from .zones import ZONES
 
 
 def overpass_query(bbox: tuple[float, float, float, float]) -> str:
-    """Build the Overpass QL query for tiger:reviewed=no ways with metadata."""
+    """Build the Overpass QL query for DaveHansenTiger import ways with metadata."""
     s, w, n, e = bbox
     return (
         "[out:json][timeout:180];\n"
-        f'way["highway"]["tiger:reviewed"="no"]\n'
+        'way["highway"](user:"DaveHansenTiger")\n'
+        '  (if: timestamp() > "2007-08-03" && timestamp() < "2008-05-04")\n'
         f"  ({s},{w},{n},{e});\n"
         "out meta geom;\n"
     )
