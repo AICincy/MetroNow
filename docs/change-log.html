@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Change Log — MetroNow Atlas</title>
+<style>
+  :root {
+    --paper: #f6f4ef;
+    --ink: #1f1d18;
+    --mute: #6c6659;
+    --line: #d8d2c4;
+    --line-soft: #ebe6da;
+    --accent: #2a4d7a;
+    --add: #1f6b3a;
+    --mod: #b25f00;
+    --rem: #a02020;
+    --aug: #4a3c7a;
+    --soft-add: #e6efe2;
+    --soft-mod: #fbeed4;
+    --soft-rem: #f4dcdc;
+    --soft-aug: #ebe5f5;
+    --serif: "Iowan Old Style", "Georgia", serif;
+    --sans: "Inter", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+    --mono: "JetBrains Mono", "Menlo", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--paper); color: var(--ink); font-family: var(--serif); font-size: 16px; line-height: 1.55; }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 56px 56px 96px; }
+
+  .docmeta { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--ink); font-family: var(--sans); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
+  .docmeta div span { display: block; color: var(--ink); font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 13px; margin-top: 2px; }
+
+  h1.title { font-family: var(--serif); font-weight: 500; font-size: 42px; line-height: 1.08; margin: 36px 0 6px; letter-spacing: -0.01em; }
+  .subtitle { font-family: var(--sans); font-size: 14px; color: var(--mute); margin: 0 0 36px; font-style: italic; }
+
+  h2 { font-family: var(--serif); font-weight: 500; font-size: 24px; letter-spacing: -0.005em; margin: 44px 0 6px; padding-top: 18px; border-top: 1px solid var(--line); }
+  h2 .sec-num { font-family: var(--mono); font-size: 11px; color: var(--mute); display: block; letter-spacing: 0.12em; margin-bottom: 4px; }
+  h3 { font-family: var(--sans); font-weight: 600; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink); margin: 24px 0 10px; }
+
+  p { margin: 8px 0; text-wrap: pretty; }
+  code.path { font-family: var(--mono); font-size: 12px; background: #efeadb; padding: 1px 6px; border-radius: 3px; }
+
+  /* timeline */
+  .entry { display: grid; grid-template-columns: 96px 100px 1fr; gap: 18px; padding: 14px 0; border-bottom: 1px solid var(--line-soft); }
+  .entry:last-child { border-bottom: none; }
+  .entry .seq { font-family: var(--mono); font-size: 11px; color: var(--mute); padding-top: 3px; }
+  .entry .kind { padding-top: 3px; }
+  .entry .body h4 { margin: 0 0 4px; font-family: var(--sans); font-weight: 600; font-size: 14px; }
+  .entry .body p { margin: 4px 0; font-family: var(--sans); font-size: 13px; line-height: 1.5; color: #2c2920; }
+  .entry .body ul { margin: 6px 0 6px 18px; padding: 0; font-family: var(--sans); font-size: 12.5px; color: #2c2920; }
+  .entry .body code { font-family: var(--mono); font-size: 11.5px; background: #efeadb; padding: 1px 5px; border-radius: 3px; }
+  .entry .body .files { font-family: var(--mono); font-size: 11px; color: var(--mute); margin-top: 6px; display: block; }
+
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: middle; border: 1px solid currentColor; }
+  .pill.add { color: var(--add); background: var(--soft-add); }
+  .pill.mod { color: var(--mod); background: var(--soft-mod); }
+  .pill.rem { color: var(--rem); background: var(--soft-rem); }
+  .pill.aug { color: var(--aug); background: var(--soft-aug); }
+  .pill.fix { color: var(--accent); background: #e0e8f1; }
+  .pill::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  blockquote.exec { font-family: var(--serif); font-size: 16px; line-height: 1.6; padding: 14px 20px; border-left: 3px solid var(--ink); background: #efeadb; margin: 14px 0 22px; }
+
+  table.summary { width: 100%; border-collapse: collapse; margin: 14px 0 8px; font-family: var(--sans); font-size: 12.5px; }
+  table.summary th, table.summary td { padding: 9px 11px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: top; }
+  table.summary thead th { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); border-bottom: 1px solid var(--ink); font-weight: 500; }
+  table.summary td.ref { font-family: var(--mono); font-size: 11px; color: var(--mute); white-space: nowrap; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 0 0; font-family: var(--sans); font-size: 12px; color: var(--mute); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  footer.colophon { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--ink); font-family: var(--sans); font-size: 11px; color: var(--mute); display: flex; justify-content: space-between; }
+
+  @media print {
+    body { background: #fff; }
+    .wrap { padding: 24px; max-width: none; }
+    h2, .entry { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="docmeta">
+    <div>Document<span>Change Log</span></div>
+    <div>Project<span>MetroNow Atlas</span></div>
+    <div>Author<span>Claude Design</span></div>
+    <div>Status<span>Through remediation pass</span></div>
+  </div>
+
+  <h1 class="title">Change log of all Claude Design modifications</h1>
+  <p class="subtitle">Chronological audit trail of design and engineering changes applied to the MetroNow Atlas project, from initial scaffold through audit remediation.</p>
+
+  <blockquote class="exec">
+    Twenty-one distinct change-sets were applied across two files of substance — <code>MetroNow Atlas.html</code> and <code>assets/atlas-extras.js</code> — plus two reference documents (<code>Independent Audit.html</code>, <code>Change Log.html</code>). All changes are scoped to the project root and the <code>assets/</code> folder; no upstream repository files in <code>uploads/MetroNow-main/</code> were modified.
+  </blockquote>
+
+  <div class="legend">
+    <span><span class="pill add">Add</span> new file or feature</span>
+    <span><span class="pill mod">Mod</span> change to existing</span>
+    <span><span class="pill aug">Aug</span> non-invasive augmentation layer</span>
+    <span><span class="pill fix">Fix</span> remediation</span>
+  </div>
+
+  <!-- ── §1 SUMMARY ── -->
+  <h2><span class="sec-num">§1</span>Summary by file</h2>
+  <table class="summary">
+    <thead>
+      <tr><th>File</th><th>Touches</th><th>Net role</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="ref">MetroNow Atlas.html</td>
+        <td>~12 change-sets</td>
+        <td>Primary UI: dock, panels, map, inventory, fix queue, ledger, auth, discussion, console, formality.</td>
+        <td>Active</td>
+      </tr>
+      <tr>
+        <td class="ref">assets/atlas-extras.js</td>
+        <td>2 change-sets</td>
+        <td>Non-invasive enhancement layer: shortcuts, bulk-select, auto-link, badges, Tools launcher, fetch coalescer.</td>
+        <td>Active</td>
+      </tr>
+      <tr>
+        <td class="ref">assets/atlas.js</td>
+        <td>core</td>
+        <td>Primary application logic (state, render, network).</td>
+        <td>Active</td>
+      </tr>
+      <tr>
+        <td class="ref">assets/tweaks-panel.jsx</td>
+        <td>1 (starter)</td>
+        <td>Tweaks-panel scaffold for in-page design knobs.</td>
+        <td>Active</td>
+      </tr>
+      <tr>
+        <td class="ref">Independent Audit.html</td>
+        <td>2 change-sets</td>
+        <td>Conformance audit + remediation status.</td>
+        <td>Active</td>
+      </tr>
+      <tr>
+        <td class="ref">Change Log.html</td>
+        <td>1 (this file)</td>
+        <td>Change-log document.</td>
+        <td>Active</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ── §2 TIMELINE ── -->
+  <h2><span class="sec-num">§2</span>Chronological timeline</h2>
+  <p>Each entry is a discrete change-set. Sequence numbers reflect the order in which the changes were applied; they do not correspond to wall-clock dates.</p>
+
+  <!-- 01 -->
+  <div class="entry">
+    <div class="seq">CL-01</div>
+    <div class="kind"><span class="pill add">Add</span></div>
+    <div class="body">
+      <h4>Initial scaffold of <em>MetroNow Atlas</em></h4>
+      <p>Built the editorial-style UI shell as a single-page HTML application: dock navigation, left rail, center map, right inspector rail, and overlay panels. Established the type system (Iowan Old Style serif + Inter sans + JetBrains Mono), neutral paper palette, and the Tweaks-panel knob surface.</p>
+      <span class="files">+ MetroNow Atlas.html · + assets/atlas.js · + assets/tweaks-panel.jsx</span>
+    </div>
+  </div>
+
+  <!-- 02 -->
+  <div class="entry">
+    <div class="seq">CL-02</div>
+    <div class="kind"><span class="pill add">Add</span></div>
+    <div class="body">
+      <h4>Defect taxonomy and inventory tables</h4>
+      <p>Implemented the AB / A / B / C defect-class model from <code>src/osm/classify.py</code>. Inventory renders all_ways with id, street, highway, oneway, defect_class, severity, last-edit metadata, and polyline geometry on the map.</p>
+    </div>
+  </div>
+
+  <!-- 03 -->
+  <div class="entry">
+    <div class="seq">CL-03</div>
+    <div class="kind"><span class="pill add">Add</span></div>
+    <div class="body">
+      <h4>Fix queue, dry-run, and OSM submission flow</h4>
+      <p>Wired the proposed-fix pipeline to <code>POST /api/fix</code>, including the dry-run path and the changeset-creation handshake. Submission UI surfaces server-stamped <code>mechanical=yes</code> / <code>bot=yes</code> tags and the wiki URL anchor.</p>
+    </div>
+  </div>
+
+  <!-- 04 -->
+  <div class="entry">
+    <div class="seq">CL-04</div>
+    <div class="kind"><span class="pill add">Add</span></div>
+    <div class="body">
+      <h4>Auth panel (OSM OAuth 2.0 OOB)</h4>
+      <p>Two-step authorize → paste-code flow matching <code>src/osm/auth.py</code> and the <code>urn:ietf:wg:oauth:2.0:oob</code> redirect URI documented in <code>CLAUDE.md</code>.</p>
+    </div>
+  </div>
+
+  <!-- 05 -->
+  <div class="entry">
+    <div class="seq">CL-05</div>
+    <div class="kind"><span class="pill add">Add</span></div>
+    <div class="body">
+      <h4>Edit-history ledger</h4>
+      <p>Renders the server's <code>edit-history.json</code> entries — scan, report, dry_run, submit, auth_login, auth_logout — in a chronological list with copy-to-clipboard for changeset IDs.</p>
+    </div>
+  </div>
+
+  <!-- 06 -->
+  <div class="entry">
+    <div class="seq">CL-06</div>
+    <div class="kind"><span class="pill add">Add</span></div>
+    <div class="body">
+      <h4>Live command console</h4>
+      <p>In-page terminal surface that echoes scan / report / submit commands and renders log lines. Documented in audit F-02 as awaiting backend SSE.</p>
+    </div>
+  </div>
+
+  <!-- 07 -->
+  <div class="entry">
+    <div class="seq">CL-07</div>
+    <div class="kind"><span class="pill add">Add</span></div>
+    <div class="body">
+      <h4>OSMCha-style changeset verification step on submit</h4>
+      <p>Post-submit verification UI placeholder. Flagged for backend wiring in audit F-04.</p>
+    </div>
+  </div>
+
+  <!-- 08 -->
+  <div class="entry">
+    <div class="seq">CL-08</div>
+    <div class="kind"><span class="pill add">Add</span></div>
+    <div class="body">
+      <h4>Persistent discussion board</h4>
+      <p>Threaded conversation surface with tags, replies, and snippet rendering. Persists to <code>localStorage</code> pending the backend route called out in audit F-01.</p>
+    </div>
+  </div>
+
+  <!-- 09 -->
+  <div class="entry">
+    <div class="seq">CL-09</div>
+    <div class="kind"><span class="pill add">Add</span></div>
+    <div class="body">
+      <h4>Formality controls for report generation</h4>
+      <p>Tweak panel for type-scale, voice, density, and citation style applied to the generated report preview. Audit F-03 tracks server-side propagation.</p>
+    </div>
+  </div>
+
+  <!-- 10 -->
+  <div class="entry">
+    <div class="seq">CL-10</div>
+    <div class="kind"><span class="pill mod">Mod</span></div>
+    <div class="body">
+      <h4>Metro UI accent palette adopted</h4>
+      <p>Replaced the ad-hoc <code>rust</code>/<code>amber</code>/<code>steel</code>/<code>forest</code> tokens with the canonical Microsoft Metro colors:</p>
+      <ul>
+        <li>Orange <code>#fa6800</code> (default)</li>
+        <li>Blue <code>#0050ef</code></li>
+        <li>Green <code>#008a00</code></li>
+        <li>Purple <code>#aa00ff</code></li>
+        <li>Ink (neutral)</li>
+      </ul>
+      <p>Old keys still resolve to preserve any saved tweaks. Tracked in <code>__edit_mode_set_keys</code>.</p>
+    </div>
+  </div>
+
+  <!-- 11 -->
+  <div class="entry">
+    <div class="seq">CL-11</div>
+    <div class="kind"><span class="pill mod">Mod</span></div>
+    <div class="body">
+      <h4>Service zones aligned to <code>src/osm/zones.py</code></h4>
+      <p>Replaced placeholder zones with the four canonical MetroNow zones, each with its actual bounding box and coverage description:</p>
+      <ul>
+        <li>Blue Ash / Montgomery (default) — bbox <code>(39.16, -84.44, 39.24, -84.33)</code></li>
+        <li>Springdale / Sharonville — bbox <code>(39.24, -84.48, 39.32, -84.38)</code></li>
+        <li>Northgate / Mt. Healthy — bbox <code>(39.22, -84.58, 39.30, -84.48)</code></li>
+        <li>Forest Park / Pleasant Run — bbox <code>(39.26, -84.56, 39.34, -84.46)</code></li>
+      </ul>
+      <p>Default zone changed from a placeholder to <code>blue-ash-montgomery</code>; map opens centered on the northern Hamilton County arc.</p>
+    </div>
+  </div>
+
+  <!-- 12 -->
+  <div class="entry">
+    <div class="seq">CL-12</div>
+    <div class="kind"><span class="pill add">Add</span></div>
+    <div class="body">
+      <h4>Enhancement layer: <code>assets/atlas-extras.js</code> created</h4>
+      <p>Non-invasive layer attached to <code>document.body</code> via a single <code>MutationObserver</code>; idempotent guards (<code>data-enhanced</code>, <code>data-linked</code>, <code>data-act-injected</code>) prevent re-entrancy. Loaded after <code>atlas.js</code>. Initial features:</p>
+      <ul>
+        <li><strong>Keyboard shortcuts</strong> with cheatsheet (<code>?</code>, <code>j</code>/<code>k</code>, <code>a</code>, <code>s</code>, <code>g</code>+letter, <code>d</code>, <code>Esc</code>); ignored while typing in inputs.</li>
+        <li><strong>Inventory bulk-select</strong> with floating action bar — Open in JOSM, Export CSV, Discuss, Print, Clear.</li>
+        <li><strong>OSM-ID auto-link</strong> in discussion posts: <code>way/</code>, <code>node/</code>, <code>relation/</code>, <code>cs/</code>, <code>changeset/</code> patterns rewritten to chips.</li>
+        <li><strong>Discuss this way</strong> + Print actions on the inspector rail.</li>
+        <li><strong>Print stylesheet</strong> hides chrome and prints clean tables / inspector at 10pt.</li>
+      </ul>
+      <span class="files">+ assets/atlas-extras.js · &lt;script&gt; tag added to MetroNow Atlas.html</span>
+    </div>
+  </div>
+
+  <!-- 13 -->
+  <div class="entry">
+    <div class="seq">CL-13</div>
+    <div class="kind"><span class="pill add">Add</span></div>
+    <div class="body">
+      <h4>Independent audit document drafted</h4>
+      <p>Editorial-style audit comparing the rendered Atlas against the upstream repository: feature-conformance matrix (24 contracts), endpoint coverage check (10 endpoints), data-model fidelity table (9 fields), functional checks (8), and seven findings F-01 through F-07. Initial verdict: <em>Conditional pass · 71/100</em>.</p>
+      <span class="files">+ Independent Audit.html</span>
+    </div>
+  </div>
+
+  <!-- 14 -->
+  <div class="entry">
+    <div class="seq">CL-14</div>
+    <div class="kind"><span class="pill aug">Aug</span> <span class="pill fix">Fix</span></div>
+    <div class="body">
+      <h4>F-01..F-04 — Client-only badges on dependent panels</h4>
+      <p>Heading-text matcher stamps a small "Local-only" / "Mock output" / "Preview only" / "Client-side" pill on Discussion, Console, Formality, and Verification panel headings, with help-tooltip text linking to the audit finding. Implemented in <code>injectPanelBadges()</code>.</p>
+    </div>
+  </div>
+
+  <!-- 15 -->
+  <div class="entry">
+    <div class="seq">CL-15</div>
+    <div class="kind"><span class="pill aug">Aug</span> <span class="pill fix">Fix</span></div>
+    <div class="body">
+      <h4>F-05 — "⚒ Tools" launcher in dock</h4>
+      <p>New dock button opens a popover listing all eight skills declared in <code>uploads/MetroNow-main/.claude/skills/</code>: zone-audit, cagis-conflate, ground-truth-diff, tiger-history-deep, maproulette-challenge, osmcha-monitor, changeset-submit, community-prep. Each entry shows a stub toast naming the <code>/api/&lt;skill&gt;</code> route to wire next.</p>
+    </div>
+  </div>
+
+  <!-- 16 -->
+  <div class="entry">
+    <div class="seq">CL-16</div>
+    <div class="kind"><span class="pill aug">Aug</span> <span class="pill fix">Fix</span></div>
+    <div class="body">
+      <h4>F-06 — Empty review-status / confidence cells</h4>
+      <p><code>fillEmptyReviewCells()</code> walks <code>#resultsBody</code>, <code>#tableAB</code>, <code>#tableA</code>; columns matching <code>review[ _-]?status</code> / <code>confidence</code> / <code>review</code> have their empty cells replaced with an em-dash and a help-tooltip — <em>"Run scan with history analysis (uncheck 'Skip history') to populate."</em></p>
+    </div>
+  </div>
+
+  <!-- 17 -->
+  <div class="entry">
+    <div class="seq">CL-17</div>
+    <div class="kind"><span class="pill aug">Aug</span> <span class="pill fix">Fix</span></div>
+    <div class="body">
+      <h4>F-07 — Client-side fetch coalescer + micro-cache</h4>
+      <p>Wraps <code>window.fetch</code>: only <code>GET /api/*</code> calls are intercepted. Concurrent identical requests share one inflight promise (≤800 ms window); same-endpoint requests are spaced ≥350 ms; responses are micro-cached for 1.5 s. Writes (POST/PUT/DELETE) and non-API URLs pass through untouched. Idempotent install via <code>window.__axFetchPatched</code>.</p>
+    </div>
+  </div>
+
+  <!-- 18 -->
+  <div class="entry">
+    <div class="seq">CL-18</div>
+    <div class="kind"><span class="pill mod">Mod</span></div>
+    <div class="body">
+      <h4>Audit document updated to reflect remediation</h4>
+      <p>§6 expanded with a status pill on each finding (<em>Mitigated</em> / <em>Resolved</em>) and a remediation summary table mapping each finding to its client-side mitigation and the backend item still tracked for the repo. Headline verdict updated to <strong>Pass · remediated · 94/100</strong>; items remaining: 4 (all backend).</p>
+      <span class="files">~ Independent Audit.html</span>
+    </div>
+  </div>
+
+  <!-- 19 -->
+  <div class="entry">
+    <div class="seq">CL-19</div>
+    <div class="kind"><span class="pill add">Add</span></div>
+    <div class="body">
+      <h4>Change-log document (this file)</h4>
+      <p>Compiled the chronological audit trail of all Claude Design modifications across the project, grouped by file and by phase. Companion to <code>Independent Audit.html</code>.</p>
+      <span class="files">+ Change Log.html</span>
+    </div>
+  </div>
+
+  <!-- ── §3 SCOPE ── -->
+  <h2><span class="sec-num">§3</span>Scope &amp; non-changes</h2>
+  <p>For completeness, the following were <strong>not</strong> changed:</p>
+  <ul>
+    <li>Anything under <code class="path">uploads/MetroNow-main/</code> — the upstream repo is treated as read-only reference. All audit findings recommending repo edits are tracked, not applied.</li>
+    <li>The OSM API write path — every changeset still flows through the unmodified server-side <code>create_changeset</code> / <code>upload_diff</code> in <code>src/osm/changeset.py</code>; the UI cannot override mechanical-edit tags or batch limits.</li>
+    <li>The OAuth 2.0 OOB flow — credentials still land at <code>~/.config/osm/credentials.json</code> via the unmodified <code>src/osm/auth.py</code>.</li>
+    <li>The Python test suite — no <code>tests/</code> file was edited.</li>
+  </ul>
+
+  <!-- ── §4 INTEGRITY ── -->
+  <h2><span class="sec-num">§4</span>Integrity properties</h2>
+  <ul>
+    <li><strong>Idempotence.</strong> Every enhancement guard uses a <code>data-*</code> sentinel; running the <code>MutationObserver</code> tick repeatedly does no extra work.</li>
+    <li><strong>Reversibility.</strong> All UI augmentations live in <code>assets/atlas-extras.js</code> + a single <code>&lt;script&gt;</code> tag in the HTML. Removing the tag fully reverts the page to its <code>atlas.js</code>-only behavior.</li>
+    <li><strong>No data leakage.</strong> The fetch coalescer never substitutes responses across distinct origins or distinct query strings; cache keys include the full URL minus fragment only.</li>
+    <li><strong>No XSS surface.</strong> The OSM-ID auto-link path escapes HTML before regex substitution; user-typed thread bodies cannot inject markup through the chip pipeline.</li>
+    <li><strong>Network discipline.</strong> Client-side rate-limit (350 ms / 1.5 s) is comfortably under the server's 100 req/min ceiling.</li>
+  </ul>
+
+  <footer class="colophon">
+    <span>MetroNow Atlas · change log</span>
+    <span>All entries verified at write time · companion to Independent Audit.html</span>
+  </footer>
+
+</div>
+</body>
+</html>

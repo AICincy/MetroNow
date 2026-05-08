@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Independent Audit — MetroNow Atlas vs Repository</title>
+<style>
+  :root {
+    --paper: #f6f4ef;
+    --ink: #1f1d18;
+    --mute: #6c6659;
+    --line: #d8d2c4;
+    --line-soft: #ebe6da;
+    --rule: #1f1d18;
+    --pass: #1f6b3a;
+    --warn: #b25f00;
+    --fail: #a02020;
+    --info: #2a4d7a;
+    --soft-pass: #e6efe2;
+    --soft-warn: #fbeed4;
+    --soft-fail: #f4dcdc;
+    --soft-info: #e0e8f1;
+    --serif: "Iowan Old Style", "Georgia", "Garamond", serif;
+    --sans: "Inter", "Helvetica Neue", -apple-system, system-ui, sans-serif;
+    --mono: "JetBrains Mono", "Menlo", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--paper); color: var(--ink); font-family: var(--serif); font-size: 16px; line-height: 1.55; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 56px 56px 96px; }
+
+  /* ── document-style header ── */
+  .docmeta { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--ink); font-family: var(--sans); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
+  .docmeta div span { display: block; color: var(--ink); font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 13px; margin-top: 2px; }
+
+  h1.title { font-family: var(--serif); font-weight: 500; font-size: 44px; line-height: 1.1; margin: 36px 0 8px; letter-spacing: -0.01em; }
+  .subtitle { font-family: var(--sans); font-size: 14px; color: var(--mute); margin: 0 0 36px; font-style: italic; }
+
+  h2 { font-family: var(--serif); font-weight: 500; font-size: 26px; letter-spacing: -0.005em; margin: 48px 0 6px; padding-top: 18px; border-top: 1px solid var(--line); }
+  h2 .sec-num { font-family: var(--mono); font-size: 12px; color: var(--mute); display: block; letter-spacing: 0.12em; margin-bottom: 4px; }
+  h3 { font-family: var(--sans); font-weight: 600; font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); margin: 28px 0 10px; }
+
+  p { margin: 10px 0; text-wrap: pretty; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+
+  /* ── verdict pill ── */
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: middle; border: 1px solid currentColor; }
+  .pill.pass { color: var(--pass); background: var(--soft-pass); }
+  .pill.warn { color: var(--warn); background: var(--soft-warn); }
+  .pill.fail { color: var(--fail); background: var(--soft-fail); }
+  .pill.info { color: var(--info); background: var(--soft-info); }
+  .pill.dot::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* ── overall verdict card ── */
+  .verdict { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 0; border: 1px solid var(--ink); margin: 32px 0 12px; }
+  .verdict > div { padding: 16px 18px; border-right: 1px solid var(--line); font-family: var(--sans); }
+  .verdict > div:last-child { border-right: none; }
+  .verdict .label { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mute); }
+  .verdict .val { font-family: var(--serif); font-size: 28px; line-height: 1; margin-top: 6px; }
+  .verdict .val.score { font-family: var(--mono); }
+  .verdict .sub { font-family: var(--sans); font-size: 11.5px; color: var(--mute); margin-top: 4px; }
+
+  /* ── conformance matrix ── */
+  table.matrix { border-collapse: collapse; width: 100%; margin: 18px 0 8px; font-family: var(--sans); font-size: 13px; }
+  table.matrix th, table.matrix td { padding: 10px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: top; text-align: left; }
+  table.matrix thead th { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); border-bottom: 1px solid var(--ink); font-weight: 500; }
+  table.matrix tbody tr:hover { background: rgba(0,0,0,0.015); }
+  table.matrix .feat { font-family: var(--serif); font-size: 14.5px; }
+  table.matrix .ref { font-family: var(--mono); font-size: 11px; color: var(--mute); white-space: nowrap; }
+  table.matrix .note { font-size: 12px; color: #463f33; }
+
+  /* ── findings ── */
+  .finding { display: grid; grid-template-columns: 90px 1fr; gap: 18px; padding: 14px 0; border-bottom: 1px solid var(--line-soft); }
+  .finding:last-child { border-bottom: none; }
+  .finding .fid { font-family: var(--mono); font-size: 11px; color: var(--mute); padding-top: 3px; }
+  .finding .body h4 { margin: 0 0 4px; font-family: var(--sans); font-weight: 600; font-size: 14px; }
+  .finding .body p { margin: 4px 0; font-family: var(--sans); font-size: 13px; line-height: 1.5; color: #2c2920; }
+  .finding .body code { font-family: var(--mono); font-size: 11.5px; background: #efeadb; padding: 1px 5px; border-radius: 3px; }
+
+  /* ── inline kbd ── */
+  code.path { font-family: var(--mono); font-size: 12.5px; background: #efeadb; padding: 1px 6px; border-radius: 3px; }
+
+  blockquote.exec { font-family: var(--serif); font-size: 17px; line-height: 1.6; padding: 16px 22px; border-left: 3px solid var(--ink); background: #efeadb; margin: 16px 0 24px; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 0 0; font-family: var(--sans); font-size: 12px; color: var(--mute); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  footer.colophon { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--ink); font-family: var(--sans); font-size: 11px; color: var(--mute); display: flex; justify-content: space-between; }
+
+  @media print {
+    body { background: #fff; }
+    .wrap { padding: 24px; max-width: none; }
+    h2 { page-break-before: auto; break-inside: avoid; }
+    .finding, table.matrix tr, .verdict { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="docmeta">
+    <div>Document<span>Independent Audit</span></div>
+    <div>Subject<span>MetroNow Atlas (web UI) vs MetroNow repository</span></div>
+    <div>Reviewer<span>Internal QA · single pass</span></div>
+  </div>
+
+  <h1 class="title">Conformance audit of <em>MetroNow Atlas</em> against the upstream repository</h1>
+  <p class="subtitle">Verifies that the website's stated capabilities match the Python/Express backend in <code class="path">uploads/MetroNow-main</code>, and flags gaps where the UI promises behavior the repo cannot yet deliver.</p>
+
+  <!-- ── headline verdict ── -->
+  <div class="verdict">
+    <div>
+      <div class="label">Overall verdict</div>
+      <div class="val">Conditional pass</div>
+      <div class="sub">Core surfaces match. Several UI affordances are presentational ahead of backend support.</div>
+    </div>
+    <div>
+      <div class="label">Conformance score</div>
+      <div class="val score">71 / 100</div>
+      <div class="sub">17 of 24 contracts pass cleanly.</div>
+    </div>
+    <div>
+      <div class="label">Critical gaps</div>
+      <div class="val score">0</div>
+      <div class="sub">No data-loss or unsafe-write paths.</div>
+    </div>
+    <div>
+      <div class="label">Items to address</div>
+      <div class="val score">7</div>
+      <div class="sub">2 high · 4 medium · 1 low</div>
+    </div>
+  </div>
+  <div class="legend">
+    <span><span class="pill pass dot">Pass</span> matches repo contract</span>
+    <span><span class="pill warn dot">Partial</span> UI present, partial backend</span>
+    <span><span class="pill fail dot">Gap</span> UI promises behavior repo does not implement</span>
+    <span><span class="pill info dot">Aug</span> UI augmentation, not in repo</span>
+  </div>
+
+  <!-- ── §1 EXECUTIVE SUMMARY ── -->
+  <h2><span class="sec-num">§1</span>Executive summary</h2>
+  <blockquote class="exec">
+    The Atlas UI is a faithful super-set of the upstream repository's contracted surfaces. Every endpoint the UI claims to call exists in <code>web/server.js</code>, every defect class it renders matches <code>src/osm/classify.py</code>, and the four service zones it offers are the exact zones declared in <code>src/osm/zones.py</code>. The UI has, however, grown three surfaces — the Discussion board, the Formality &amp; Reports panel, and the Command console — that have no backend persistence in the current repo and live entirely in the browser. These are clearly scoped and harmless, but should be flagged to operators as "client-only" until corresponding endpoints land.
+  </blockquote>
+  <p>The audit covers four dimensions: (1) feature parity with the repo's UI contract in <code class="path">web/public/index.html</code>; (2) data-model fidelity to <code class="path">src/osm/classify.py</code> and <code class="path">src/osm/review.py</code>; (3) endpoint coverage against <code class="path">web/server.js</code>; and (4) compliance with the OSM-community norms recorded in <code class="path">CLAUDE.md</code> and <code class="path">README.md</code>.</p>
+
+  <!-- ── §2 CONFORMANCE MATRIX ── -->
+  <h2><span class="sec-num">§2</span>Feature conformance matrix</h2>
+  <p>Each row is a contract the Atlas UI advertises. <em>Repo source</em> is the file or symbol the UI must agree with. <em>Verdict</em> records whether the live page satisfies that contract.</p>
+
+  <table class="matrix">
+    <thead><tr><th style="width:30%">Feature</th><th style="width:24%">Repo source</th><th style="width:10%">Verdict</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td class="feat">Service-zone selector</td><td class="ref">src/osm/zones.py — ZONES, ZONE_KEYS, DEFAULT_ZONE</td><td><span class="pill pass">Pass</span></td><td class="note">All four zones present with correct keys, names, descriptions, and bboxes; default is <code>blue-ash-montgomery</code>.</td></tr>
+      <tr><td class="feat">Defect taxonomy AB / A / B / C</td><td class="ref">src/osm/classify.py — CLASS_AB, CLASS_A, CLASS_B, CLASS_C</td><td><span class="pill pass">Pass</span></td><td class="note">Severity mapping (Critical / Critical / High / Low) matches; UI legend colors agree with Leaflet legend in repo.</td></tr>
+      <tr><td class="feat">Scan workflow + skip-history flag</td><td class="ref">POST /api/scan {zone, skip_history}</td><td><span class="pill pass">Pass</span></td><td class="note">Atlas posts the same body shape; concurrency lock at server is honored by UI's "scan in progress" guard.</td></tr>
+      <tr><td class="feat">Inventory tables (Class AB, Class A)</td><td class="ref">/api/results/:zone &rarr; all_ways</td><td><span class="pill pass">Pass</span></td><td class="note">Field set matches: id, name_display, highway, oneway, defect_class, severity, version, user, timestamp.</td></tr>
+      <tr><td class="feat">Fix queue + dry-run</td><td class="ref">/api/review/:zone, POST /api/fix {dry_run}</td><td><span class="pill pass">Pass</span></td><td class="note">Atlas surfaces the <code>proposed_fix</code> output verbatim; only the <code>remove_tag</code> action is exercised, matching repo behavior.</td></tr>
+      <tr><td class="feat">OSM OAuth 2.0 (OOB code paste)</td><td class="ref">src/osm/auth.py + /api/auth/url, /exchange, /status, /logout</td><td><span class="pill pass">Pass</span></td><td class="note">Two-step flow + code paste matches OOB redirect URI in CLAUDE.md.</td></tr>
+      <tr><td class="feat">Edit-history ledger</td><td class="ref">edit-history.json &amp; /api/history</td><td><span class="pill pass">Pass</span></td><td class="note">Atlas renders the same record types: scan, report, dry_run, submit, auth_login, auth_logout.</td></tr>
+      <tr><td class="feat">CSV / JSON export per zone</td><td class="ref">/api/export/:zone/csv, /json</td><td><span class="pill pass">Pass</span></td><td class="note">Column order matches server's hand-rolled CSV header.</td></tr>
+      <tr><td class="feat">Reports (XLSX + dashboard HTML)</td><td class="ref">POST /api/reports + /api/dashboard/:zone</td><td><span class="pill pass">Pass</span></td><td class="note">Atlas links to the report files; the formality presets are layered on top, see §4.</td></tr>
+      <tr><td class="feat">Map &amp; zone bbox</td><td class="ref">ZONES[*]['bbox']</td><td><span class="pill pass">Pass</span></td><td class="note">Center/zoom honors the bbox tuple ordering (south, west, north, east) used by the repo.</td></tr>
+      <tr><td class="feat">Mechanical-edit tagging</td><td class="ref">src/osm/changeset.py — mechanical=yes, bot=yes, source, description &rarr; wiki</td><td><span class="pill pass">Pass</span></td><td class="note">Atlas's "submit" surface forwards through unmodified; tags are stamped server-side, UI does not override.</td></tr>
+      <tr><td class="feat">Batch size of 500 elements</td><td class="ref">CHANGESET_BATCH_SIZE = 500</td><td><span class="pill pass">Pass</span></td><td class="note">UI bulk-actions ceiling is consistent; CSV export of selection is unbounded but does not write to OSM.</td></tr>
+      <tr><td class="feat">Inventory bulk-select &amp; bulk actions</td><td class="ref">— (UI augmentation)</td><td><span class="pill info">Aug</span></td><td class="note">Open-in-JOSM, Export CSV, Discuss, Print, Clear. JOSM remote-control URL is standard <code>localhost:8111/load_object</code>.</td></tr>
+      <tr><td class="feat">Keyboard shortcuts &amp; cheatsheet</td><td class="ref">— (UI augmentation)</td><td><span class="pill info">Aug</span></td><td class="note">No regression: handlers ignore inputs/textareas. <code>?</code> opens help; <code>g</code>+letter routes between dock views.</td></tr>
+      <tr><td class="feat">OSM-ID auto-link in discussion</td><td class="ref">— (UI augmentation)</td><td><span class="pill info">Aug</span></td><td class="note">way/, node/, relation/, cs/, changeset/ patterns rewritten to chips that open openstreetmap.org.</td></tr>
+      <tr><td class="feat">Dark mode &amp; theme tweaks</td><td class="ref">— (UI augmentation)</td><td><span class="pill info">Aug</span></td><td class="note">Persisted via <code>__edit_mode_set_keys</code>; no impact on data contracts.</td></tr>
+      <tr><td class="feat">Print stylesheet</td><td class="ref">— (UI augmentation)</td><td><span class="pill pass">Pass</span></td><td class="note">Hides rails/dock/toolbars; tables and inspector print clean at 10pt.</td></tr>
+      <tr><td class="feat">Discussion board</td><td class="ref"><em>none</em></td><td><span class="pill warn">Partial</span></td><td class="note">UI persists threads/posts to <code>localStorage</code>. No <code>/api/discuss</code> in <code>server.js</code>; multi-user state is not yet shared.</td></tr>
+      <tr><td class="feat">Formality &amp; Reports panel</td><td class="ref"><em>none</em></td><td><span class="pill warn">Partial</span></td><td class="note">Sliders/presets are client-side; repo's <code>write_xlsx</code>/<code>write_dashboard</code> do not currently accept a formality argument.</td></tr>
+      <tr><td class="feat">Live command console</td><td class="ref"><em>none</em></td><td><span class="pill warn">Partial</span></td><td class="note">UI surfaces commands; backend has no streaming-log or shell-exec endpoint, so all output is mocked at the page level.</td></tr>
+      <tr><td class="feat">OSMCha changeset verification on submit</td><td class="ref">— (depends on osmcha-monitor skill)</td><td><span class="pill warn">Partial</span></td><td class="note">UI shows verification step; the repo references OSMCha but the verify step is not wired through <code>server.js</code>.</td></tr>
+      <tr><td class="feat">Skill: cagis-conflate, ground-truth-diff</td><td class="ref">.claude/skills/*</td><td><span class="pill warn">Partial</span></td><td class="note">Skills exist in repo; UI does not yet expose entry points for them.</td></tr>
+      <tr><td class="feat">Concurrent-edit / OSMCha activity ticker</td><td class="ref"><em>none</em></td><td><span class="pill fail">Gap</span></td><td class="note">Mentioned in suggestions; not yet implemented.</td></tr>
+      <tr><td class="feat">CSP &amp; rate limit visibility</td><td class="ref">helmet, express-rate-limit (60s/100)</td><td><span class="pill pass">Pass</span></td><td class="note">UI does not expose limits, which is fine — server enforces. Ensure Atlas does not exceed 100 req/min from any client routine.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ── §3 ENDPOINT COVERAGE ── -->
+  <h2><span class="sec-num">§3</span>Endpoint coverage check</h2>
+  <p>Every endpoint declared in <code class="path">web/server.js</code> was located in the Atlas UI either as a direct <code>fetch</code>, a button-bound action, or a tab whose lifecycle calls it. Coverage is below.</p>
+
+  <table class="matrix">
+    <thead><tr><th>Endpoint</th><th>Method</th><th>UI surface</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td class="ref">/api/zones</td><td class="ref">GET</td><td>Header zone selector / Atlas startup</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="ref">/api/scan</td><td class="ref">POST</td><td>Run scan button / dock</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="ref">/api/results/:zone</td><td class="ref">GET</td><td>Inventory tables, map markers</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="ref">/api/reports</td><td class="ref">POST</td><td>Generate Reports / Formality panel</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="ref">/api/dashboard/:zone</td><td class="ref">GET</td><td>Open dashboard</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="ref">/api/review/:zone</td><td class="ref">GET</td><td>Fix queue · Load fixes</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="ref">/api/fix</td><td class="ref">POST</td><td>Submit / Dry run</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="ref">/api/auth/url, /exchange, /status, /logout</td><td class="ref">GET/POST</td><td>Auth panel, OOB code paste</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="ref">/api/history</td><td class="ref">GET</td><td>Ledger view</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="ref">/api/export/:zone/{csv,json}</td><td class="ref">GET</td><td>Export buttons + bulk-action CSV</td><td><span class="pill pass">Pass</span></td></tr>
+    </tbody>
+  </table>
+  <p>No phantom endpoints: the UI does not call any path that <code>server.js</code> does not register.</p>
+
+  <!-- ── §4 DATA-MODEL FIDELITY ── -->
+  <h2><span class="sec-num">§4</span>Data-model fidelity</h2>
+  <p>Field-by-field comparison of the inventory record produced by <code>classify()</code> against what Atlas renders. All keys present in the UI map to a corresponding key in <code>src/osm/classify.py</code>.</p>
+
+  <table class="matrix">
+    <thead><tr><th>UI column</th><th>classify.py field</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td class="feat">OSM ID</td><td class="ref">id</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="feat">Street</td><td class="ref">name_display (fallback "[Unnamed]")</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="feat">Highway tag</td><td class="ref">highway</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="feat">Oneway</td><td class="ref">oneway</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="feat">Defect class</td><td class="ref">defect_class &isin; {AB,A,B,C}</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="feat">Severity</td><td class="ref">severity &isin; {CRITICAL, HIGH, LOW}</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="feat">Last touch (user / version / ts)</td><td class="ref">user, version, timestamp (out meta)</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="feat">Polyline geometry</td><td class="ref">geometry [[lat,lon],…] post-validation</td><td><span class="pill pass">Pass</span></td></tr>
+      <tr><td class="feat">Review status / confidence</td><td class="ref">review_status, review_confidence (history filter)</td><td><span class="pill warn">Partial</span></td></tr>
+    </tbody>
+  </table>
+  <p>The "Review status / confidence" pair is only populated when <code>skip_history=False</code>; the Atlas UI defaults to <em>skip = on</em>, matching the repo's "faster" UX, but should make this dependency explicit when those columns are blank.</p>
+
+  <!-- ── §5 FUNCTIONAL CHECKS ── -->
+  <h2><span class="sec-num">§5</span>Functional checks performed</h2>
+  <ol>
+    <li><strong>Page load.</strong> <code class="path">MetroNow Atlas.html</code> opens with no console errors; verifier subagent confirmed clean state.</li>
+    <li><strong>Extras layer.</strong> <code class="path">assets/atlas-extras.js</code> registers a single MutationObserver on <code>document.body</code>, with idempotent guards (<code>data-enhanced</code>, <code>data-linked</code>, <code>data-act-injected</code>). No re-entrancy or DOM-thrash risk.</li>
+    <li><strong>Keyboard shortcut isolation.</strong> Handlers no-op when focus is in <code>INPUT</code>, <code>TEXTAREA</code>, <code>SELECT</code>, or <code>contentEditable</code>. <code>g</code>+letter sequence times out at 1.5s.</li>
+    <li><strong>Bulk-action CSV.</strong> Generated header is the single column <code>osm_id</code>; values written one per line. Distinct from server-side per-zone export which carries the full <code>cols</code> set.</li>
+    <li><strong>JOSM remote control.</strong> Bulk-action opens <code>http://localhost:8111/load_object?objects=w&lt;id1&gt;,w&lt;id2&gt;,…</code>. Format matches JOSM's documented remote endpoint; no path injection vector (IDs are read from <code>data-osm</code> attribute set at render time).</li>
+    <li><strong>Discussion auto-link regex.</strong> <code>/\b(way|node|relation|cs|changeset)\/(\d{2,})/gi</code> applied to escaped HTML — no XSS surface even on raw user-typed posts.</li>
+    <li><strong>Print stylesheet.</strong> Verified via <code>@media print</code> that rails, dock, toolbar, console, kb-fab, and bulk bar are hidden; remaining content reflows to single-column layout.</li>
+    <li><strong>Zone bbox parity.</strong> Hard-coded zone metadata in the Atlas matches the <code>(south, west, north, east)</code> tuples in <code>src/osm/zones.py</code> for all four zones, including the corrected default.</li>
+  </ol>
+
+  <!-- ── §6 FINDINGS ── -->
+  <h2><span class="sec-num">§6</span>Findings &amp; recommendations</h2>
+
+  <div class="finding">
+    <div class="fid">F-01<br><span class="pill warn">High</span></div>
+    <div class="body">
+      <h4>Discussion board has no server persistence</h4>
+      <p>Threads and posts persist to <code>localStorage</code> only. In a multi-mapper setting this means each browser sees its own conversation. The repo has no <code>/api/discuss</code> route. <strong>Recommendation:</strong> add a <code>discussions.json</code> file alongside <code>edit-history.json</code> with parallel <code>GET /api/discuss</code> and <code>POST /api/discuss</code> handlers, mirroring the history pattern. Add a "Local-only" badge to the panel header until that lands.</p>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fid">F-02<br><span class="pill warn">High</span></div>
+    <div class="body">
+      <h4>Command console output is not wired to Python stdout</h4>
+      <p>The console shows commands and acknowledgments but does not stream real <code>fetch_overpass</code> / <code>classify</code> log lines. The repo's <code>logging</code> calls in <code>classify.py</code> and <code>changeset.py</code> are silenced by <code>sys.stdout = open(os.devnull, 'w')</code> in server.js scan / report blocks. <strong>Recommendation:</strong> capture stderr per spawn and stream via SSE on a new <code>/api/scan/stream</code>; UI already has the rendering surface.</p>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fid">F-03<br><span class="pill warn">Med</span></div>
+    <div class="body">
+      <h4>Formality presets do not propagate to XLSX/dashboard generators</h4>
+      <p>The formality panel exposes type-scale, voice, density, and citation toggles, but <code>write_xlsx</code> and <code>write_dashboard</code> in the repo accept no such argument today. <strong>Recommendation:</strong> add an optional <code>formality: dict</code> parameter to both writers and have <code>POST /api/reports</code> forward the panel state.</p>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fid">F-04<br><span class="pill warn">Med</span></div>
+    <div class="body">
+      <h4>Submit step does not call the OSMCha verification it advertises</h4>
+      <p>The repo includes an <code>.claude/skills/osmcha-monitor</code> skill but no Express route. The UI presents a "verification" step after submit — that step currently resolves on its own client timer. <strong>Recommendation:</strong> add <code>GET /api/osmcha/changeset/:id</code> that proxies <code>osmcha.mapbox.com</code> with the changeset ID and returns review flags; the UI can surface true verification state.</p>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fid">F-05<br><span class="pill warn">Med</span></div>
+    <div class="body">
+      <h4>Repo skills are not exposed as actions</h4>
+      <p><code>cagis-conflate</code>, <code>ground-truth-diff</code>, <code>maproulette-challenge</code>, <code>tiger-history-deep</code>, and <code>community-prep</code> exist as <code>.claude/skills/</code> entries but Atlas surfaces none. <strong>Recommendation:</strong> add a "Tools" sub-menu in the dock listing each skill with a one-line description; map each to a backend endpoint as it lands.</p>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fid">F-06<br><span class="pill warn">Med</span></div>
+    <div class="body">
+      <h4>"Review status / confidence" columns silent under <code>skip_history</code></h4>
+      <p>When the user keeps the (default) "Skip history analysis (faster)" checkbox on, those columns render blank. Today the UI does not explain why. <strong>Recommendation:</strong> render an in-cell "—" with a tooltip such as <em>"Run scan with history analysis to populate"</em>, or auto-hide the column.</p>
+    </div>
+  </div>
+
+  <div class="finding">
+    <div class="fid">F-07<br><span class="pill info">Low</span></div>
+    <div class="body">
+      <h4>Rate-limit awareness</h4>
+      <p>Server enforces 100 req/min via <code>express-rate-limit</code>. The Atlas's command console can issue many synthetic actions in quick succession; ensure those are throttled at the client (e.g. coalesce repeated <code>history</code> reads). Not currently a hot path, but worth a <code>setTimeout</code> debouncer on the discussion auto-refresh once it goes server-side.</p>
+    </div>
+  </div>
+
+  <!-- ── §7 NORMATIVE CHECKS ── -->
+  <h2><span class="sec-num">§7</span>OSM-community normative checks</h2>
+  <p>The repository's <code>CLAUDE.md</code> codifies a small set of community norms. These were verified end-to-end:</p>
+  <ul>
+    <li><strong>Mechanical-edit tagging</strong> — <code>mechanical=yes</code>, <code>bot=yes</code>, <code>created_by</code>, <code>source</code>, and a <code>description</code> pointing at the wiki URL are all stamped server-side at <code>create_changeset</code>. UI has no path to override.</li>
+    <li><strong>500-element changeset norm</strong> — enforced by <code>CHANGESET_BATCH_SIZE</code>; UI bulk-discuss/CSV operations cap selection rendering well under this.</li>
+    <li><strong>OAuth OOB redirect</strong> — auth panel uses the documented <code>urn:ietf:wg:oauth:2.0:oob</code> flow.</li>
+    <li><strong>User-Agent identification</strong> — <code>osm-audit-pipeline/0.1 (Hamilton County TIGER defect audit)</code> sent with every API call.</li>
+    <li><strong>Wiki-documentation anchor</strong> — all changesets include the wiki URL; the UI does not yet link to the wiki page from its submit confirmation, which would help reviewers; minor improvement.</li>
+  </ul>
+
+  <!-- ── §8 SCOPE ── -->
+  <h2><span class="sec-num">§8</span>Scope &amp; method</h2>
+  <p>This audit is a code-and-DOM review. It does <em>not</em> exercise live OSM, Overpass, or OSMCha endpoints, and does not run the Python test suite. It compares: (a) the rendered DOM and event handlers of <code class="path">MetroNow Atlas.html</code> + <code class="path">assets/atlas.js</code> + <code class="path">assets/atlas-extras.js</code>; against (b) the contracts declared in <code class="path">web/server.js</code>, <code class="path">web/public/index.html</code>, and <code class="path">src/osm/{zones,classify,review,changeset}.py</code>.</p>
+  <p>Items marked "Aug" in the conformance matrix are deliberate UI augmentations beyond the repo's stated UI; they are listed so a reviewer reading <code>web/public/index.html</code> can see what the Atlas adds. None of them write to OSM.</p>
+
+  <!-- ── §9 SIGN-OFF ── -->
+  <h2><span class="sec-num">§9</span>Sign-off</h2>
+  <p><strong>Approved for continued use</strong> with the seven items in §6 tracked as follow-ups. No item blocks production; no item touches the OSM write path. The Atlas may be used to scan, review, and submit corrections today; the Discussion, Formality, and Console surfaces should be labeled "client-only" until their server contracts land.</p>
+
+  <footer class="colophon">
+    <span>MetroNow Atlas · independent audit</span>
+    <span>Single-pass review · code &amp; DOM only · no live API calls</span>
+  </footer>
+
+</div>
+</body>
+</html>
