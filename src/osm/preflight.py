@@ -285,7 +285,8 @@ def check_pytest_passes(timeout: int = 60) -> Check:
             check=False,
         )
         if result.returncode == 0:
-            tail = result.stdout.strip().splitlines()[-1] if result.stdout else ""
+            lines = (result.stdout or "").strip().splitlines()
+            tail = lines[-1] if lines else ""
             return Check(
                 name="pytest tests/ passes cleanly",
                 category=CAT_PIPELINE,

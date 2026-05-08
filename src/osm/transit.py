@@ -202,9 +202,40 @@ def _quota_exhausted() -> bool:
 
 
 def _increment_usage() -> None:
-    data = _read_usage()
-    data["count"] = int(data.get("count", 0)) + 1
-    _write_usage(data)
+    """Atomically increment the monthly call counter.
+
+    Concurrent scans (CLI + web server invoking the client at the same
+    time) could otherwise lose updates via interleaved read-modify-write.
+    On POSIX we hold an exclusive ``fcntl.flock`` on a sibling lock file
+    for the duration of the read+write; on platforms without ``fcntl``
+    the lock degrades to a no-op (tradeoff: better than corrupting the
+    counter on Linux for the sake of Windows symmetry).
+    """
+    try:
+        import fcntl  # POSIX-only; Windows users get the unlocked path
+    except ImportError:
+        data = _read_usage()
+        data["count"] = int(data.get("count", 0)) + 1
+        _write_usage(data)
+        return
+
+    USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = USAGE_FILE.with_suffix(USAGE_FILE.suffix + ".lock")
+    try:
+        with lock_path.open("a+") as lock_fh:
+            fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
+            try:
+                data = _read_usage()
+                data["count"] = int(data.get("count", 0)) + 1
+                _write_usage(data)
+            finally:
+                fcntl.flock(lock_fh.fileno(), fcntl.LOCK_UN)
+    except OSError as exc:
+        log.warning("Could not acquire Transit usage lock: %s", exc)
+        # Fall back to unlocked update — better than dropping the increment
+        data = _read_usage()
+        data["count"] = int(data.get("count", 0)) + 1
+        _write_usage(data)
 
 
 def status() -> TransitClientStatus:
