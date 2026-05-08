@@ -28,7 +28,10 @@ def _auth_headers() -> dict:
 
 CHANGESET_BATCH_SIZE = 500
 
-DEFAULT_SOURCE = "survey;CAGIS Open Data Hub;ODOT TIMS"
+# NOTE: ODOT TIMS was previously listed here, but the project does not yet
+# consume the TIMS REST API (no programmatic endpoint has been verified).
+# Re-add only when an actual TIMS-fed detector or conflator lands in src/osm/.
+DEFAULT_SOURCE = "survey;CAGIS Open Data Hub"
 DEFAULT_WIKI_URL = WIKI_URL
 
 # Attribution required by the CAGIS Open Data Hub license. We add this as a

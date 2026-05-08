@@ -99,8 +99,8 @@ markers survive.
 
 6. **Submit** — `src/osm/changeset.py`. Creates batched OSM API v0.6
    changesets (≤ 500 elements per the community norm; CGImap hard limit is
-   10,000). Required tags: `comment`, `source=survey;CAGIS Open Data Hub;ODOT
-   TIMS`, `created_by=MetroNow TIGER Audit Pipeline/0.1`, `mechanical=yes`,
+   10,000). Required tags: `comment`, `source=survey;CAGIS Open Data Hub`,
+   `created_by=MetroNow TIGER Audit Pipeline/0.1`, `mechanical=yes`,
    `bot=yes`, `description=<wiki URL>`. CAGIS-verified fixes additionally
    carry `cagis:attribution` to satisfy the Open Data Hub license.
 

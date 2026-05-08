@@ -163,7 +163,7 @@ All automated edits to OpenStreetMap must comply with the
 The pipeline enforces the mechanical attributes:
 
 - Every changeset carries `mechanical=yes`, `bot=yes`, `created_by=...`,
-  `source=survey;CAGIS Open Data Hub;ODOT TIMS`, and `description=<wiki URL>`.
+  `source=survey;CAGIS Open Data Hub`, and `description=<wiki URL>`.
 - Every CAGIS-sourced fix additionally writes `cagis:attribution` to satisfy
   the CAGIS Open Data Hub license terms.
 - The default per-changeset batch size is 500 elements (`changeset.py:

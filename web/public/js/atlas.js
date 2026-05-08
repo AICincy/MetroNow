@@ -1072,7 +1072,7 @@
         <label class="opt-row col"><span>Tone</span><input class="input" id="fmTone" value="${esc(v.tone)}"></label>
         <label class="opt-row"><input type="checkbox" id="fmCit" ${v.citations ? "checked" : ""}> <span>Include numbered citations</span></label>
         <label class="opt-row"><input type="checkbox" id="fmGlo" ${v.glossary ? "checked" : ""}> <span>Append glossary section</span></label>
-        <label class="opt-row"><input type="checkbox" id="fmCAG" ${v.cagis_credit ? "checked" : ""}> <span>Include CAGIS / ODOT TIMS data credit</span></label>
+        <label class="opt-row"><input type="checkbox" id="fmCAG" ${v.cagis_credit ? "checked" : ""}> <span>Include CAGIS Open Data Hub credit</span></label>
       </form>
     `;
   }

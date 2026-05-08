@@ -41,7 +41,7 @@ Before ANY changeset submission, verify:
 Every changeset MUST include:
 ```xml
 <tag k="comment" v="TIGER defect correction in MetroNow {zone_name} zone: {description}"/>
-<tag k="source" v="survey;CAGIS Open Data Hub;ODOT TIMS"/>
+<tag k="source" v="survey;CAGIS Open Data Hub"/>
 <tag k="mechanical" v="yes"/>
 <tag k="created_by" v="MetroNow TIGER Audit Pipeline"/>
 <tag k="description" v="https://wiki.openstreetmap.org/wiki/Automated_edits/{username}"/>

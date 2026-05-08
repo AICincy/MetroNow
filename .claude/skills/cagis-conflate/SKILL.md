@@ -20,13 +20,17 @@ Cross-reference OSM against authoritative sources for: **$target**
 - Accuracy: National Map Accuracy Standards for 1"=100' base map, NAD83
 - Use for: Road geometry validation, address verification, new road detection
 
-### ODOT TIMS Road Inventory
+### ODOT TIMS Road Inventory (NOT YET INTEGRATED)
 - URL: `tims.dot.state.oh.us`
 - Content: State-certified mileage for HPMS reporting; annual update
 - License: No copyright per ODOT GISP Ian Kidner
 - Attributes: Lane miles, federal-aid eligibility, speed zones, NHS designation
-- Use for: Highway classification ground truth (is this road state highway? federal-aid? what speed zone?)
+- Use for (when wired): Highway classification ground truth (is this road state highway? federal-aid? what speed zone?)
 - TMS tiles: `https://tiles.mblaine.com/ohio/{z}/{x}/{y}.png` (mblaine's Mapnik render of ODOT data)
+- Status: An independent API audit on 2026-05-08 could not locate a working
+  ArcGIS REST endpoint for TIMS at the documented `gis.dot.state.oh.us`
+  paths. Until a working endpoint is wired in `src/osm/`, do NOT include
+  "ODOT TIMS" in the `source=` tag of any submitted changeset.
 
 ### TIGER/Line 2024
 - File: `tl_2024_39061_roads.zip` (Census Bureau, FIPS 39061 = Hamilton County)

@@ -55,8 +55,9 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
   `_cincyimport`-convention account
 - Changeset community norm is ~500 elements (CGImap hard limit 10,000)
 - Use MapRoulette for corrections with >5% expected false-positive rate
-- Ground truth: CAGIS quarterly centerlines (FeatureServer/26), ODOT TIMS,
-  TIGER/Line 2024
+- Active ground truth: CAGIS quarterly centerlines (FeatureServer/26)
+- Aspirational ground truth (not yet integrated; do not cite in `source=`
+  tags until a working endpoint is wired): ODOT TIMS, TIGER/Line 2024
 - Every CAGIS-sourced changeset must carry the `cagis:attribution` tag per
   the Open Data Hub license
 
