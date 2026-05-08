@@ -1528,13 +1528,16 @@ table.t a:hover { text-decoration: underline; }
       </div>
     </div>
 
-    <!-- top-right: basemap -->
+    <!-- top-right: basemap + overlays -->
     <div class="map-overlay tr">
       <div class="basemap-float" role="radiogroup" aria-label="Basemap">
         <button class="bm-btn" data-base="positron" aria-pressed="true">Light</button>
         <button class="bm-btn" data-base="dark" aria-pressed="false">Dark</button>
         <button class="bm-btn" data-base="voyager" aria-pressed="false">Map</button>
         <button class="bm-btn" data-base="esri" aria-pressed="false">Sat</button>
+      </div>
+      <div class="basemap-float" role="group" aria-label="Ground-truth overlays" style="margin-top: 6px;">
+        <button class="bm-btn" id="cagisOverlayToggle" aria-pressed="false" title="CAGIS Street Centerlines (Hamilton County)">CAGIS</button>
       </div>
     </div>
 
@@ -1619,6 +1622,23 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="fixBody"></div>
     </div>
 
+    <div class="overlay-panel hidden" id="panel-investigations">
+      <div class="overlay-head">
+        <h2 class="overlay-title">Investigations <span style="font-family: var(--mono); font-size: 11px; color: var(--ink-mute); text-transform: none; letter-spacing: 0; margin-left: 8px;" id="investCount"></span></h2>
+        <div class="overlay-actions">
+          <div class="seg" id="investFilterSeg" data-tweak="invest" style="margin-right: 6px;">
+            <button class="seg-btn" data-v="review" aria-pressed="true">Review band</button>
+            <button class="seg-btn" data-v="unmatched" aria-pressed="false">Unmatched</button>
+            <button class="seg-btn" data-v="all" aria-pressed="false">All</button>
+          </div>
+          <button class="icon-btn" data-close-panel="investigations" aria-label="Close">
+            <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="overlay-body" id="investigationsBody"></div>
+    </div>
+
     <div class="overlay-panel hidden" id="panel-history">
       <div class="overlay-head">
         <h2 class="overlay-title">Audit ledger</h2>
@@ -1688,6 +1708,11 @@ table.t a:hover { text-decoration: underline; }
         <svg viewBox="0 0 16 16" fill="none"><path d="M3 13l4-4 6 6M9 7l4-4M11 3l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Fix
         <span class="dock-badge" id="dockFix" style="display:none;">0</span>
+      </button>
+      <button class="dock-btn" data-view="investigations" aria-pressed="false" title="CAGIS review-band and unmatched ways">
+        <svg viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.3"/><path d="M10.5 10.5L13.5 13.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Investigate
+        <span class="dock-badge" id="dockInvestigate" style="display:none;">0</span>
       </button>
       <button class="dock-btn" data-view="history" aria-pressed="false">
         <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.5V8l2.5 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
@@ -1765,6 +1790,7 @@ table.t a:hover { text-decoration: underline; }
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/esri-leaflet@3.0.14/dist/esri-leaflet.js"></script>
 <script src="/js/atlas.js"></script>
 <script src="/js/atlas-extras.js"></script>
 </body>

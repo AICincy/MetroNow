@@ -27,10 +27,10 @@ from typing import Any
 import requests
 
 from osm._geometry import (
-    direction_alignment as _direction_alignment,
+    directed_hausdorff_meters as _directed_hausdorff_meters,
 )
 from osm._geometry import (
-    hausdorff_meters as _hausdorff_meters,
+    direction_alignment as _direction_alignment,
 )
 from osm._geometry import (
     line_unit_vector as _line_unit_vector,
@@ -42,7 +42,13 @@ from osm._geometry import (
     meters_to_degrees as _meters_to_degrees_helper,
 )
 from osm._geometry import (
+    min_dist_to_polyline as _min_dist_to_polyline,
+)
+from osm._geometry import (
     name_similarity as _name_similarity,
+)
+from osm._geometry import (
+    polyline_length_m as _polyline_length_m,
 )
 from osm.cache import bbox_hash as _bbox_hash_helper
 from osm.cache import cache_path as _bbox_cache_path
@@ -76,6 +82,30 @@ CAGIS_ATTRIBUTION = (
 BUFFER_M = 30.0
 HIGH_CONFIDENCE = 0.85
 REVIEW_CONFIDENCE = 0.6
+
+# Confidence-score weights. Single source of truth for the matcher AND the
+# Phase 2a diagnostic — adjusting these here keeps both in sync.
+W_NAME = 0.5
+W_GEOMETRY = 0.3
+W_DIRECTION = 0.2
+# Sum without the direction term; used by the F4 (direction-drag) attribution
+# to ask "would this match clear REVIEW_CONFIDENCE if direction were perfect?"
+W_NON_DIRECTION = W_NAME + W_GEOMETRY
+
+# Phase 2a diagnostic thresholds. These do NOT change scoring behaviour;
+# they only classify *why* a way landed in its current confidence bucket.
+DIAG_NAME_FAIL_THRESHOLD = 0.5      # name_similarity below this is "name fail"
+DIAG_SHORT_WAY_M = 50.0             # ways shorter than this have noisy direction
+DIAG_DIAGNOSTIC_BUFFER_M = BUFFER_M  # buffer used for candidate enumeration
+
+# Bucket labels for diagnose_match() / write_baseline_manifest().
+BUCKET_MATCHED_HIGH = "MATCHED_HIGH"          # confidence >= 0.85
+BUCKET_MATCHED_REVIEW = "MATCHED_REVIEW"      # 0.6 <= confidence < 0.85
+BUCKET_F1_NO_CANDIDATE = "F1_NO_CANDIDATE"    # no CAGIS within BUFFER_M
+BUCKET_F2_NAME_FAIL = "F2_NAME_FAIL"          # geometry passes, name drags
+BUCKET_F3_GEOMETRY_FAIL = "F3_GEOMETRY_FAIL"  # candidates exist, all haus > BUFFER_M
+BUCKET_F4_DIRECTION_DRAG = "F4_DIRECTION_DRAG"  # short way; direction term killed it
+BUCKET_MIXED_LOW = "MIXED_LOW"                # confidence < 0.6 with no single dominant cause
 
 # CAGIS schema (verified by probing the FeatureServer 2026-05-07).
 # Real field names — do not rename without re-probing.
@@ -435,7 +465,7 @@ class ConflationIndex:
 
         best: tuple[float, _CagisRecord, float, float, float] | None = None
         for rec in candidates:
-            haus = _hausdorff_meters(osm_geometry, rec.geometry_lonlat)
+            haus = _directed_hausdorff_meters(osm_geometry, rec.geometry_lonlat)
             if haus is None or haus > BUFFER_M:
                 # Even with bbox proximity, geometry may be too far.
                 continue
@@ -444,9 +474,9 @@ class ConflationIndex:
             dir_align = _direction_alignment(osm_vec, cagis_vec)
             geom_overlap = max(0.0, min(1.0, 1.0 - haus / BUFFER_M))
             confidence = (
-                0.5 * name_sim
-                + 0.3 * geom_overlap
-                + 0.2 * dir_align
+                W_NAME * name_sim
+                + W_GEOMETRY * geom_overlap
+                + W_DIRECTION * dir_align
             )
             if best is None or confidence > best[0]:
                 best = (confidence, rec, name_sim, haus, dir_align)
@@ -469,6 +499,286 @@ class ConflationIndex:
                 and name_sim >= 0.85
             ),
         }
+
+    def diagnose_match(
+        self, osm_geometry: list[list[float]], osm_name: str | None
+    ) -> dict:
+        """Phase 2a: per-way diagnostic that classifies match outcome.
+
+        Read-only. Does NOT change scoring or what :meth:`match` returns.
+        Always returns a dict with a ``bucket`` key plus enough metric
+        context to attribute the outcome.
+
+        Buckets:
+            MATCHED_HIGH       — confidence >= HIGH_CONFIDENCE (auto-submit)
+            MATCHED_REVIEW     — REVIEW_CONFIDENCE <= confidence < HIGH
+            F1_NO_CANDIDATE    — STRtree returned nothing within BUFFER_M
+            F2_NAME_FAIL       — best candidate within BUFFER_M but name drags
+            F3_GEOMETRY_FAIL   — candidates within buffer; all Hausdorff > BUFFER_M
+            F4_DIRECTION_DRAG  — short way (< DIAG_SHORT_WAY_M); direction term
+                                 alone pushed confidence under REVIEW_CONFIDENCE
+            MIXED_LOW          — confidence < REVIEW_CONFIDENCE with no
+                                 dominant single cause
+        """
+        way_length_m = round(_polyline_length_m(osm_geometry), 2)
+        diag: dict[str, Any] = {
+            "bucket": BUCKET_F1_NO_CANDIDATE,
+            "confidence": None,
+            "name_similarity": None,
+            "hausdorff_m": None,
+            "direction_alignment": None,
+            "candidates_within_buffer": 0,
+            "nearest_distance_m": None,
+            "way_length_m": way_length_m,
+            "best_match": None,
+        }
+
+        if not self.available:
+            diag["bucket"] = BUCKET_F1_NO_CANDIDATE
+            diag["nearest_distance_m"] = None
+            return diag
+        if not osm_geometry or len(osm_geometry) < 2:
+            return diag
+
+        try:
+            line = LineString([(p[1], p[0]) for p in osm_geometry])
+        except Exception:  # noqa: BLE001
+            return diag
+
+        candidates = self.within_buffer(line, BUFFER_M)
+        diag["candidates_within_buffer"] = len(candidates)
+
+        if not candidates:
+            # F1: log distance to the nearest CAGIS centerline so the buffer
+            # threshold can be tuned with evidence in Phase 2b.
+            try:
+                # nearest() takes (lon, lat); _min_dist_to_polyline takes
+                # (lat, lon) for the point and (lat, lon) tuples for the line.
+                first_pt_lonlat = (osm_geometry[0][1], osm_geometry[0][0])
+                nearest_rec = self.nearest(first_pt_lonlat)
+                if nearest_rec is not None:
+                    cagis_latlon = [
+                        (lat, lon) for lon, lat in nearest_rec.geometry_lonlat
+                    ]
+                    nd = _min_dist_to_polyline(
+                        (osm_geometry[0][0], osm_geometry[0][1]), cagis_latlon
+                    )
+                    diag["nearest_distance_m"] = round(nd, 2)
+            except Exception:  # noqa: BLE001
+                pass
+            diag["bucket"] = BUCKET_F1_NO_CANDIDATE
+            return diag
+
+        # Score every candidate the same way match() does, but keep the
+        # full scoring tuple so we can attribute the dominant penalty.
+        osm_norm = norm_name(osm_name)
+        osm_vec = _line_unit_vector(osm_geometry)
+        scored: list[
+            tuple[float, _CagisRecord, float, float, float, bool]
+        ] = []
+        for rec in candidates:
+            haus = _directed_hausdorff_meters(osm_geometry, rec.geometry_lonlat)
+            if haus is None:
+                continue
+            name_sim = _name_similarity(osm_norm, rec.name_norm)
+            cagis_vec = _line_unit_vector_lonlat(rec.geometry_lonlat)
+            dir_align = _direction_alignment(osm_vec, cagis_vec)
+            geom_overlap = max(0.0, min(1.0, 1.0 - haus / BUFFER_M))
+            confidence = (
+                W_NAME * name_sim
+                + W_GEOMETRY * geom_overlap
+                + W_DIRECTION * dir_align
+            )
+            passed_haus = haus <= BUFFER_M
+            scored.append(
+                (confidence, rec, name_sim, haus, dir_align, passed_haus)
+            )
+
+        if not scored:
+            diag["bucket"] = BUCKET_F3_GEOMETRY_FAIL
+            return diag
+
+        passing = [s for s in scored if s[5]]
+        if not passing:
+            # F3: candidates were close enough for the buffer query but ALL
+            # had Hausdorff distance > BUFFER_M. Report the closest haus to
+            # show how far over the threshold they are.
+            best_over = min(scored, key=lambda s: s[3])
+            diag["bucket"] = BUCKET_F3_GEOMETRY_FAIL
+            diag["hausdorff_m"] = round(best_over[3], 2)
+            diag["name_similarity"] = round(best_over[2], 4)
+            diag["direction_alignment"] = round(best_over[4], 4)
+            return diag
+
+        # match()'s "best" is the highest-confidence Hausdorff-passing record.
+        best = max(passing, key=lambda s: s[0])
+        confidence, rec, name_sim, haus, dir_align, _ = best
+        diag["confidence"] = round(confidence, 4)
+        diag["name_similarity"] = round(name_sim, 4)
+        diag["hausdorff_m"] = round(haus, 2)
+        diag["direction_alignment"] = round(dir_align, 4)
+        diag["best_match"] = {
+            "cagis_id": rec.cagis_id,
+            "cagis_name": rec.name,
+        }
+
+        if confidence >= HIGH_CONFIDENCE:
+            diag["bucket"] = BUCKET_MATCHED_HIGH
+            return diag
+        if confidence >= REVIEW_CONFIDENCE:
+            diag["bucket"] = BUCKET_MATCHED_REVIEW
+            return diag
+
+        # Confidence below REVIEW_CONFIDENCE — attribute the dominant cause.
+        # F4 first: a short way whose match would have cleared review except
+        # for a low direction term. Rescale by W_NON_DIRECTION so the
+        # remaining (name + geometry) weights still sum to 1, and so this
+        # stays correct if W_NAME / W_GEOMETRY / W_DIRECTION are retuned.
+        confidence_without_dir = (
+            W_NAME * name_sim
+            + W_GEOMETRY * max(0.0, min(1.0, 1.0 - haus / BUFFER_M))
+        )
+        confidence_without_dir_rescaled = (
+            confidence_without_dir / W_NON_DIRECTION
+            if W_NON_DIRECTION > 0 else 0.0
+        )
+        if (
+            way_length_m < DIAG_SHORT_WAY_M
+            and dir_align < 0.5
+            and confidence_without_dir_rescaled >= REVIEW_CONFIDENCE
+        ):
+            diag["bucket"] = BUCKET_F4_DIRECTION_DRAG
+            return diag
+
+        # F2: name is the dominant single penalty (geometry and direction
+        # both look reasonable, but name_similarity is below threshold).
+        geom_overlap = max(0.0, min(1.0, 1.0 - haus / BUFFER_M))
+        if (
+            name_sim < DIAG_NAME_FAIL_THRESHOLD
+            and geom_overlap >= 0.5
+            and dir_align >= 0.5
+        ):
+            diag["bucket"] = BUCKET_F2_NAME_FAIL
+            return diag
+
+        diag["bucket"] = BUCKET_MIXED_LOW
+        return diag
+
+
+def diagnose_way(osm_way: dict, index: ConflationIndex) -> dict:
+    """Phase 2a entry point: per-way diagnostic dict for one OSM way.
+
+    The return shape matches :meth:`ConflationIndex.diagnose_match` plus an
+    ``id`` field for downstream aggregation. Safe to call when shapely is
+    unavailable — every way ends up in F1_NO_CANDIDATE in that case.
+    """
+    diag = index.diagnose_match(
+        osm_way.get("geometry") or [], osm_way.get("name")
+    )
+    out: dict[str, Any] = {"id": osm_way.get("id"), **diag}
+    return out
+
+
+def diagnose_all(
+    all_ways: list[dict], index: ConflationIndex
+) -> list[dict]:
+    """Run diagnose_way over every way without mutating the input.
+
+    Use this for Phase 2a baseline manifests — it does not write
+    ``cagis_match`` (use :func:`conflate` for that). Caller is expected to
+    feed the result into :func:`write_baseline_manifest`.
+    """
+    return [diagnose_way(w, index) for w in all_ways]
+
+
+def summarize_diagnostics(rows: list[dict]) -> dict:
+    """Aggregate per-way diagnostic rows into bucket counts + stats."""
+    counts: dict[str, int] = {}
+    f1_distances: list[float] = []
+    f3_haus: list[float] = []
+    f4_lengths: list[float] = []
+    for r in rows:
+        b = r.get("bucket", "UNKNOWN")
+        counts[b] = counts.get(b, 0) + 1
+        if b == BUCKET_F1_NO_CANDIDATE and r.get("nearest_distance_m") is not None:
+            f1_distances.append(r["nearest_distance_m"])
+        elif b == BUCKET_F3_GEOMETRY_FAIL and r.get("hausdorff_m") is not None:
+            f3_haus.append(r["hausdorff_m"])
+        elif b == BUCKET_F4_DIRECTION_DRAG and r.get("way_length_m") is not None:
+            f4_lengths.append(r["way_length_m"])
+
+    def _stats(values: list[float]) -> dict | None:
+        if not values:
+            return None
+        s = sorted(values)
+        n = len(s)
+        return {
+            "count": n,
+            "min": round(s[0], 2),
+            "median": round(s[n // 2], 2),
+            "max": round(s[-1], 2),
+        }
+
+    total = len(rows)
+    matched_high = counts.get(BUCKET_MATCHED_HIGH, 0)
+    matched_review = counts.get(BUCKET_MATCHED_REVIEW, 0)
+    return {
+        "total_ways": total,
+        "matched_high": matched_high,
+        "matched_review": matched_review,
+        "match_rate_pct": (
+            round(100.0 * (matched_high + matched_review) / total, 2)
+            if total
+            else 0.0
+        ),
+        "auto_submit_rate_pct": (
+            round(100.0 * matched_high / total, 2) if total else 0.0
+        ),
+        "buckets": counts,
+        "f1_nearest_distance_m_stats": _stats(f1_distances),
+        "f3_hausdorff_m_stats": _stats(f3_haus),
+        "f4_short_way_length_m_stats": _stats(f4_lengths),
+    }
+
+
+def write_baseline_manifest(
+    rows: list[dict],
+    *,
+    zone_key: str,
+    git_sha: str,
+    out_path: Path,
+) -> dict:
+    """Write a Phase 2a baseline manifest to disk and return the summary.
+
+    The manifest stores both per-way rows (for re-aggregation later) and the
+    summary stats. Filename convention: ``cagis_baseline_<gitsha>.json``.
+    """
+    summary = summarize_diagnostics(rows)
+    payload = {
+        "zone_key": zone_key,
+        "git_sha": git_sha,
+        "thresholds": {
+            "BUFFER_M": BUFFER_M,
+            "HIGH_CONFIDENCE": HIGH_CONFIDENCE,
+            "REVIEW_CONFIDENCE": REVIEW_CONFIDENCE,
+            "DIAG_NAME_FAIL_THRESHOLD": DIAG_NAME_FAIL_THRESHOLD,
+            "DIAG_SHORT_WAY_M": DIAG_SHORT_WAY_M,
+        },
+        "summary": summary,
+        "rows": rows,
+    }
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+    log.info(
+        "CAGIS Phase 2a baseline written to %s "
+        "(matched %.2f%%, auto-submit %.2f%%, buckets=%s)",
+        out_path,
+        summary["match_rate_pct"],
+        summary["auto_submit_rate_pct"],
+        summary["buckets"],
+    )
+    return summary
 
 
 def build_index(features: list[dict]) -> ConflationIndex:
