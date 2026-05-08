@@ -721,6 +721,120 @@ def route_diff_cmd(zone: str, profile: str, limit: int):
     click.echo(f"Updated {results_path}")
 
 
+# --- fix-impact ---
+
+@main.command(name="fix-impact")
+@click.option(
+    "--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE,
+    help="Zone whose CAGIS-verified oneway fixes to measure",
+)
+@click.option(
+    "--profile",
+    type=click.Choice(["car-fast", "car-vehicle"]),
+    default="car-fast",
+    help="BRouter profile to use.",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=0,
+    help=(
+        "Cap the number of fixes to measure (0 = no cap). BRouter is "
+        "rate-limited at ~1 sec/call; a full Blue Ash batch (~480 oneway "
+        "fixes) takes ~8 minutes. Use this to keep exploration batches short."
+    ),
+)
+def fix_impact(zone: str, profile: str, limit: int):
+    """Phase 4b — measure routing impact of CAGIS-verified oneway fixes.
+
+    Reads the most recent scan-results.json, finds every fix descriptor
+    with kind in ``ONEWAY_FIX_KINDS`` (set_oneway_cagis,
+    remove_oneway_cagis), runs BRouter route-diff for each one, and
+    prints the value-story summary that downstream stakeholders care
+    about — "this batch will change N MetroNow-relevant routes by avg
+    X%". Writes the augmented fix list (each fix gets a ``route_impact``
+    key) back to scan-results.json so the web UI can surface it.
+
+    Useful before submitting a batch of CAGIS-verified oneway fixes —
+    confirms the fixes actually move BRouter routes, not just OSM tags.
+    Decision threshold: a fix is "real" when its delta exceeds 15% of
+    the live route's cost; "noisy" below 3%; "inconclusive" between.
+    """
+    from rich.progress import Progress
+
+    from .review import proposed_fixes_for_way
+    from .route_diff import (
+        ONEWAY_FIX_KINDS,
+        route_impact_for_fixes,
+        summarize_route_impact,
+    )
+
+    results_path = _output_dir(zone) / "scan-results.json"
+    if not results_path.exists():
+        click.echo(
+            f"No scan results found for {zone}. Run 'osm scan --zone {zone}' first."
+        )
+        raise SystemExit(1)
+
+    classified = _load_scan_results(results_path)
+    # Non-interactive collection: walk every classified way and emit the
+    # CAGIS-verified oneway fixes directly. fix-impact must not block on
+    # user review — its purpose is to produce the summary that *informs*
+    # the review.
+    oneway_fixes: list[dict] = []
+    for w in classified.get("all_ways", []):
+        for f in proposed_fixes_for_way(w):
+            if f.get("kind") in ONEWAY_FIX_KINDS:
+                oneway_fixes.append(f)
+    if not oneway_fixes:
+        click.echo(
+            f"No CAGIS-verified oneway fixes for {zone}. "
+            "Run 'osm conflate --zone <key>' first."
+        )
+        return
+
+    if limit and limit > 0:
+        oneway_fixes = oneway_fixes[:limit]
+    click.echo(
+        f"Loaded {len(oneway_fixes):,} CAGIS-verified oneway fix(es); "
+        "running BRouter route-diff."
+    )
+
+    with Progress() as progress:
+        task = progress.add_task("Route-impact", total=len(oneway_fixes))
+
+        def _progress(done, total, _task=task):
+            progress.update(_task, completed=done)
+
+        route_impact_for_fixes(
+            oneway_fixes,
+            classified.get("all_ways", []),
+            profile=profile,
+            progress_callback=_progress,
+        )
+
+    summary = summarize_route_impact(oneway_fixes)
+    classified.setdefault("summary_stats", {})
+    classified["summary_stats"]["route_impact"] = summary
+    classified["summary_stats"]["route_impact_profile"] = profile
+
+    _save_scan_results(classified, results_path)
+
+    click.echo(
+        f"Routing impact: real={summary['real']}, "
+        f"inconclusive={summary['inconclusive']}, noisy={summary['noisy']}, "
+        f"skipped={summary['fixes_skipped']}"
+    )
+    if summary["real"]:
+        click.echo(
+            f"Of the {summary['real']} fixes that change routing meaningfully: "
+            f"avg delta {summary['avg_delta_pct_real']}% of route cost, "
+            f"max {summary['max_delta_pct_real']}%, "
+            f"avg duration shift {summary['avg_duration_delta_s_real']} s."
+        )
+    click.echo(f"Updated {results_path}")
+
+
 # --- report ---
 
 @main.command()

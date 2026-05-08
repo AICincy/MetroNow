@@ -578,3 +578,133 @@ class TestProposedFixesForFinding:
         assert fixes[0]["kind"] == "add_access_to_barrier"
         assert fixes[0]["element_type"] == "node"
         assert fixes[0]["changes"] == {"access": "yes"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 4b: route-impact for CAGIS-verified mechanical fixes
+# ---------------------------------------------------------------------------
+
+class TestRouteImpactForFix:
+    """Map CAGIS-verified oneway fix descriptors onto BRouter perturbation."""
+
+    def test_set_oneway_cagis_routes_through_diff_route(self):
+        from osm import route_diff as rd_mod
+        # Build a fix descriptor matching review.py's set_oneway_cagis shape.
+        fix = {
+            "kind": "set_oneway_cagis",
+            "action": "modify_tag",
+            "element_type": "way",
+            "element_id": 999,
+            "changes": {"oneway": "yes"},
+            "confidence": 0.95,
+        }
+        # Stub the underlying perturbation so we don't hit BRouter.
+        with mock.patch.object(rd_mod, "diff_route", autospec=True) as mock_dr:
+            mock_dr.return_value = {
+                "kind": "route_diff",
+                "way_id": 999,
+                "decision": "real",
+                "delta_pct": 22.0,
+                "before": {"length_m": 1000, "duration_s": 200},
+                "after_predicted": {
+                    "length_m": 1220, "duration_s": 244,
+                    "basis": "graph-perturbation",
+                },
+                "profile": "car-fast",
+            }
+            out = rd_mod.route_impact_for_fix(fix, all_ways=[])
+        assert out is not None
+        assert out["fix_kind"] == "set_oneway_cagis"
+        assert out["decision"] == "real"
+        # diff_route was called with a synthetic finding shaped like
+        # an oneway_conflict so it can reuse the existing perturbation.
+        synth_arg = mock_dr.call_args[0][0]
+        assert synth_arg["kind"] == "oneway_conflict"
+        assert synth_arg["id"] == 999
+        assert synth_arg["fix_kind"] == "set_oneway_cagis"
+
+    def test_set_maxspeed_cagis_skipped_with_reason(self):
+        from osm.route_diff import route_impact_for_fixes
+        fixes = [
+            {"kind": "set_maxspeed_cagis", "element_id": 1,
+             "changes": {"maxspeed": "25 mph"}},
+        ]
+        route_impact_for_fixes(fixes, [])
+        assert fixes[0]["route_impact"] is None
+        assert "does not perturb the routing graph" in (
+            fixes[0]["route_impact_skipped"]
+        )
+
+    def test_remove_oneway_cagis_calls_diff_route(self):
+        from osm import route_diff as rd_mod
+        fix = {
+            "kind": "remove_oneway_cagis",
+            "element_id": 1234,
+            "changes": {"oneway": None},
+        }
+        with mock.patch.object(rd_mod, "diff_route", autospec=True) as mock_dr:
+            mock_dr.return_value = {
+                "decision": "noisy",
+                "delta_pct": 1.0,
+                "before": {"duration_s": 100},
+                "after_predicted": {"duration_s": 101, "basis": "graph-perturbation"},
+            }
+            out = rd_mod.route_impact_for_fix(fix, [])
+        assert out is not None
+        assert out["fix_kind"] == "remove_oneway_cagis"
+
+    def test_unknown_fix_kind_returns_none(self):
+        from osm.route_diff import route_impact_for_fix
+        fix = {"kind": "set_name_cagis", "element_id": 1}
+        assert route_impact_for_fix(fix, []) is None
+
+    def test_summarize_route_impact_aggregates(self):
+        from osm.route_diff import summarize_route_impact
+        fixes = [
+            {
+                "kind": "set_oneway_cagis", "element_id": 1,
+                "route_impact": {
+                    "decision": "real", "delta_pct": 25.0,
+                    "before": {"duration_s": 100},
+                    "after_predicted": {"duration_s": 130},
+                },
+            },
+            {
+                "kind": "remove_oneway_cagis", "element_id": 2,
+                "route_impact": {
+                    "decision": "real", "delta_pct": 18.0,
+                    "before": {"duration_s": 200},
+                    "after_predicted": {"duration_s": 240},
+                },
+            },
+            {
+                "kind": "set_oneway_cagis", "element_id": 3,
+                "route_impact": {
+                    "decision": "noisy", "delta_pct": 1.0,
+                    "before": {"duration_s": 100},
+                    "after_predicted": {"duration_s": 100},
+                },
+            },
+            {
+                "kind": "set_maxspeed_cagis", "element_id": 4,
+                "route_impact": None,
+                "route_impact_skipped": "kind 'set_maxspeed_cagis' ...",
+            },
+        ]
+        s = summarize_route_impact(fixes)
+        assert s["fixes_total"] == 4
+        assert s["fixes_tested"] == 3
+        assert s["fixes_skipped"] == 1
+        assert s["real"] == 2
+        assert s["noisy"] == 1
+        assert s["avg_delta_pct_real"] == 21.5
+        assert s["max_delta_pct_real"] == 25.0
+        assert s["avg_duration_delta_s_real"] == 35.0  # avg(30, 40)
+
+    def test_summarize_route_impact_handles_empty(self):
+        from osm.route_diff import summarize_route_impact
+        s = summarize_route_impact([])
+        assert s["fixes_total"] == 0
+        assert s["real"] == 0
+        assert s["avg_delta_pct_real"] == 0.0
+        assert s["max_delta_pct_real"] == 0.0
