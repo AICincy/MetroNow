@@ -111,7 +111,7 @@ markers survive.
 
 | Zone key | Communities served | Index-case street |
 |----------|--------------------|--------------------|
-| `blue-ash-montgomery`     | Blue Ash, Montgomery, Deer Park, Silverton, Kenwood, Madeira | O'Leary Avenue |
+| `blue-ash-montgomery`     | Blue Ash, Montgomery, Deer Park, Silverton, Kenwood, Madeira | Main Avenue |
 | `springdale-sharonville`  | Springdale, Sharonville, Glendale, Evendale, Lincoln Heights | — |
 | `northgate-mt-healthy`    | Mt. Healthy, North College Hill, Finneytown, Northgate | — |
 | `forest-park-pleasant-run`| Forest Park, Pleasant Run, Greenhills | — |
