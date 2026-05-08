@@ -1,31 +1,77 @@
 # MetroNow
 
-OSM road defect detection and correction for Hamilton County MetroNow microtransit zones. Via Transportation's ViaMapping routing layer is built on OpenStreetMap — fixes here improve MetroNow service.
+OSM road defect detection and correction for Hamilton County MetroNow
+microtransit zones. Via Transportation's ViaMapping routing layer is built on
+OpenStreetMap — corrections submitted here propagate, on Via's next ingest, to
+the routing tiles that ViaAlgo consumes for every MetroNow trip.
 
 ## Layout
 
 - `src/osm/` — Python package (pip-installable as `osm`)
-- `web/` — Express.js server + vanilla HTML/CSS/JS frontend
-- `web/server.js` — API on port 3000, calls Python via child_process
-- `web/public/` — Static frontend (index.html, css/style.css, js/app.js)
+  - Pipeline: `fetch.py`, `classify.py`, `detectors.py`, `gaps.py`,
+    `history.py`, `history_filter.py`, `conflate.py`, `review.py`,
+    `changeset.py`
+  - Output: `xlsx.py`, `dashboard.py`, `csv_export.py`
+  - Plumbing: `cli.py` (Click), `config.py`, `zones.py`, `geo.py`,
+    `cache.py`, `auth.py` (OAuth 2.0 + PKCE)
+- `web/` — Express.js server + vanilla HTML/CSS/JS frontend (MetroNow Atlas
+  redesign)
+  - `web/server.js` — REST API on port 3000, shells out to Python via
+    `child_process`
+  - `web/public/index.html` — single-page UI with overlay panels (Inventory,
+    Fix, Ledger, Discuss, Account)
+  - `web/public/js/atlas.js` — main app logic
+  - `web/public/js/atlas-extras.js` — theme/density/accent/weight tweaks
+  - `web/public/css/atlas-supplement.css` — components added by atlas.js
+  - `web/public/.legacy/` — original UI preserved for rollback
+- `tests/` — pytest suite (109 passing as of last commit)
+- `osm-audit-{zone}/` — generated outputs per zone (gitignored): raw Overpass
+  cache under `data/`, `scan-results.json`, `reports/`, `csv/`
 
 ## Paths
 
 - Python: auto-detected from PATH (`python3` or `python`)
 - Node: `C:\Program Files\nodejs\node.exe`
 - Web server: `node web/server.js` (localhost:3000)
-- OAuth: OOB redirect (`urn:ietf:wg:oauth:2.0:oob`), credentials at `~/.config/osm/credentials.json`
+- OAuth: OOB redirect (`urn:ietf:wg:oauth:2.0:oob`), credentials at
+  `~/.config/osm/credentials.json`, token at `~/.config/osm/token.json`
+- CAGIS conflation cache: `~/.config/osm/cagis_cache/centerlines-{hash}.geojson`
+  (90-day TTL)
+- History cache: `~/.config/osm/history_cache/` (7-day TTL)
 
 ## Conventions
 
 - File names use hyphens, never underscores
 - No CLI instructions to the user — run everything directly
 - Auto mode is the default — make decisions, don't present menus
-- Audit work before declaring done — verify at module boundaries (e.g. fetch output feeds classify, classify output feeds reports) and spot-check outputs against known data before signing off
+- Audit work before declaring done — verify at module boundaries (fetch
+  output feeds classify, classify output feeds reports, classify output
+  feeds conflation, review output feeds changeset) and spot-check outputs
+  against known data before signing off
 
 ## OSM community requirements
 
-- Mechanical edits require wiki documentation, `talk-us@` discussion, and `_cincyimport`-convention account
+- Mechanical edits require wiki documentation, `talk-us@` discussion, and
+  `_cincyimport`-convention account
 - Changeset community norm is ~500 elements (CGImap hard limit 10,000)
 - Use MapRoulette for corrections with >5% expected false-positive rate
-- Ground truth: CAGIS quarterly centerlines, ODOT TIMS, TIGER/Line 2024
+- Ground truth: CAGIS quarterly centerlines (FeatureServer/26), ODOT TIMS,
+  TIGER/Line 2024
+- Every CAGIS-sourced changeset must carry the `cagis:attribution` tag per
+  the Open Data Hub license
+
+## Detector taxonomy
+
+Two parallel tracks. Both run in `classify()`; the second only emits to the
+"Rider-impact findings" panel — never to the mechanical-fix queue.
+
+- **Classifier (TIGER-fixup heuristic, mechanical-fix candidates):** Class
+  A, AB, B, C; node-disconnect gaps. Defined in `classify.py` and `gaps.py`.
+- **Detectors (rider-impact, human-review only):** eight detectors in
+  `detectors.py` covering oneway-`-1`, parallel oneway conflicts, blocked
+  residential access, unqualified barriers, broken turn restrictions,
+  arterial-named residentials, missing arterial maxspeeds, misplaced bus
+  stops.
+
+Mechanical fixes from CAGIS conflation supplement the classifier track only,
+not the detector track.
