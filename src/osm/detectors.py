@@ -59,6 +59,12 @@ QUALIFIED_BARRIERS = frozenset({
 
 BARRIER_QUALIFIER_TAGS = ("access", "motor_vehicle", "bicycle", "foot")
 
+# Coarse pre-filter for haversine inner loops — degrees of latitude
+# OR longitude beyond which a candidate point is definitely too far.
+# 0.005 deg ≈ 555 m at this latitude, comfortably above the 30 m and
+# 100 m match thresholds in the bus-stop and bus-route checks.
+LAT_LON_THRESHOLD = 0.005
+
 # Suffixes that imply higher functional class than highway=residential.
 ARTERIAL_SUFFIX_RE = re.compile(
     r"\b(Boulevard|Parkway|Expressway|Pike|Highway|Crossing|Memorial)\s*$",
