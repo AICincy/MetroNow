@@ -7,6 +7,12 @@ on:
   release:
     types: [created]
 
+# Default least-privilege token; the build job only checks out the repo
+# and runs npm test. The publish-gpr job overrides with packages:write
+# below.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
