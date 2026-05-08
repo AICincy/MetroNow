@@ -122,11 +122,22 @@ def auth_status():
         "default; pass --no-gtfs-cross-check to skip the GTFS fetch."
     ),
 )
+@click.option(
+    "--with-bus-route-corroboration/--no-bus-route-corroboration",
+    default=True,
+    help=(
+        "Annotate oneway_conflict findings with transit_corridor=True "
+        "when the way lies on a SORTA-published bus-route corridor "
+        "(CAGIS Open Data Hub). On by default; --no-bus-route-corroboration "
+        "skips the fetch."
+    ),
+)
 def scan(
     zone: str, from_cache: bool, skip_history: bool, import_only: bool,
     with_conflation: bool, tiger_only: bool, with_route_diff: bool,
     route_diff_profile: str, include_unnamed_service: bool,
     with_gtfs_cross_check: bool,
+    with_bus_route_corroboration: bool,
 ):
     """Fetch OSM data, analyse history, classify defects, and generate reports."""
     from rich.progress import Progress
@@ -175,10 +186,28 @@ def scan(
                     err=True,
                 )
 
+        bus_routes_for_classify = None
+        if with_bus_route_corroboration:
+            try:
+                from .bus_routes import fetch_bus_routes
+                bus_routes_for_classify = fetch_bus_routes()
+                click.echo(
+                    f"  SORTA bus routes: loaded "
+                    f"{len(bus_routes_for_classify):,} polyline(s) "
+                    "for oneway_conflict corroboration"
+                )
+            except Exception as exc:  # noqa: BLE001
+                click.echo(
+                    f"  SORTA bus-routes fetch failed ({exc}); "
+                    "transit-corridor corroboration disabled for this scan",
+                    err=True,
+                )
+
         classified = classify(
             raw,
             include_unnamed_service=include_unnamed_service,
             gtfs_stops=gtfs_stops_for_classify,
+            bus_routes=bus_routes_for_classify,
         )
 
         if skip_history:

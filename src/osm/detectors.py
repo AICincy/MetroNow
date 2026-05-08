@@ -145,7 +145,10 @@ def detect_oneway_minus_one(ways: Iterable[dict]) -> list[dict]:
 
 
 def detect_oneway_conflicts(
-    ways: Iterable[dict], threshold_m: float = 50.0,
+    ways: Iterable[dict],
+    threshold_m: float = 50.0,
+    *,
+    bus_routes: list | None = None,
 ) -> list[dict]:
     """Detect same-name parallel oneway segments that imply a routing defect.
 
@@ -292,7 +295,7 @@ def detect_oneway_conflicts(
 
                 tags_i = _tags(wi)
                 mid_i = pi[len(pi) // 2]
-                out.append({
+                finding = {
                     "kind": "oneway_conflict",
                     "id": wi.get("id"),
                     "id_other": wj.get("id"),
@@ -308,7 +311,21 @@ def detect_oneway_conflicts(
                     "routing_impact": 5,
                     "lat": mid_i[0],
                     "lon": mid_i[1],
-                })
+                }
+                # Phase 4d follow-up: corroborate against SORTA bus-route
+                # corridors. A oneway_conflict on a published bus corridor
+                # is a higher-priority defect than one on a residential
+                # side street — fixed-route buses use the corridor on a
+                # schedule, and ViaAlgo dispatches off the same OSM data.
+                if bus_routes is not None:
+                    from .bus_routes import is_on_transit_corridor
+                    on_corridor, route_ids = is_on_transit_corridor(wi, bus_routes)
+                    if on_corridor:
+                        finding["transit_corridor"] = True
+                        finding["transit_routes"] = route_ids
+                        # Already at the cap (5); corridor-coincidence is
+                        # surfaced via the boolean flag for the UI.
+                out.append(finding)
     return out
 
 
