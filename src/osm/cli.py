@@ -1273,6 +1273,44 @@ def transit_budget_cmd(calls: int | None, per_day: bool):
             raise SystemExit(1)
 
 
+# --- motis-status ---
+
+@main.command(name="motis-status")
+@click.option(
+    "--probe/--no-probe",
+    default=True,
+    help="Send a one-shot /api/v5/plan request to verify the instance "
+         "answers; --no-probe just prints the configured base URL.",
+)
+def motis_status_cmd(probe: bool):
+    """Show MOTIS routing-engine reachability (prototype).
+
+    The MOTIS client is opt-in. Set MOTIS_BASE to point at a hosted or
+    self-managed instance; with --probe (default) this command sends a
+    trivial /api/v5/plan request to confirm reachability before any
+    pipeline component tries to use it.
+
+    See docs/motis-deployment.md for stand-up notes.
+    """
+    from .motis import MOTIS_DEFAULT_BASE, _base_url, is_available
+
+    base = _base_url()
+    click.echo(f"MOTIS base URL: {base}")
+    if base == MOTIS_DEFAULT_BASE:
+        click.echo("  (default; set MOTIS_BASE to override)")
+    if not probe:
+        return
+    click.echo("Probing /api/v5/plan…")
+    if is_available():
+        click.echo("  → MOTIS is reachable and answering /api/v5/plan.")
+    else:
+        click.echo(
+            "  → MOTIS not reachable. The pipeline will continue using "
+            "BRouter; see docs/motis-deployment.md for setup."
+        )
+        raise SystemExit(1)
+
+
 # --- preflight ---
 
 _PREFLIGHT_GLYPH = {
