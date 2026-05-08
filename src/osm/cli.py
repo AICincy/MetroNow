@@ -87,10 +87,21 @@ def auth_status():
     default="car-fast",
     help="BRouter profile to use for the route-diff harness.",
 )
+@click.option(
+    "--include-unnamed-service",
+    is_flag=True,
+    default=False,
+    help=(
+        "Include unnamed highway=service ways without a service=* subtype "
+        "in Class A. Off by default because these are dominantly interior "
+        "parking/driveway circulation that ViaAlgo cannot dispatch into; "
+        "enable for exhaustive audits where signal-to-noise is acceptable."
+    ),
+)
 def scan(
     zone: str, from_cache: bool, skip_history: bool, import_only: bool,
     with_conflation: bool, tiger_only: bool, with_route_diff: bool,
-    route_diff_profile: str,
+    route_diff_profile: str, include_unnamed_service: bool,
 ):
     """Fetch OSM data, analyse history, classify defects, and generate reports."""
     from rich.progress import Progress
@@ -120,7 +131,9 @@ def scan(
 
         # Phase 2: History analysis
         click.echo("\nPhase 2: Classifying defects...")
-        classified = classify(raw)
+        if include_unnamed_service:
+            click.echo("  (unnamed service-oneway ways included in Class A)")
+        classified = classify(raw, include_unnamed_service=include_unnamed_service)
 
         if skip_history:
             click.echo("  History analysis: SKIPPED (legacy mode)")

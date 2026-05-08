@@ -302,3 +302,57 @@ class TestUnnamedLabel:
             way = classify(raw)["all_ways"][0]
             assert "[" not in way["name_display"]
             assert "]" not in way["name_display"]
+
+
+# ---------------------------------------------------------------------------
+# include_unnamed_service flag: opt-in escape hatch for exhaustive audits.
+# Default behaviour suppresses unnamed service-oneway ways without a service=*
+# subtype (interior parking-lot/driveway noise that ViaAlgo can't dispatch
+# into anyway).
+# ---------------------------------------------------------------------------
+
+class TestIncludeUnnamedServiceFlag:
+
+    def test_unnamed_service_oneway_no_subtype_filtered_by_default(self):
+        # Default: noise filtered.
+        raw = _overpass_response(
+            _make_way(1, None, highway="service", oneway="yes"),
+        )
+        result = classify(raw)
+        assert result["all_ways"][0]["defect_class"] == CLASS_C
+
+    def test_unnamed_service_oneway_no_subtype_flagged_when_opt_in(self):
+        # Escape hatch: same way, opt-in restores Class A.
+        raw = _overpass_response(
+            _make_way(1, None, highway="service", oneway="yes"),
+        )
+        result = classify(raw, include_unnamed_service=True)
+        assert result["all_ways"][0]["defect_class"] == CLASS_A
+
+    def test_named_service_oneway_still_flagged_in_default_mode(self):
+        # Named service ways are not affected by the filter.
+        raw = _overpass_response(
+            _make_way(1, "Mercy Health Service Drive",
+                      highway="service", oneway="yes"),
+        )
+        result = classify(raw)
+        assert result["all_ways"][0]["defect_class"] == CLASS_A
+
+    def test_residential_oneway_unaffected_by_flag(self):
+        # The flag is service-only; residential remains Class A regardless.
+        raw = _overpass_response(
+            _make_way(1, None, highway="residential", oneway="yes"),
+        )
+        for include in (False, True):
+            result = classify(raw, include_unnamed_service=include)
+            assert result["all_ways"][0]["defect_class"] == CLASS_A
+
+    def test_subtyped_service_filter_takes_precedence(self):
+        # service=parking_aisle is filtered even when include_unnamed_service
+        # is True — the subtype filter is a stronger signal of legitimacy.
+        raw = _overpass_response(
+            _make_way(1, None, highway="service", oneway="yes",
+                      service="parking_aisle"),
+        )
+        result = classify(raw, include_unnamed_service=True)
+        assert result["all_ways"][0]["defect_class"] == CLASS_C

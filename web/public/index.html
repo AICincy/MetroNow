@@ -1443,6 +1443,10 @@ table.t a:hover { text-decoration: underline; }
           <input type="checkbox" id="skipHistory" />
           <span>Skip revision-history analysis (fast)</span>
         </label>
+        <label class="opt-row" title="Include unnamed highway=service ways without a service=* subtype in Class A. Off by default — these are dominantly interior parking-lot or driveway circulation that ViaAlgo cannot dispatch into. Enable for an exhaustive audit; expect Class-A volume to roughly double.">
+          <input type="checkbox" id="includeUnnamedService" />
+          <span>Include unnamed service ways (exhaustive audit)</span>
+        </label>
         <button class="btn btn-brand btn-block" id="scanBtn">
           <svg viewBox="0 0 16 16" fill="none"><path d="M3 8a5 5 0 0 1 8.5-3.5L13 6m0-3v3h-3M13 8a5 5 0 0 1-8.5 3.5L3 10m0 3v-3h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span id="scanLabel">Run Scan</span>

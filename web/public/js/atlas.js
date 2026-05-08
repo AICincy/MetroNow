@@ -707,6 +707,7 @@
     consoleLog("Querying Overpass API…");
     startScanTimer();
     const skip = $("#skipHistory")?.checked === true;
+    const includeUnnamedService = $("#includeUnnamedService")?.checked === true;
     // staged progress messages mirror the legacy timing (0/5/15/30s)
     const stageTimers = [];
     stageTimers.push(setTimeout(() => consoleLog("Fetching way data…"), 5000));
@@ -714,11 +715,18 @@
     if (!skip) {
       stageTimers.push(setTimeout(() => consoleLog("Analyzing revision history…"), 30000));
     }
+    if (includeUnnamedService) {
+      consoleLog("Including unnamed service-oneway ways in Class A (exhaustive audit)", "warn");
+    }
     const clearStageTimers = () => stageTimers.forEach(clearTimeout);
     try {
       const result = await api("/api/scan", {
         method: "POST",
-        body: { zone: state.currentZone, skip_history: skip },
+        body: {
+          zone: state.currentZone,
+          skip_history: skip,
+          include_unnamed_service: includeUnnamedService,
+        },
       });
       clearStageTimers();
       consoleLog(`Scan complete — ${(result.stats.total || 0).toLocaleString()} ways analyzed`, "ok");

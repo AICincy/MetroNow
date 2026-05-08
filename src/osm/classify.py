@@ -101,6 +101,7 @@ def classify(
     *,
     osm_notes: list[dict] | None = None,
     note_threshold_m: float = 50.0,
+    include_unnamed_service: bool = False,
 ) -> dict:
     """Classify all way elements from an Overpass response into defect classes.
 
@@ -112,6 +113,14 @@ def classify(
     gets a ``near_note`` field if any open note is within
     ``note_threshold_m`` of the finding's coordinate. classify() never
     calls out to the OSM Notes API itself — keep classify offline-capable.
+
+    ``include_unnamed_service`` controls whether unnamed ``highway=service``
+    ways without a ``service=*`` subtype get flagged as Class A when they
+    have a truthy ``oneway`` tag. Default ``False`` — these are nearly
+    always interior parking/driveway/circulation routes that ViaAlgo can't
+    dispatch into anyway, so flagging them produces noise without rider
+    benefit. Set ``True`` for an exhaustive audit; the resulting Class A
+    set will roughly double in volume on Hamilton County zones.
     """
     elements_ways, elements_nodes, elements_relations = _split_elements(raw)
     elements = elements_ways
@@ -172,6 +181,17 @@ def classify(
             and not (
                 w["highway"] == "service"
                 and w["service"] in LEGITIMATE_ONEWAY_SERVICE_SUBTYPES
+            )
+            # Suppress unnamed service ways without a service=* subtype by
+            # default. These are dominantly interior parking-lot or driveway
+            # circulation that ViaAlgo can't dispatch into; flagging them
+            # produces noise without rider benefit. The `include_unnamed_service`
+            # opt-in puts them back for exhaustive audits.
+            and not (
+                w["highway"] == "service"
+                and not w["name"]
+                and not w["service"]
+                and not include_unnamed_service
             )
         )
         is_b = w["name_key"] is not None and w["name_key"] in class_b_norm_keys

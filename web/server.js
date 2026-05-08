@@ -197,6 +197,7 @@ app.post("/api/scan", async (req, res) => {
   if (!validateZone(zone, res)) return;
   const skipHistory = req.body.skip_history === true;
   const withConflation = req.body.with_conflation === true;
+  const includeUnnamedService = req.body.include_unnamed_service === true;
   scanInProgress = true;
   try {
     const pyCode = [
@@ -210,7 +211,8 @@ app.post("/api/scan", async (req, res) => {
       "zone_key = " + JSON.stringify(zone),
       "out_dir = Path(" + JSON.stringify(PROJECT_ROOT) + ") / f'osm-audit-{zone_key}'",
       "raw = fetch_overpass(zone_key, out_dir)",
-      "classified = classify(raw)",
+      "include_unnamed_service = " + (includeUnnamedService ? "True" : "False"),
+      "classified = classify(raw, include_unnamed_service=include_unnamed_service)",
       "skip = " + (skipHistory ? "True" : "False"),
       "if not skip:",
       "    filter_by_history(classified['all_ways'], skip_history=False)",
@@ -267,7 +269,7 @@ app.post("/api/scan", async (req, res) => {
     const out = await runPython(pyCode);
     const stats = JSON.parse(out.trim());
     res.json({ success: true, stats });
-    try { appendHistory({ action: "scan", zone, stats, with_conflation: withConflation }); } catch {}
+    try { appendHistory({ action: "scan", zone, stats, with_conflation: withConflation, include_unnamed_service: includeUnnamedService }); } catch {}
   } catch (e) {
     res.status(500).json({ error: safeError(e) });
   } finally {
