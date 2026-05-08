@@ -65,6 +65,22 @@ function validateZone(zone, res) {
   return true;
 }
 
+// Construct a path under the per-zone audit directory and verify the
+// resolved result is contained inside PROJECT_ROOT — defence in depth
+// against path-injection. validateZone() already restricts ``zone`` to
+// /^[a-z0-9-]+$/, but this normalize-then-check guard satisfies CodeQL's
+// js/path-injection sink-based analysis at every call site.
+function zonePath(zone, ...subparts) {
+  const target = path.resolve(
+    PROJECT_ROOT, "osm-audit-" + zone, ...subparts,
+  );
+  const root = path.resolve(PROJECT_ROOT) + path.sep;
+  if (!target.startsWith(root)) {
+    throw new Error("Resolved zone path escapes the project root.");
+  }
+  return target;
+}
+
 function safeError(e) {
   const msg = (e && e.message) || "Unknown error";
   const lines = msg.split(/\r?\n/).filter((l) => l.trim());
@@ -282,9 +298,7 @@ app.post("/api/scan", async (req, res) => {
 app.post("/api/conflate/:zone", async (req, res) => {
   const zone = req.params.zone;
   if (!validateZone(zone, res)) return;
-  const resultsPath = path.join(
-    PROJECT_ROOT, "osm-audit-" + zone, "scan-results.json"
-  );
+  const resultsPath = zonePath(zone, "scan-results.json");
   if (!fs.existsSync(resultsPath))
     return res.status(404).json({ error: "No scan results for this zone. Run a scan first." });
   const forceRefresh = req.body && req.body.force_refresh === true;
@@ -427,7 +441,7 @@ app.get("/api/dashboard/:zone", (req, res) => {
 app.get("/api/review/:zone", async (req, res) => {
   const zone = req.params.zone;
   if (!validateZone(zone, res)) return;
-  const p = path.join(PROJECT_ROOT, "osm-audit-" + zone, "scan-results.json");
+  const p = zonePath(zone, "scan-results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results. Run a scan first." });
   try {
@@ -492,9 +506,7 @@ app.post("/api/fix", async (req, res) => {
 app.post("/api/route-diff/:zone", async (req, res) => {
   const zone = req.params.zone;
   if (!validateZone(zone, res)) return;
-  const resultsPath = path.join(
-    PROJECT_ROOT, "osm-audit-" + zone, "scan-results.json"
-  );
+  const resultsPath = zonePath(zone, "scan-results.json");
   if (!fs.existsSync(resultsPath))
     return res.status(404).json({ error: "No scan results for this zone. Run a scan first." });
   const ALLOWED_PROFILES = new Set(["car-fast", "car-vehicle"]);
@@ -642,7 +654,7 @@ app.delete("/api/history", (_req, res) => {
 
 app.get("/api/export/:zone/csv", (req, res) => {
   if (!validateZone(req.params.zone, res)) return;
-  const p = path.join(PROJECT_ROOT, "osm-audit-" + req.params.zone, "scan-results.json");
+  const p = zonePath(req.params.zone, "scan-results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results." });
   try {
@@ -669,7 +681,7 @@ app.get("/api/export/:zone/csv", (req, res) => {
 
 app.get("/api/export/:zone/json", (req, res) => {
   if (!validateZone(req.params.zone, res)) return;
-  const p = path.join(PROJECT_ROOT, "osm-audit-" + req.params.zone, "scan-results.json");
+  const p = zonePath(req.params.zone, "scan-results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results." });
   try {
@@ -691,17 +703,7 @@ app.get("/api/export/:zone/json", (req, res) => {
 app.post("/api/fix-impact/:zone", async (req, res) => {
   const zone = req.params.zone;
   if (!validateZone(zone, res)) return;
-  const projectRootResolved = path.resolve(PROJECT_ROOT);
-  const resultsPathCandidate = path.join(
-    PROJECT_ROOT, "osm-audit-" + zone, "scan-results.json"
-  );
-  const resultsPath = path.resolve(resultsPathCandidate);
-  if (
-    resultsPath !== projectRootResolved &&
-    !resultsPath.startsWith(projectRootResolved + path.sep)
-  ) {
-    return res.status(400).json({ error: "Invalid zone path." });
-  }
+  const resultsPath = zonePath(zone, "scan-results.json");
   if (!fs.existsSync(resultsPath))
     return res.status(404).json({ error: "No scan results for this zone." });
   try {
@@ -746,14 +748,10 @@ app.post("/api/fix-impact/:zone", async (req, res) => {
 app.post("/api/maproulette/:zone", async (req, res) => {
   const zone = req.params.zone;
   if (!validateZone(zone, res)) return;
-  const zoneRoot = path.resolve(PROJECT_ROOT, "osm-audit-" + zone);
-  const resultsPath = path.resolve(zoneRoot, "scan-results.json");
-  if (!(resultsPath === path.join(zoneRoot, "scan-results.json") && resultsPath.startsWith(zoneRoot + path.sep)))
-    return res.status(400).json({ error: "Invalid zone path." });
+  const resultsPath = zonePath(zone, "scan-results.json");
   if (!fs.existsSync(resultsPath))
     return res.status(404).json({ error: "No scan results for this zone. Run a scan first." });
-  const outDir = path.join(PROJECT_ROOT, "osm-audit-" + zone, "maproulette");
-  const outFile = path.join(outDir, zone + "-class-a-unverified.geojsonl");
+  const outFile = zonePath(zone, "maproulette", zone + "-class-a-unverified.geojsonl");
   try {
     const pyCode = [
       "import json, sys, os",
@@ -791,14 +789,10 @@ app.post("/api/maproulette/:zone", async (req, res) => {
 // 404 if the file doesn't exist yet — call POST first.
 app.get("/api/maproulette/:zone", (req, res) => {
   if (!validateZone(req.params.zone, res)) return;
-  const zoneRoot = path.resolve(PROJECT_ROOT, "osm-audit-" + req.params.zone, "maproulette");
-  const outFile = path.resolve(
-    zoneRoot,
+  const outFile = zonePath(
+    req.params.zone, "maproulette",
     req.params.zone + "-class-a-unverified.geojsonl",
   );
-  if (!(outFile === zoneRoot || outFile.startsWith(zoneRoot + path.sep))) {
-    return res.status(400).json({ error: "Invalid zone path." });
-  }
   if (!fs.existsSync(outFile)) {
     return res.status(404).json({
       error: "No MapRoulette challenge yet. POST /api/maproulette/:zone first.",
