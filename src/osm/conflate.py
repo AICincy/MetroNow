@@ -531,36 +531,61 @@ class ConflationIndex:
     ) -> tuple[float, _CagisRecord, float, float, float] | None:
         """Score the absolutely nearest CAGIS centerline, capped at REVIEW.
 
-        Returns None if no nearest exists or it's beyond FALLBACK_BUFFER_M.
-        Confidence in the returned tuple is capped at REVIEW_CONFIDENCE.
+        Returns None if no candidate exists or its directed Hausdorff
+        exceeds FALLBACK_BUFFER_M. Confidence in the returned tuple is
+        capped at REVIEW_CONFIDENCE.
+
+        Samples first / middle / last OSM vertices and queries
+        STRtree.nearest for each, then keeps the highest-scoring
+        candidate that passes the FALLBACK_BUFFER_M gate. Single-vertex
+        sampling missed valid matches on long or curved ways where the
+        first vertex's nearest centerline differed from the rest of
+        the way's — flagged in PR #11 review by gemini-code-assist
+        and chatgpt-codex-connector.
         """
         if not osm_geometry:
             return None
-        # nearest() takes (lon, lat).
-        try:
-            first_pt_lonlat = (osm_geometry[0][1], osm_geometry[0][0])
-        except (IndexError, TypeError):
-            return None
-        nearest_rec = self.nearest(first_pt_lonlat)
-        if nearest_rec is None:
-            return None
-        haus = _directed_hausdorff_meters(osm_geometry, nearest_rec.geometry_lonlat)
-        if haus is None or haus > FALLBACK_BUFFER_M:
-            return None
-        name_sim = _name_similarity(osm_norm, nearest_rec.name_norm)
-        cagis_vec = _line_unit_vector_lonlat(nearest_rec.geometry_lonlat)
-        dir_align = _direction_alignment(osm_vec, cagis_vec)
-        # Geometry overlap uses the wider FALLBACK denominator since the
-        # candidate is by definition past the normal buffer.
-        geom_overlap = max(0.0, min(1.0, 1.0 - haus / FALLBACK_BUFFER_M))
-        raw_confidence = (
-            W_NAME * name_sim
-            + W_GEOMETRY * geom_overlap
-            + W_DIRECTION * dir_align
-        )
-        # Cap at REVIEW_CONFIDENCE — fallback hits never auto-submit.
-        confidence = min(raw_confidence, REVIEW_CONFIDENCE)
-        return (confidence, nearest_rec, name_sim, haus, dir_align)
+        del line  # currently unused; kept for symmetry with match()
+        samples_idx = {
+            0,
+            len(osm_geometry) // 2,
+            len(osm_geometry) - 1,
+        }
+        seen_ids: set[int] = set()
+        best: tuple[float, _CagisRecord, float, float, float] | None = None
+        for si in samples_idx:
+            try:
+                pt = osm_geometry[si]
+                pt_lonlat = (pt[1], pt[0])
+            except (IndexError, TypeError):
+                continue
+            nearest_rec = self.nearest(pt_lonlat)
+            if nearest_rec is None:
+                continue
+            rec_id = id(nearest_rec)
+            if rec_id in seen_ids:
+                continue
+            seen_ids.add(rec_id)
+            haus = _directed_hausdorff_meters(
+                osm_geometry, nearest_rec.geometry_lonlat,
+            )
+            if haus is None or haus > FALLBACK_BUFFER_M:
+                continue
+            name_sim = _name_similarity(osm_norm, nearest_rec.name_norm)
+            cagis_vec = _line_unit_vector_lonlat(nearest_rec.geometry_lonlat)
+            dir_align = _direction_alignment(osm_vec, cagis_vec)
+            # Wider FALLBACK denominator since the candidate is by
+            # definition past the normal buffer.
+            geom_overlap = max(0.0, min(1.0, 1.0 - haus / FALLBACK_BUFFER_M))
+            raw_confidence = (
+                W_NAME * name_sim
+                + W_GEOMETRY * geom_overlap
+                + W_DIRECTION * dir_align
+            )
+            confidence = min(raw_confidence, REVIEW_CONFIDENCE)
+            if best is None or confidence > best[0]:
+                best = (confidence, nearest_rec, name_sim, haus, dir_align)
+        return best
 
     def _build_match_result(
         self,

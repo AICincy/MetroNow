@@ -20,6 +20,7 @@ from .config import (
     TIGER_IMPORT_START,
     TIGER_IMPORT_USERS,
 )
+from .polygons import clip_elements_to_polygon, load_zone_polygon
 from .zones import ZONES
 
 log = logging.getLogger(__name__)
@@ -243,6 +244,24 @@ def fetch_overpass(zone_key: str, out_dir: Path, *, import_only: bool = False) -
     payload["_cache_used"] = not fresh_fetch
     payload["_cache_age_seconds"] = cache_age_seconds
 
+    n_pre = len(payload.get("elements", []))
+
+    # Phase 4a stage 1: clip to the zone's polygon. Overpass bboxes
+    # overshoot CAGIS coverage (Forest Park's bbox bleeds into Butler
+    # County, where CAGIS has no centerlines), inflating F1_NO_CANDIDATE.
+    # Clip drops ways / nodes whose centroid sits outside Hamilton County.
+    polygon = load_zone_polygon(zone_key)
+    if polygon is not None:
+        kept, clip_stats = clip_elements_to_polygon(payload["elements"], polygon)
+        payload["elements"] = kept
+        payload["_polygon_clip"] = clip_stats
+        if clip_stats.get("clipped"):
+            log.info(
+                "Polygon clip for %s: kept %d / %d (dropped %d outside polygon)",
+                zone_key, clip_stats["kept"], clip_stats["in"],
+                clip_stats["dropped_total"],
+            )
+
     n = len(payload.get("elements", []))
-    log.info("Fetched %d elements for %s", n, zone["name"])
+    log.info("Fetched %d elements for %s (post-clip from %d)", n, zone["name"], n_pre)
     return payload
