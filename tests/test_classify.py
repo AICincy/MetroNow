@@ -4,11 +4,13 @@ from osm.classify import classify
 from osm.config import CLASS_A, CLASS_AB, CLASS_B, CLASS_C, CRITICAL, HIGH, LOW
 
 
-def _make_way(way_id, name, highway="residential", oneway=None, geom=None):
+def _make_way(way_id, name, highway="residential", oneway=None, service=None, geom=None):
     """Build a minimal Overpass way element for testing."""
     tags = {"name": name, "highway": highway}
     if oneway is not None:
         tags["oneway"] = oneway
+    if service is not None:
+        tags["service"] = service
     if geom is None:
         geom = [
             {"lat": 39.10 + way_id * 0.001, "lon": -84.50},
@@ -194,3 +196,109 @@ class TestSummaryStats:
         assert stats["by_class"][CLASS_AB] == 1
         assert stats["by_class"][CLASS_B] == 1
         assert stats["by_class"][CLASS_C] == 2
+
+
+
+# ---------------------------------------------------------------------------
+# Service-subtype filtering: parking aisles, driveways, alleys are
+# legitimately oneway and must NOT be flagged Class A.
+# ---------------------------------------------------------------------------
+
+class TestServiceSubtypeFiltering:
+
+    def test_parking_aisle_oneway_is_not_class_a(self):
+        raw = _overpass_response(
+            _make_way(1, None, highway="service", oneway="yes",
+                      service="parking_aisle"),
+        )
+        result = classify(raw)
+        way = result["all_ways"][0]
+        assert way["defect_class"] == CLASS_C
+        assert way["severity"] == LOW
+
+    def test_driveway_oneway_is_not_class_a(self):
+        raw = _overpass_response(
+            _make_way(1, None, highway="service", oneway="yes",
+                      service="driveway"),
+        )
+        result = classify(raw)
+        assert result["all_ways"][0]["defect_class"] == CLASS_C
+
+    def test_alley_oneway_is_not_class_a(self):
+        raw = _overpass_response(
+            _make_way(1, None, highway="service", oneway="yes",
+                      service="alley"),
+        )
+        result = classify(raw)
+        assert result["all_ways"][0]["defect_class"] == CLASS_C
+
+    def test_emergency_access_oneway_is_not_class_a(self):
+        raw = _overpass_response(
+            _make_way(1, None, highway="service", oneway="yes",
+                      service="emergency_access"),
+        )
+        result = classify(raw)
+        assert result["all_ways"][0]["defect_class"] == CLASS_C
+
+    def test_unsubtyped_service_oneway_is_still_class_a(self):
+        # A `highway=service` way with NO `service=*` value is unclassified
+        # service road. Keep flagging these — they may be real defects.
+        raw = _overpass_response(
+            _make_way(1, "Main Service Rd", highway="service", oneway="yes"),
+        )
+        result = classify(raw)
+        assert result["all_ways"][0]["defect_class"] == CLASS_A
+
+    def test_service_subtype_filter_does_not_affect_residential(self):
+        # The exclusion is service-only; residential ways with oneway=yes
+        # remain Class A regardless of any other tags.
+        raw = _overpass_response(
+            _make_way(1, "Elm St", highway="residential", oneway="yes"),
+        )
+        result = classify(raw)
+        assert result["all_ways"][0]["defect_class"] == CLASS_A
+
+
+# ---------------------------------------------------------------------------
+# Unnamed-way labels: classify produces useful descriptors instead of a
+# uniform "[Unnamed]" so the inventory UI can tell rows apart at a glance.
+# ---------------------------------------------------------------------------
+
+class TestUnnamedLabel:
+
+    def test_unnamed_residential_gets_descriptive_label(self):
+        raw = _overpass_response(
+            _make_way(1, None, highway="residential"),
+        )
+        way = classify(raw)["all_ways"][0]
+        assert way["name_display"] == "Unnamed residential street"
+
+    def test_unnamed_service_with_subtype_gets_subtype_label(self):
+        raw = _overpass_response(
+            _make_way(1, None, highway="service", service="parking_aisle"),
+        )
+        way = classify(raw)["all_ways"][0]
+        assert way["name_display"] == "Parking aisle"
+
+    def test_unnamed_service_without_subtype_gets_service_road_label(self):
+        raw = _overpass_response(
+            _make_way(1, None, highway="service"),
+        )
+        way = classify(raw)["all_ways"][0]
+        assert way["name_display"] == "Service road"
+
+    def test_named_way_preserves_name(self):
+        raw = _overpass_response(
+            _make_way(1, "Elm Street", highway="residential"),
+        )
+        way = classify(raw)["all_ways"][0]
+        assert way["name_display"] == "Elm Street"
+
+    def test_unnamed_label_never_returns_brackets(self):
+        # Regression: the legacy "[Unnamed]" literal is gone. No descriptor
+        # should contain square brackets.
+        for hw in ("residential", "service", "tertiary", "footway", None):
+            raw = _overpass_response(_make_way(1, None, highway=hw or "residential"))
+            way = classify(raw)["all_ways"][0]
+            assert "[" not in way["name_display"]
+            assert "]" not in way["name_display"]

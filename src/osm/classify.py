@@ -15,7 +15,41 @@ log = logging.getLogger(__name__)
 # Bug 3 / Bug 7: widen Class-A coverage beyond highway=residential, and accept
 # all of OSM's truthy oneway encodings (yes, true, 1, -1).
 CLASS_A_HIGHWAYS = frozenset({"residential", "unclassified", "tertiary", "service"})
+
+# Legitimate-oneway service subtypes. A `highway=service` way carrying any of
+# these `service=*` values is almost always correctly tagged `oneway=yes`
+# (parking aisles, driveways, alleys, emergency access lanes). Excluding them
+# from Class A removes the dominant noise source — Blue Ash had 600+ such
+# false-positive flags before this filter.
+LEGITIMATE_ONEWAY_SERVICE_SUBTYPES = frozenset({
+    "parking_aisle",
+    "driveway",
+    "alley",
+    "emergency_access",
+    "drive-through",
+    "drive_through",
+})
 ONEWAY_TRUTHY = frozenset({"yes", "true", "1", "-1"})
+
+
+def _unnamed_label(highway: str | None, service: str | None) -> str:
+    """Build a useful label for a way that has no `name` tag.
+
+    "[Unnamed]" repeated 600 times is not actionable display. Instead, use the
+    way's classification — "Unnamed residential street", "Driveway", "Parking
+    aisle" — so a reviewer can scan a column of unnamed rows and still tell
+    them apart. Italicization is applied in the UI; this returns plain text.
+    """
+    if highway == "service" and service:
+        # service=parking_aisle -> "Parking aisle"; service=drive-through -> "Drive-through"
+        return service.replace("_", " ").replace("-", "-").capitalize()
+    if highway == "service":
+        return "Service road"
+    if highway:
+        return f"Unnamed {highway} street" if highway in {
+            "residential", "unclassified", "tertiary", "secondary", "primary"
+        } else f"Unnamed {highway}"
+    return "Unnamed way"
 
 
 def is_oneway_truthy(value) -> bool:
@@ -98,12 +132,15 @@ def classify(
         if not geom_pairs:
             skipped_geom += 1
 
+        highway = tags.get("highway")
+        service = tags.get("service")
         record = {
             "id": el.get("id"),
             "name": name,
-            "name_display": name if name else "[Unnamed]",
+            "name_display": name if name else _unnamed_label(highway, service),
             "name_key": norm,
-            "highway": tags.get("highway"),
+            "highway": highway,
+            "service": service,
             "oneway": tags.get("oneway"),
             "tiger_reviewed": tags.get("tiger:reviewed"),
             "tiger_name_base": tags.get("tiger:name_base"),
@@ -126,7 +163,17 @@ def classify(
     class_b_norm_keys = {k for k, ways in by_norm.items() if len(ways) >= 2}
 
     for w in all_ways:
-        is_a = w["highway"] in CLASS_A_HIGHWAYS and is_oneway_truthy(w["oneway"])
+        is_a = (
+            w["highway"] in CLASS_A_HIGHWAYS
+            and is_oneway_truthy(w["oneway"])
+            # Suppress legitimate-oneway service subtypes (parking aisles,
+            # driveways, alleys, emergency access). Their oneway tag is
+            # correct, not a defect.
+            and not (
+                w["highway"] == "service"
+                and w["service"] in LEGITIMATE_ONEWAY_SERVICE_SUBTYPES
+            )
+        )
         is_b = w["name_key"] is not None and w["name_key"] in class_b_norm_keys
         if is_a and is_b:
             w["defect_class"] = CLASS_AB

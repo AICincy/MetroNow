@@ -181,6 +181,7 @@
     state.pendingFixes = [];
     // reset class filters so prior zone's toggles don't leak across
     state.classFilters = { AB: true, A: true, B: true, C: false, GAPS: true };
+    state.tablePages = { ab: 1, a: 1 };
     setReportsEnabled(false);
     clearMap();
     renderStats(null);
@@ -832,6 +833,20 @@
       // event listeners.
       const rdBtn = $("#runRouteDiffBtn");
       if (rdBtn) rdBtn.addEventListener("click", runRouteDiff);
+      // Wire the pagination buttons.
+      $$("button.rs-more-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const k = btn.dataset.kind;
+          const action = btn.dataset.action;
+          const ways = k === "ab" ? ab : a;
+          if (action === "all") {
+            state.tablePages[k] = Math.ceil(ways.length / tablePageSize) + 1;
+          } else {
+            state.tablePages[k] = (state.tablePages[k] || 1) + 1;
+          }
+          draw();
+        });
+      });
     };
     draw();
     await ensureOsmoseLoaded();
@@ -957,21 +972,44 @@
       if (btn) btn.disabled = false;
     }
   }
+  // Pagination state for the inventory tables. Keyed by section kind so AB and
+  // A-only paginate independently. Reset whenever a new scan loads.
+  const tablePageSize = 200;
+  state.tablePages = state.tablePages || { ab: 1, a: 1 };
+
+  function nameCell(w) {
+    // If the way has a real name, render plain. Otherwise show the descriptor
+    // produced by classify._unnamed_label, italicized so a reviewer can scan
+    // a column and still tell unnamed rows apart by their kind.
+    if (w.name) return esc(w.name);
+    return `<span class="name-unnamed">${esc(w.name_display || "Unnamed way")}</span>`;
+  }
+
   function sectionTable(title, ways, kind) {
     if (!ways.length) {
       return `<div class="rs-section"><h3>${esc(title)}</h3><p class="muted">None found.</p></div>`;
     }
-    const rows = ways.slice(0, 200).map((w) => {
+    const page = Math.max(1, state.tablePages[kind] || 1);
+    const shown = Math.min(page * tablePageSize, ways.length);
+    const rows = ways.slice(0, shown).map((w) => {
       const review = w.review_status ? `<span class="badge">${esc(w.review_status)}</span>` : "";
       const wayId = w.id || "?";
       return `<tr>
         <td><a href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank" rel="noopener">${esc(wayId)}</a>${osmoseBadge(wayId)}</td>
-        <td>${esc(w.name_display || "—")}</td>
-        <td>${esc(w.highway || "—")}</td>
+        <td>${nameCell(w)}</td>
+        <td>${esc(w.highway || "—")}${w.service ? ` <span class="muted">(${esc(w.service)})</span>` : ""}</td>
         <td>${esc(w.oneway || "—")}</td>
         <td>${review}</td>
       </tr>`;
     }).join("");
+    const hasMore = shown < ways.length;
+    const more = hasMore
+      ? `<div class="rs-more">
+           <button class="rs-more-btn" data-kind="${esc(kind)}" data-action="more">Show ${Math.min(tablePageSize, ways.length - shown).toLocaleString()} more</button>
+           <button class="rs-more-btn" data-kind="${esc(kind)}" data-action="all">Show all ${ways.length.toLocaleString()}</button>
+           <span class="muted">Showing ${shown.toLocaleString()} of ${ways.length.toLocaleString()}</span>
+         </div>`
+      : `<p class="muted">Showing ${ways.length.toLocaleString()}.</p>`;
     return `
       <div class="rs-section ${kind}">
         <h3>${esc(title)} <span class="rs-count">${ways.length.toLocaleString()}</span></h3>
@@ -979,7 +1017,7 @@
           <thead><tr><th>Way ID</th><th>Street</th><th>Highway</th><th>Oneway</th><th>Review</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
-        ${ways.length > 200 ? `<p class="muted">Showing 200 of ${ways.length.toLocaleString()}.</p>` : ""}
+        ${more}
       </div>
     `;
   }
