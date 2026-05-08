@@ -835,6 +835,82 @@ def fix_impact(zone: str, profile: str, limit: int):
     click.echo(f"Updated {results_path}")
 
 
+# --- maproulette ---
+
+@main.command(name="maproulette")
+@click.option(
+    "--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE,
+    help="Zone whose Class-A/AB unverified candidates to export",
+)
+@click.option(
+    "--out",
+    type=click.Path(dir_okay=False, writable=True),
+    default=None,
+    help=(
+        "Output path for the GeoJSON Lines challenge file. Defaults to "
+        "osm-audit-{zone}/maproulette/{zone}-class-a-unverified.geojsonl."
+    ),
+)
+def maproulette_cmd(zone: str, out: str | None):
+    """Phase 3 — generate a MapRoulette challenge for unverified Class-A.
+
+    Reads the most recent scan-results.json, extracts every Class A or
+    AB way that did NOT make the auto-submit pool (no CAGIS match at
+    HIGH_CONFIDENCE), and emits a line-delimited GeoJSON file ready
+    for upload via the MapRoulette web UI or `mr-cli` cooperative
+    challenge flow.
+
+    The companion `--challenge-meta` dict (printed on stdout) is
+    suggested challenge-level metadata for the upload form.
+    """
+    from pathlib import Path as _Path
+
+    from .maproulette import (
+        build_tasks,
+        challenge_metadata,
+        unverified_class_a_ways,
+        write_geojsonl,
+    )
+
+    results_path = _output_dir(zone) / "scan-results.json"
+    if not results_path.exists():
+        click.echo(
+            f"No scan results found for {zone}. Run 'osm scan --zone {zone}' first."
+        )
+        raise SystemExit(1)
+
+    classified = _load_scan_results(results_path)
+    ways = unverified_class_a_ways(classified)
+    tasks = build_tasks(ways)
+
+    if not tasks:
+        click.echo(
+            f"No Class A / AB unverified ways for {zone}. The auto-submit "
+            "pool may already cover the candidates, or the polygon clip is "
+            "too tight."
+        )
+        return
+
+    out_path = (
+        _Path(out)
+        if out
+        else _output_dir(zone) / "maproulette"
+        / f"{zone}-class-a-unverified.geojsonl"
+    )
+    n = write_geojsonl(tasks, out_path)
+
+    meta = challenge_metadata(
+        zone_name=ZONES[zone].get("name", zone),
+        zone_key=zone,
+        n_tasks=n,
+    )
+
+    click.echo(f"Wrote {n:,} MapRoulette task(s) to {out_path}")
+    click.echo("")
+    click.echo("Suggested challenge metadata (paste into MapRoulette UI):")
+    click.echo(json.dumps(meta, indent=2, ensure_ascii=False))
+
+
 # --- report ---
 
 @main.command()
