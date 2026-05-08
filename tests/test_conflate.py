@@ -74,33 +74,81 @@ class TestConflate:
         assert m["confidence"] < 0.7
         assert m["name_match"] is False
 
-    def test_geometry_mismatch_parallel_50m_no_match(self):
-        from osm.conflate import build_index, match_way
+    def test_geometry_mismatch_parallel_50m_falls_back_to_review(self):
+        # Phase 2b fallback: a way 55 m parallel to a same-name CAGIS line
+        # is outside the 30 m primary buffer but within the 100 m fallback.
+        # Must match via fallback, capped at REVIEW_CONFIDENCE so it shows
+        # up in the human-review queue but never auto-submits.
+        from osm.conflate import REVIEW_CONFIDENCE, build_index, match_way
         idx = build_index([_make_feat(OAK_COORDS, label="OAK ST")])
-        # Way running parallel ~55 m north (outside the 30 m buffer).
         osm_way = {
             "id": 300,
             "name": "Oak Street",
             "geometry": [[39.2005, -84.4000], [39.2005, -84.3900]],
         }
         m = match_way(osm_way, idx)
-        assert m is None
+        assert m is not None
+        assert m.get("via_fallback") is True
+        assert m["confidence"] <= REVIEW_CONFIDENCE
+        assert m["hausdorff_m"] > 30.0
 
-    def test_direction_alignment_perpendicular_lowers_confidence(self):
-        from osm.conflate import build_index, match_way
+    def test_direction_alignment_perpendicular_falls_back_to_review(self):
+        # Same fallback logic for a perpendicular crossing: directed
+        # Hausdorff is ~50 m (still inside FALLBACK_BUFFER_M); cap holds.
+        from osm.conflate import REVIEW_CONFIDENCE, build_index, match_way
         idx = build_index([_make_feat(OAK_COORDS, label="OAK ST")])
-        # Way running perpendicular but crossing the centerline (so within
-        # the 30 m buffer at the crossing point); however, endpoint distances
-        # of a north-south way to the east-west centerline should put the
-        # Hausdorff over the buffer.
         osm_way = {
             "id": 400,
             "name": "Oak Street",
             "geometry": [[39.1995, -84.395], [39.2005, -84.395]],
         }
         m = match_way(osm_way, idx)
-        # Hausdorff between perpendicular short crossings ≈ 55 m → no match.
+        assert m is not None
+        assert m.get("via_fallback") is True
+        assert m["confidence"] <= REVIEW_CONFIDENCE
+
+    def test_fallback_caps_confidence_at_review_even_with_perfect_name(self):
+        # A way 60 m parallel with a perfect-name CAGIS feature would
+        # otherwise score very high. Fallback must cap at REVIEW_CONFIDENCE.
+        from osm.conflate import HIGH_CONFIDENCE, build_index, match_way
+        idx = build_index([_make_feat(OAK_COORDS, label="OAK ST")])
+        osm_way = {
+            "id": 700,
+            "name": "Oak Street",
+            "geometry": [[39.2006, -84.4000], [39.2006, -84.3900]],
+        }
+        m = match_way(osm_way, idx)
+        assert m is not None
+        assert m["via_fallback"] is True
+        # Critical promotion guardrail: fallback hits never auto-submit.
+        assert m["confidence"] < HIGH_CONFIDENCE
+
+    def test_fallback_skipped_beyond_fallback_buffer(self):
+        # A way 200 m from any CAGIS line must NOT match — even fallback
+        # has a distance gate (FALLBACK_BUFFER_M = 100 m).
+        from osm.conflate import build_index, match_way
+        idx = build_index([_make_feat(OAK_COORDS, label="OAK ST")])
+        osm_way = {
+            "id": 800,
+            "name": "Oak Street",
+            "geometry": [[39.2018, -84.4000], [39.2018, -84.3900]],
+        }
+        m = match_way(osm_way, idx)
         assert m is None
+
+    def test_normal_path_still_marked_via_fallback_false(self):
+        # Regression: a perfectly aligned match must still come back with
+        # via_fallback=False so downstream code can distinguish.
+        from osm.conflate import build_index, match_way
+        idx = build_index([_make_feat(OAK_COORDS, label="OAK ST")])
+        osm_way = {
+            "id": 900,
+            "name": "Oak Street",
+            "geometry": [[39.2000, -84.4000], [39.2000, -84.3900]],
+        }
+        m = match_way(osm_way, idx)
+        assert m is not None
+        assert m["via_fallback"] is False
 
     def test_directed_hausdorff_matches_osm_fragment_of_long_cagis(self):
         # Phase 2b: this is the F3-fix regression test. CAGIS publishes
@@ -250,14 +298,17 @@ class TestPhase2aDiagnostics:
         assert d["bucket"] == BUCKET_F1_NO_CANDIDATE
         assert d["candidates_within_buffer"] == 0
 
-    def test_f3_geometry_fail_parallel_55m(self):
-        # The matcher's existing test has a way 55 m north of OAK that
-        # currently returns None. With diagnostics, it should attribute
-        # to F3 (geometry fail) — STRtree may still find OAK in the
-        # query buffer envelope, but Hausdorff exceeds BUFFER_M.
+    def test_55m_parallel_classified_correctly(self):
+        # 55 m parallel: outside the 30 m primary buffer but within the
+        # 100 m FALLBACK_BUFFER_M, so the fallback path classifies this
+        # as MATCHED_FALLBACK_REVIEW (capped at REVIEW). Pre-fallback
+        # legitimate classifications were F1 or F3; both stay accepted
+        # so this test documents the matcher's evolution.
         from osm.conflate import (
             BUCKET_F1_NO_CANDIDATE,
             BUCKET_F3_GEOMETRY_FAIL,
+            BUCKET_MATCHED_FALLBACK_REVIEW,
+            REVIEW_CONFIDENCE,
             build_index,
             diagnose_way,
         )
@@ -268,13 +319,14 @@ class TestPhase2aDiagnostics:
             "geometry": [[39.2005, -84.4000], [39.2005, -84.3900]],
         }
         d = diagnose_way(way, idx)
-        # Either F3 (candidate found but Hausdorff too far) or F1 (STRtree
-        # buffer didn't catch it) — both are honest classifications.
-        assert d["bucket"] in {BUCKET_F1_NO_CANDIDATE, BUCKET_F3_GEOMETRY_FAIL}
-        if d["bucket"] == BUCKET_F1_NO_CANDIDATE:
-            # F1 must log a nearest-distance for buffer-tuning evidence.
-            assert d["nearest_distance_m"] is not None
-            assert d["nearest_distance_m"] > 30.0
+        assert d["bucket"] in {
+            BUCKET_F1_NO_CANDIDATE,
+            BUCKET_F3_GEOMETRY_FAIL,
+            BUCKET_MATCHED_FALLBACK_REVIEW,
+        }
+        if d["bucket"] == BUCKET_MATCHED_FALLBACK_REVIEW:
+            assert d["confidence"] is not None
+            assert d["confidence"] <= REVIEW_CONFIDENCE
 
     def test_f2_name_fail_geometry_perfect(self):
         # Geometry is perfect, direction aligned, but name is totally

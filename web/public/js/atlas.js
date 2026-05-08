@@ -286,7 +286,7 @@
     if (!cagisOverlay) {
       // Guard against esri-leaflet not loading (CDN block, offline, etc.).
       if (!window.L || !window.L.esri || !window.L.esri.featureLayer) {
-        showToast("Esri Leaflet plugin not available; CAGIS overlay disabled.");
+        toast("Esri Leaflet plugin not available; CAGIS overlay disabled.", "warn");
         return;
       }
       cagisOverlay = window.L.esri.featureLayer({

@@ -83,6 +83,19 @@ BUFFER_M = 30.0
 HIGH_CONFIDENCE = 0.85
 REVIEW_CONFIDENCE = 0.6
 
+# Phase 2b nearest-neighbor fallback. When the STRtree buffer query
+# returns no candidates within BUFFER_M, look up the absolutely nearest
+# CAGIS centerline. If its directed Hausdorff is within FALLBACK_BUFFER_M,
+# score it normally but cap the confidence at REVIEW_CONFIDENCE so it
+# never auto-submits — only surfaces in the human-review queue. The cap
+# is the plan's "≤0.6 ceiling" guardrail.
+#
+# Justified by Phase 2b F1 nearest-distance histograms: in Blue Ash and
+# Northgate, hundreds of ways sit just past 30m. In Forest Park (median
+# 1.4km) the cap-by-distance prevents the fallback from generating noise
+# from the zone-polygon bleed into Butler County.
+FALLBACK_BUFFER_M = 100.0
+
 # Confidence-score weights. Single source of truth for the matcher AND the
 # Phase 2a diagnostic — adjusting these here keeps both in sync.
 W_NAME = 0.5
@@ -100,8 +113,9 @@ DIAG_DIAGNOSTIC_BUFFER_M = BUFFER_M  # buffer used for candidate enumeration
 
 # Bucket labels for diagnose_match() / write_baseline_manifest().
 BUCKET_MATCHED_HIGH = "MATCHED_HIGH"          # confidence >= 0.85
-BUCKET_MATCHED_REVIEW = "MATCHED_REVIEW"      # 0.6 <= confidence < 0.85
-BUCKET_F1_NO_CANDIDATE = "F1_NO_CANDIDATE"    # no CAGIS within BUFFER_M
+BUCKET_MATCHED_REVIEW = "MATCHED_REVIEW"      # in-buffer, 0.6 <= confidence < 0.85
+BUCKET_MATCHED_FALLBACK_REVIEW = "MATCHED_FALLBACK_REVIEW"  # out-of-buffer fallback, capped at REVIEW
+BUCKET_F1_NO_CANDIDATE = "F1_NO_CANDIDATE"    # nothing within FALLBACK_BUFFER_M either
 BUCKET_F2_NAME_FAIL = "F2_NAME_FAIL"          # geometry passes, name drags
 BUCKET_F3_GEOMETRY_FAIL = "F3_GEOMETRY_FAIL"  # candidates exist, all haus > BUFFER_M
 BUCKET_F4_DIRECTION_DRAG = "F4_DIRECTION_DRAG"  # short way; direction term killed it
@@ -456,12 +470,22 @@ class ConflationIndex:
         except Exception:  # noqa: BLE001
             return None
 
-        candidates = self.within_buffer(line, BUFFER_M)
-        if not candidates:
-            return None
-
         osm_norm = norm_name(osm_name)
         osm_vec = _line_unit_vector(osm_geometry)
+
+        candidates = self.within_buffer(line, BUFFER_M)
+        if not candidates:
+            # Phase 2b fallback: try nearest. Confidence is capped at
+            # REVIEW_CONFIDENCE so the result can populate the human-review
+            # queue but never auto-submit.
+            fb = self._fallback_score(osm_geometry, osm_norm, osm_vec, line)
+            if fb is None:
+                return None
+            fb_conf, fb_rec, fb_name_sim, fb_haus, _fb_dir = fb
+            return self._build_match_result(
+                fb_conf, fb_rec, fb_name_sim, fb_haus, osm_norm,
+                via_fallback=True,
+            )
 
         best: tuple[float, _CagisRecord, float, float, float] | None = None
         for rec in candidates:
@@ -482,8 +506,97 @@ class ConflationIndex:
                 best = (confidence, rec, name_sim, haus, dir_align)
 
         if best is None:
+            # All in-buffer candidates failed Hausdorff (rare with directed
+            # metric, but possible). Try the same fallback path.
+            fb2 = self._fallback_score(osm_geometry, osm_norm, osm_vec, line)
+            if fb2 is None:
+                return None
+            fb2_conf, fb2_rec, fb2_name_sim, fb2_haus, _fb2_dir = fb2
+            return self._build_match_result(
+                fb2_conf, fb2_rec, fb2_name_sim, fb2_haus, osm_norm,
+                via_fallback=True,
+            )
+
+        b_conf, b_rec, b_name_sim, b_haus, _b_dir = best
+        return self._build_match_result(
+            b_conf, b_rec, b_name_sim, b_haus, osm_norm, via_fallback=False,
+        )
+
+    def _fallback_score(
+        self,
+        osm_geometry: list[list[float]],
+        osm_norm: str | None,
+        osm_vec: tuple[float, float] | None,
+        line: Any,
+    ) -> tuple[float, _CagisRecord, float, float, float] | None:
+        """Score the absolutely nearest CAGIS centerline, capped at REVIEW.
+
+        Returns None if no candidate exists or its directed Hausdorff
+        exceeds FALLBACK_BUFFER_M. Confidence in the returned tuple is
+        capped at REVIEW_CONFIDENCE.
+
+        Samples first / middle / last OSM vertices and queries
+        STRtree.nearest for each, then keeps the highest-scoring
+        candidate that passes the FALLBACK_BUFFER_M gate. Single-vertex
+        sampling missed valid matches on long or curved ways where the
+        first vertex's nearest centerline differed from the rest of
+        the way's — flagged in PR #11 review by gemini-code-assist
+        and chatgpt-codex-connector.
+        """
+        if not osm_geometry:
             return None
-        confidence, rec, name_sim, haus, _dir = best
+        del line  # currently unused; kept for symmetry with match()
+        samples_idx = {
+            0,
+            len(osm_geometry) // 2,
+            len(osm_geometry) - 1,
+        }
+        seen_ids: set[int] = set()
+        best: tuple[float, _CagisRecord, float, float, float] | None = None
+        for si in samples_idx:
+            try:
+                pt = osm_geometry[si]
+                pt_lonlat = (pt[1], pt[0])
+            except (IndexError, TypeError):
+                continue
+            nearest_rec = self.nearest(pt_lonlat)
+            if nearest_rec is None:
+                continue
+            rec_id = id(nearest_rec)
+            if rec_id in seen_ids:
+                continue
+            seen_ids.add(rec_id)
+            haus = _directed_hausdorff_meters(
+                osm_geometry, nearest_rec.geometry_lonlat,
+            )
+            if haus is None or haus > FALLBACK_BUFFER_M:
+                continue
+            name_sim = _name_similarity(osm_norm, nearest_rec.name_norm)
+            cagis_vec = _line_unit_vector_lonlat(nearest_rec.geometry_lonlat)
+            dir_align = _direction_alignment(osm_vec, cagis_vec)
+            # Wider FALLBACK denominator since the candidate is by
+            # definition past the normal buffer.
+            geom_overlap = max(0.0, min(1.0, 1.0 - haus / FALLBACK_BUFFER_M))
+            raw_confidence = (
+                W_NAME * name_sim
+                + W_GEOMETRY * geom_overlap
+                + W_DIRECTION * dir_align
+            )
+            confidence = min(raw_confidence, REVIEW_CONFIDENCE)
+            if best is None or confidence > best[0]:
+                best = (confidence, nearest_rec, name_sim, haus, dir_align)
+        return best
+
+    def _build_match_result(
+        self,
+        confidence: float,
+        rec: _CagisRecord,
+        name_sim: float,
+        haus: float,
+        osm_norm: str | None,
+        *,
+        via_fallback: bool,
+    ) -> dict:
         return {
             "cagis_id": rec.cagis_id,
             "cagis_name": rec.name,
@@ -498,6 +611,7 @@ class ConflationIndex:
                 and rec.name_norm is not None
                 and name_sim >= 0.85
             ),
+            "via_fallback": via_fallback,
         }
 
     def diagnose_match(
@@ -545,34 +659,72 @@ class ConflationIndex:
         except Exception:  # noqa: BLE001
             return diag
 
+        # Compute name/direction context up front so the fallback branch
+        # below can reuse them.
+        osm_norm = norm_name(osm_name)
+        osm_vec = _line_unit_vector(osm_geometry)
+
         candidates = self.within_buffer(line, BUFFER_M)
         diag["candidates_within_buffer"] = len(candidates)
 
         if not candidates:
-            # F1: log distance to the nearest CAGIS centerline so the buffer
-            # threshold can be tuned with evidence in Phase 2b.
+            # Log the closest approach of the OSM way to ANY CAGIS line.
+            # Sample first/middle/last OSM vertices, query nearest CAGIS
+            # for each, then take the min distance from the WHOLE OSM way
+            # to those candidate features (single-vertex sampling
+            # over- or under-states the true closest approach on long
+            # unmatched ways — flagged in Codex review of #11).
             try:
-                # nearest() takes (lon, lat); _min_dist_to_polyline takes
-                # (lat, lon) for the point and (lat, lon) tuples for the line.
-                first_pt_lonlat = (osm_geometry[0][1], osm_geometry[0][0])
-                nearest_rec = self.nearest(first_pt_lonlat)
-                if nearest_rec is not None:
+                samples_idx = {0, len(osm_geometry) // 2, len(osm_geometry) - 1}
+                seen_ids: set = set()
+                best_nd: float | None = None
+                for si in samples_idx:
+                    pt = osm_geometry[si]
+                    pt_lonlat = (pt[1], pt[0])
+                    nearest_rec = self.nearest(pt_lonlat)
+                    if nearest_rec is None:
+                        continue
+                    rec_id = id(nearest_rec)
+                    if rec_id in seen_ids:
+                        continue
+                    seen_ids.add(rec_id)
                     cagis_latlon = [
                         (lat, lon) for lon, lat in nearest_rec.geometry_lonlat
                     ]
-                    nd = _min_dist_to_polyline(
-                        (osm_geometry[0][0], osm_geometry[0][1]), cagis_latlon
+                    nd = min(
+                        _min_dist_to_polyline((p[0], p[1]), cagis_latlon)
+                        for p in osm_geometry
                     )
-                    diag["nearest_distance_m"] = round(nd, 2)
+                    if best_nd is None or nd < best_nd:
+                        best_nd = nd
+                if best_nd is not None:
+                    diag["nearest_distance_m"] = round(best_nd, 2)
             except Exception:  # noqa: BLE001
                 pass
+
+            # Phase 2b fallback: if the closest CAGIS line is within
+            # FALLBACK_BUFFER_M, try the fallback scoring path. Hits
+            # land in MATCHED_FALLBACK_REVIEW (capped at REVIEW_CONFIDENCE)
+            # so they populate the human-review queue without auto-promoting.
+            fb = self._fallback_score(osm_geometry, osm_norm, osm_vec, line)
+            if fb is not None:
+                fb_conf, fb_rec, fb_name_sim, fb_haus, fb_dir = fb
+                diag["confidence"] = round(fb_conf, 4)
+                diag["name_similarity"] = round(fb_name_sim, 4)
+                diag["hausdorff_m"] = round(fb_haus, 2)
+                diag["direction_alignment"] = round(fb_dir, 4)
+                diag["best_match"] = {
+                    "cagis_id": fb_rec.cagis_id,
+                    "cagis_name": fb_rec.name,
+                }
+                diag["bucket"] = BUCKET_MATCHED_FALLBACK_REVIEW
+                return diag
+
             diag["bucket"] = BUCKET_F1_NO_CANDIDATE
             return diag
 
         # Score every candidate the same way match() does, but keep the
         # full scoring tuple so we can attribute the dominant penalty.
-        osm_norm = norm_name(osm_name)
-        osm_vec = _line_unit_vector(osm_geometry)
         scored: list[
             tuple[float, _CagisRecord, float, float, float, bool]
         ] = []
@@ -722,17 +874,24 @@ def summarize_diagnostics(rows: list[dict]) -> dict:
     total = len(rows)
     matched_high = counts.get(BUCKET_MATCHED_HIGH, 0)
     matched_review = counts.get(BUCKET_MATCHED_REVIEW, 0)
+    matched_fallback_review = counts.get(BUCKET_MATCHED_FALLBACK_REVIEW, 0)
+    matched_total = matched_high + matched_review + matched_fallback_review
     return {
         "total_ways": total,
         "matched_high": matched_high,
         "matched_review": matched_review,
+        "matched_fallback_review": matched_fallback_review,
         "match_rate_pct": (
-            round(100.0 * (matched_high + matched_review) / total, 2)
-            if total
-            else 0.0
+            round(100.0 * matched_total / total, 2) if total else 0.0
         ),
         "auto_submit_rate_pct": (
             round(100.0 * matched_high / total, 2) if total else 0.0
+        ),
+        "review_queue_pct": (
+            round(
+                100.0 * (matched_review + matched_fallback_review) / total, 2,
+            )
+            if total else 0.0
         ),
         "buckets": counts,
         "f1_nearest_distance_m_stats": _stats(f1_distances),

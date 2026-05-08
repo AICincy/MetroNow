@@ -8,9 +8,12 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
 ## Layout
 
 - `src/osm/` — Python package (pip-installable as `osm`)
-  - Pipeline: `fetch.py`, `classify.py`, `detectors.py`, `gaps.py`,
-    `history.py`, `history_filter.py`, `conflate.py`, `review.py`,
-    `changeset.py`
+  - Pipeline: `fetch.py`, `polygons.py`, `classify.py`, `detectors.py`,
+    `gaps.py`, `history.py`, `history_filter.py`, `conflate.py`,
+    `review.py`, `changeset.py`
+  - Zone polygons: `src/osm/zones/<zone-key>.geojson` (real MetroNow
+    operational polygons from SORTA's web map) + `hamilton-county.geojson`
+    (TIGER FIPS 39061 fallback)
   - Output: `xlsx.py`, `dashboard.py`, `csv_export.py`
   - Plumbing: `cli.py` (Click), `config.py`, `zones.py`, `geo.py`,
     `cache.py`, `auth.py` (OAuth 2.0 + PKCE)
@@ -24,7 +27,7 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
   - `web/public/js/atlas-extras.js` — theme/density/accent/weight tweaks
   - `web/public/css/atlas-supplement.css` — components added by atlas.js
   - `web/public/.legacy/` — original UI preserved for rollback
-- `tests/` — pytest suite (109 passing as of last commit)
+- `tests/` — pytest suite (230 passing as of last commit)
 - `osm-audit-{zone}/` — generated outputs per zone (gitignored): raw Overpass
   cache under `data/`, `scan-results.json`, `reports/`, `csv/`
 
@@ -55,9 +58,10 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
   `_cincyimport`-convention account
 - Changeset community norm is ~500 elements (CGImap hard limit 10,000)
 - Use MapRoulette for corrections with >5% expected false-positive rate
-- Active ground truth: CAGIS quarterly centerlines (FeatureServer/26)
+- Active ground truth: CAGIS quarterly centerlines (FeatureServer/26),
+  TIGER/Line 2024 county roads as a fallback layer (`src/osm/tiger2024.py`)
 - Aspirational ground truth (not yet integrated; do not cite in `source=`
-  tags until a working endpoint is wired): ODOT TIMS, TIGER/Line 2024
+  tags until a working endpoint is wired): ODOT TIMS
 - Every CAGIS-sourced changeset must carry the `cagis:attribution` tag per
   the Open Data Hub license
 

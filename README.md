@@ -35,6 +35,11 @@ markers survive.
    needed by the rider-impact detectors — `relation[type=restriction]`,
    `node[barrier]`, `node[highway=bus_stop]`, `node[entrance]`. Results are
    cached on disk under `osm-audit-{zone}/data/` with bbox-keyed pruning.
+   Post-fetch, `src/osm/polygons.py` clips elements to each zone's
+   authoritative MetroNow operational polygon (sourced from SORTA's
+   published web map, see `src/osm/zones/<zone-key>.geojson`); ways /
+   nodes whose centroid falls outside the polygon are dropped before
+   classify and conflate run.
 
 2. **Classify** — `src/osm/classify.py`. Original TIGER-fixup taxonomy:
 
@@ -77,17 +82,34 @@ markers survive.
 
    ```
    confidence = 0.5 · name_similarity         (Ratcliff-Obershelp on normalized names)
-              + 0.3 · geometry_overlap        (1 − Hausdorff/30 m, point-to-segment, ENU-projected)
+              + 0.3 · geometry_overlap        (1 − directed-Hausdorff/30 m, OSM→CAGIS only)
               + 0.2 · direction_alignment     (|cos θ| between line direction vectors)
    ```
+
+   The geometry term uses **directed** Hausdorff (max-over-OSM-points of
+   min-distance-to-CAGIS-line). The symmetric form blew up on the common
+   topology where OSM has a long named street broken into shorter ways at
+   intersections — the reverse direction penalised CAGIS endpoints lying
+   outside the OSM segment even when OSM perfectly traced its part. Real
+   data: switching to directed Hausdorff lifted Blue Ash's auto-submit
+   rate from 6.3% to 17.7% (and 5.0% → 12.1% across all four zones).
 
    At confidence ≥ 0.85 the conflated way is treated as ground-truth: CAGIS
    `TRVL_DIR` overrides the OSM `oneway` heuristic, CAGIS `SPEEDLIMIT`
    supplies a missing `maxspeed`, CAGIS `STRLABEL` flags a name mismatch
    (always queued for human review — CAGIS uses postal abbreviations, OSM
    convention is spelled-out names). Confidence in [0.6, 0.85] surfaces the
-   way as a candidate but blocks auto-submission. Below 0.6 the way is
-   marked unconflated.
+   way as a candidate but blocks auto-submission.
+
+   When the STRtree query returns no candidates within 30 m, a
+   nearest-neighbor fallback queries the absolutely closest CAGIS feature
+   and, if within 100 m, scores it normally but **caps confidence at
+   `REVIEW_CONFIDENCE` (0.6)** — fallback hits surface in the human-review
+   queue but never auto-submit. The `osm conflate --baseline-manifest`
+   flag emits a per-zone diagnostic JSON attributing every way to one of
+   `MATCHED_HIGH` / `MATCHED_REVIEW` / `MATCHED_FALLBACK_REVIEW` /
+   `F1_NO_CANDIDATE` / `F2_NAME_FAIL` / `F3_GEOMETRY_FAIL` /
+   `F4_DIRECTION_DRAG` / `MIXED_LOW`, used for matcher tuning.
 
 5. **Review** — `src/osm/review.py`. `proposed_fixes_for_way` emits zero or
    more fix descriptors per way, each tagged with its evidence: pure
@@ -150,23 +172,29 @@ osm auth login                                         # OSM OAuth 2.0 (PKCE)
 
 ## Verification (state of main as of last commit)
 
-- **109 passing tests** across `tests/test_{classify,gaps,geo,history_filter,review,detectors,conflate}.py`.
+- **230 passing tests** across `tests/test_{classify,gaps,geo,history_filter,review,detectors,conflate,notes,osmose,route_diff,tiger2024,polygons}.py`.
 - `ruff check src/` clean. `mypy src/osm/ --ignore-missing-imports` clean.
-- Four-zone harvest summary (Class A/AB heuristic):
+- Four-zone CAGIS conflation snapshot, post-Phase-4a stage 3 (real
+  MetroNow operational polygons sourced from SORTA's published web
+  map). Total ways count post-polygon-clip elements; auto-submit
+  counts ways at confidence ≥ 0.85; review counts in-buffer 0.6–0.85
+  plus fallback hits capped at 0.6:
 
-  | Zone | Total ways | Class AB | Class A | Class B | Gaps |
-  |------|-----------:|---------:|--------:|--------:|-----:|
-  | Blue Ash / Montgomery        | 2,920 | 44  | 639 | 1,361 | 341 |
-  | Springdale / Sharonville     | 2,858 | 172 | 879 | 1,371 | 304 |
-  | Northgate / Mt. Healthy      | 2,221 | 73  | 488 | 861   | 167 |
-  | Forest Park / Pleasant Run   | 2,950 | 125 | 707 | 1,400 | 311 |
-  | **Total**                    | **10,949** | **414** | **2,713** | **4,993** | **1,123** |
+  | Zone                        | Total ways | Auto-submit (HIGH) | Review queue | Match rate |
+  |-----------------------------|-----------:|-------------------:|-------------:|-----------:|
+  | Blue Ash / Montgomery       | 3,642      | 19.99% (728)       | 5.35% (195)  | **25.34%** |
+  | Springdale / Sharonville    | 4,235      | 15.04% (637)       | 7.72% (327)  | **22.76%** |
+  | Northgate / Mt. Healthy     | 1,409      | 21.22% (299)       | 5.18% (73)   | **26.40%** |
+  | Forest Park / Pleasant Run  | 1,898      | 19.97% (379)       | 3.37% (64)   | **23.34%** |
 
-- Blue Ash CAGIS conflation snapshot: 3,140 CAGIS centerlines fetched; 729
-  OSM ways (8.7%) matched; 528 at confidence ≥ 0.85; 481 auto-submittable
-  CAGIS-verified fixes (473 `set_maxspeed_cagis`, 7 `set_oneway_cagis`, 1
-  `remove_oneway_cagis`). The 8.7% match rate is a known investigation item
-  — the matcher is conservative and likely under-counts.
+  Match rate ≥ 22.76% in every zone; auto-submit rate ≥ 15% in every
+  zone. Stage 3 tightens audit scope to the actual operational service
+  polygons, so corrections target ways that affect MetroNow rider
+  experience instead of the broader bbox. Per-way diagnostic manifests
+  with bucket attribution (`MATCHED_HIGH` / `MATCHED_REVIEW` /
+  `MATCHED_FALLBACK_REVIEW` / `F1_NO_CANDIDATE` / `F2_NAME_FAIL` /
+  `F3_GEOMETRY_FAIL` / `F4_DIRECTION_DRAG` / `MIXED_LOW`) are written by
+  `osm conflate --baseline-manifest`.
 
 ## Compliance and provenance
 

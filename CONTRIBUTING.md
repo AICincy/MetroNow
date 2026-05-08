@@ -82,7 +82,7 @@ API the frontend consumes. The previous (pre-redesign) UI is preserved under
 ## Testing
 
 ```bash
-pytest tests/ -v          # full test suite (109 tests at HEAD)
+pytest tests/ -v          # full test suite (230 tests at HEAD)
 ruff check src/           # lint Python sources
 mypy src/osm/ --ignore-missing-imports
 cd web && npx eslint@8 public/js/atlas.js public/js/atlas-extras.js \
@@ -108,7 +108,26 @@ src/osm/
   geo.py                Haversine, valid lat/lon, name normalization
   history.py            OSM API v0.6 way/node revision-history fetch with caching
   history_filter.py     Two-tier review-status determination (metadata + history)
-  conflate.py           Shapely STRtree match against CAGIS Street Centerlines
+  polygons.py           Hamilton County polygon clip + per-zone polygon clip
+                        (real MetroNow operational polygons, sourced from
+                        SORTA's published web map). Drops elements outside
+                        the polygon centroid post-fetch.
+  conflate.py           Shapely STRtree match against CAGIS Street Centerlines.
+                        Directed Hausdorff (OSM→CAGIS) for the geometry term;
+                        nearest-neighbor fallback inside FALLBACK_BUFFER_M caps
+                        confidence at REVIEW_CONFIDENCE so it never auto-submits.
+                        diagnose_match() / write_baseline_manifest() emit a
+                        per-way bucket-attribution JSON (MATCHED_HIGH /
+                        MATCHED_REVIEW / MATCHED_FALLBACK_REVIEW / F1-F4 / MIXED)
+                        used for matcher tuning.
+  tiger2024.py          Fallback ground truth: Census TIGER/Line 2024 county roads
+                        (only consulted for ways CAGIS doesn't cover)
+  notes.py / osmose.py  Read-only feeds — OSM Notes (community feedback) and
+                        Osmose quality-issue badges shown in the inventory and
+                        Investigations panels, never auto-submitted
+  route_diff.py         BRouter route-diff harness — graduates rider-impact
+                        detector hits to "real / inconclusive / noisy" by
+                        perturbing the routing graph and comparing routes
   review.py             proposed_fix(es)_for_way: classifier and CAGIS-verified fix kinds
   changeset.py          OSM API v0.6 changeset creation, batching, diff upload
   auth.py               OAuth 2.0 Authorization Code + PKCE
@@ -135,7 +154,13 @@ tests/
   test_history_filter.py Tier-1 / Tier-2 review-status assignment
   test_review.py        proposed_fix and proposed_fixes_for_way
   test_detectors.py     All eight rider-impact detectors (positive + negative cases)
-  test_conflate.py      Shapely match scoring + graceful Shapely-missing degradation
+  test_conflate.py      Shapely match scoring, fallback path, F1-F4 bucket
+                        attribution, baseline manifest round-trip, graceful
+                        Shapely-missing degradation
+  test_notes.py         OSM Notes feed parser + zone filter
+  test_osmose.py        Osmose API parser + zone filter
+  test_route_diff.py    BRouter perturbation harness (real / noisy / inconclusive)
+  test_tiger2024.py     TIGER/Line 2024 fallback conflation
 
 docs/
   metronow-atlas.html   UI redesign reference
