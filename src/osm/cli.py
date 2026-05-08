@@ -17,6 +17,20 @@ def _output_dir(zone_key: str) -> Path:
     return PROJECT_ROOT / f"osm-audit-{zone_key}"
 
 
+def _git_sha_short() -> str:
+    """Short git SHA of the working tree, or ``"unknown"`` if not in a repo."""
+    import subprocess
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=PROJECT_ROOT,
+            stderr=subprocess.DEVNULL,
+        )
+        return out.decode().strip() or "unknown"
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return "unknown"
+
+
 @click.group()
 @click.version_option(package_name="osm")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
@@ -409,7 +423,13 @@ def fix(zone: str, dry_run: bool, annotate_fixes: bool):
 @main.command()
 @click.option("--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE, help="Zone to conflate")
 @click.option("--force-refresh", is_flag=True, help="Re-fetch CAGIS data even if a fresh cache exists")
-def conflate(zone: str, force_refresh: bool):
+@click.option(
+    "--baseline-manifest",
+    is_flag=True,
+    help="Phase 2a: also write per-way diagnostic manifest "
+         "(cagis_baseline_<gitsha>.json) with F1-F4 bucket attribution.",
+)
+def conflate(zone: str, force_refresh: bool, baseline_manifest: bool):
     """Conflate the most recent scan against CAGIS street centerlines.
 
     Reads ``scan-results.json`` for ``--zone``, loads the CAGIS centerlines
@@ -417,12 +437,20 @@ def conflate(zone: str, force_refresh: bool):
     and rewrites ``scan-results.json`` with ``cagis_match`` attached to
     every way. The web UI picks the new fields up automatically.
 
+    With ``--baseline-manifest``, additionally write a diagnostic manifest
+    classifying every way's match outcome into MATCHED_HIGH / MATCHED_REVIEW
+    / F1_NO_CANDIDATE / F2_NAME_FAIL / F3_GEOMETRY_FAIL / F4_DIRECTION_DRAG
+    / MIXED_LOW. Used to attribute the 8.7% match rate to specific failure
+    modes before tuning weights. Read-only — does not change scoring.
+
     Source: CAGIS Open Data Hub, Hamilton County, Ohio.
     """
     from .conflate import (
         SHAPELY_AVAILABLE,
         build_index,
+        diagnose_all,
         load_cagis_for_zone,
+        write_baseline_manifest,
     )
     from .conflate import conflate as conflate_fn
 
@@ -461,6 +489,24 @@ def conflate(zone: str, force_refresh: bool):
         " against CAGIS centerlines."
     )
     click.echo(f"Updated {results_path}")
+
+    if baseline_manifest:
+        git_sha = _git_sha_short()
+        rows = diagnose_all(classified["all_ways"], idx)
+        manifest_dir = _output_dir(zone) / "data"
+        manifest_path = manifest_dir / f"cagis_baseline_{git_sha}.json"
+        summary = write_baseline_manifest(
+            rows,
+            zone_key=zone,
+            git_sha=git_sha,
+            out_path=manifest_path,
+        )
+        click.echo(
+            f"Phase 2a baseline manifest: {manifest_path}\n"
+            f"  match_rate={summary['match_rate_pct']}%  "
+            f"auto_submit={summary['auto_submit_rate_pct']}%\n"
+            f"  buckets={summary['buckets']}"
+        )
 
 
 # --- conflate-tiger ---

@@ -102,6 +102,33 @@ class TestConflate:
         # Hausdorff between perpendicular short crossings ≈ 55 m → no match.
         assert m is None
 
+    def test_directed_hausdorff_matches_osm_fragment_of_long_cagis(self):
+        # Phase 2b: this is the F3-fix regression test. CAGIS publishes
+        # the WHOLE named-street centerline; OSM has the same street
+        # broken into shorter ways at intersections. The symmetric
+        # Hausdorff used to reject these by penalising the CAGIS endpoints
+        # that fall outside the OSM segment. Directed Hausdorff (OSM→CAGIS
+        # only) keeps the match because every OSM point IS on the CAGIS line.
+        from osm.conflate import build_index, match_way
+        long_cagis = [[-84.42, 39.20], [-84.38, 39.20]]  # ~3.4 km
+        idx = build_index([_make_feat(long_cagis, label="OAK ST")])
+        # OSM way: short ~430 m fragment in the middle of OAK ST.
+        osm_way = {
+            "id": 9001,
+            "name": "Oak Street",
+            "geometry": [[39.2000, -84.4000], [39.2000, -84.3950]],
+        }
+        m = match_way(osm_way, idx)
+        assert m is not None, "OSM fragment of long CAGIS centerline must match"
+        assert m["confidence"] >= 0.85, (
+            f"Expected high confidence for OSM-fragment-of-CAGIS topology, "
+            f"got {m['confidence']}"
+        )
+        assert m["hausdorff_m"] < 1.0, (
+            f"Directed haus should be ~0 for an OSM way that lies on CAGIS, "
+            f"got {m['hausdorff_m']}"
+        )
+
     def test_opposite_direction_still_aligns(self):
         # Direction is undirected (we use abs(cos)) so reversing endpoints
         # should still produce a high-confidence match.
@@ -163,6 +190,202 @@ class TestConflate:
         url = feature_url(12345)
         assert url.endswith("/26/12345")
         assert "FeatureServer" in url
+
+
+class TestPhase2aDiagnostics:
+    """Phase 2a: per-way bucket attribution that does NOT change scoring."""
+
+    def test_matched_high_bucket(self):
+        from osm.conflate import (
+            BUCKET_MATCHED_HIGH,
+            build_index,
+            diagnose_way,
+        )
+        idx = build_index([_make_feat(OAK_COORDS, label="OAK ST")])
+        way = {
+            "id": 1,
+            "name": "Oak Street",
+            "geometry": [[39.2000, -84.4000], [39.2000, -84.3900]],
+        }
+        d = diagnose_way(way, idx)
+        assert d["bucket"] == BUCKET_MATCHED_HIGH
+        assert d["confidence"] >= 0.85
+        assert d["best_match"] is not None
+        assert d["candidates_within_buffer"] >= 1
+
+    def test_matched_review_bucket_for_geometry_drift(self):
+        # Same name + perfect direction, but parallel ~20 m offset (within
+        # the 30 m buffer). geom_overlap ≈ 0.33 drags confidence into the
+        # [0.6, 0.85) review band.
+        # 20 m latitude offset ≈ 20/111320 ≈ 0.000180 deg.
+        from osm.conflate import (
+            BUCKET_MATCHED_REVIEW,
+            build_index,
+            diagnose_way,
+        )
+        idx = build_index([_make_feat(OAK_COORDS, label="OAK ST")])
+        way = {
+            "id": 2,
+            "name": "Oak Street",
+            "geometry": [[39.20018, -84.4000], [39.20018, -84.3900]],
+        }
+        d = diagnose_way(way, idx)
+        assert d["bucket"] == BUCKET_MATCHED_REVIEW
+        assert 0.6 <= d["confidence"] < 0.85
+
+    def test_f1_no_candidate_far_away(self):
+        from osm.conflate import (
+            BUCKET_F1_NO_CANDIDATE,
+            build_index,
+            diagnose_way,
+        )
+        idx = build_index([_make_feat(OAK_COORDS, label="OAK ST")])
+        # Way ~1 km away → outside even the 30 m STRtree buffer.
+        way = {
+            "id": 3,
+            "name": "Maple Avenue",
+            "geometry": [[40.0, -85.0], [40.0001, -85.0]],
+        }
+        d = diagnose_way(way, idx)
+        assert d["bucket"] == BUCKET_F1_NO_CANDIDATE
+        assert d["candidates_within_buffer"] == 0
+
+    def test_f3_geometry_fail_parallel_55m(self):
+        # The matcher's existing test has a way 55 m north of OAK that
+        # currently returns None. With diagnostics, it should attribute
+        # to F3 (geometry fail) — STRtree may still find OAK in the
+        # query buffer envelope, but Hausdorff exceeds BUFFER_M.
+        from osm.conflate import (
+            BUCKET_F1_NO_CANDIDATE,
+            BUCKET_F3_GEOMETRY_FAIL,
+            build_index,
+            diagnose_way,
+        )
+        idx = build_index([_make_feat(OAK_COORDS, label="OAK ST")])
+        way = {
+            "id": 4,
+            "name": "Oak Street",
+            "geometry": [[39.2005, -84.4000], [39.2005, -84.3900]],
+        }
+        d = diagnose_way(way, idx)
+        # Either F3 (candidate found but Hausdorff too far) or F1 (STRtree
+        # buffer didn't catch it) — both are honest classifications.
+        assert d["bucket"] in {BUCKET_F1_NO_CANDIDATE, BUCKET_F3_GEOMETRY_FAIL}
+        if d["bucket"] == BUCKET_F1_NO_CANDIDATE:
+            # F1 must log a nearest-distance for buffer-tuning evidence.
+            assert d["nearest_distance_m"] is not None
+            assert d["nearest_distance_m"] > 30.0
+
+    def test_f2_name_fail_geometry_perfect(self):
+        # Geometry is perfect, direction aligned, but name is totally
+        # unrelated. This must attribute to F2_NAME_FAIL, not MIXED_LOW.
+        from osm.conflate import (
+            BUCKET_F2_NAME_FAIL,
+            build_index,
+            diagnose_way,
+        )
+        idx = build_index([_make_feat(OAK_COORDS, label="OAK ST")])
+        way = {
+            "id": 5,
+            "name": "Birch Boulevard",
+            "geometry": [[39.2000, -84.4000], [39.2000, -84.3900]],
+        }
+        d = diagnose_way(way, idx)
+        assert d["bucket"] == BUCKET_F2_NAME_FAIL
+        assert d["name_similarity"] is not None
+        assert d["name_similarity"] < 0.5
+
+    def test_summarize_diagnostics_aggregates_buckets(self):
+        from osm.conflate import (
+            BUCKET_F1_NO_CANDIDATE,
+            BUCKET_F2_NAME_FAIL,
+            BUCKET_MATCHED_HIGH,
+            summarize_diagnostics,
+        )
+        rows = [
+            {"bucket": BUCKET_MATCHED_HIGH, "way_length_m": 100},
+            {"bucket": BUCKET_MATCHED_HIGH, "way_length_m": 80},
+            {
+                "bucket": BUCKET_F1_NO_CANDIDATE,
+                "nearest_distance_m": 45.0,
+                "way_length_m": 60,
+            },
+            {
+                "bucket": BUCKET_F2_NAME_FAIL,
+                "name_similarity": 0.2,
+                "way_length_m": 90,
+            },
+        ]
+        s = summarize_diagnostics(rows)
+        assert s["total_ways"] == 4
+        assert s["matched_high"] == 2
+        assert s["match_rate_pct"] == 50.0
+        assert s["auto_submit_rate_pct"] == 50.0
+        assert s["buckets"][BUCKET_F1_NO_CANDIDATE] == 1
+        assert s["buckets"][BUCKET_F2_NAME_FAIL] == 1
+        assert s["f1_nearest_distance_m_stats"]["count"] == 1
+
+    def test_summarize_handles_empty_rows(self):
+        from osm.conflate import summarize_diagnostics
+        s = summarize_diagnostics([])
+        assert s["total_ways"] == 0
+        assert s["match_rate_pct"] == 0.0
+        assert s["buckets"] == {}
+        assert s["f1_nearest_distance_m_stats"] is None
+
+    def test_write_baseline_manifest_round_trips(self, tmp_path):
+        import json
+
+        from osm.conflate import (
+            BUCKET_MATCHED_HIGH,
+            write_baseline_manifest,
+        )
+        rows = [
+            {
+                "id": 1,
+                "bucket": BUCKET_MATCHED_HIGH,
+                "confidence": 0.95,
+                "way_length_m": 100,
+            },
+        ]
+        out = tmp_path / "data" / "cagis_baseline_abc1234.json"
+        summary = write_baseline_manifest(
+            rows, zone_key="blue-ash-montgomery",
+            git_sha="abc1234", out_path=out,
+        )
+        assert out.exists()
+        with out.open() as fh:
+            payload = json.load(fh)
+        assert payload["zone_key"] == "blue-ash-montgomery"
+        assert payload["git_sha"] == "abc1234"
+        assert payload["summary"] == summary
+        assert payload["thresholds"]["BUFFER_M"] == 30.0
+        assert len(payload["rows"]) == 1
+
+    def test_polyline_length_helper(self):
+        from osm._geometry import polyline_length_m
+        # Two-point line at lat 39.2: 0.01 deg lon ≈ 865 m
+        length = polyline_length_m([[39.2, -84.4], [39.2, -84.39]])
+        assert 850 < length < 880
+        # Single-point and empty are zero, never raise.
+        assert polyline_length_m([[39.2, -84.4]]) == 0.0
+        assert polyline_length_m([]) == 0.0
+
+    def test_diagnose_does_not_mutate_match_output(self):
+        # Phase 2a guarantee: running diagnose_way must NOT change what
+        # match_way returns for the same input. This is the regression
+        # gate for the matcher being read-only.
+        from osm.conflate import build_index, diagnose_way, match_way
+        idx = build_index([_make_feat(OAK_COORDS, label="OAK ST")])
+        way = {
+            "id": 6,
+            "name": "Oak Street",
+            "geometry": [[39.2000, -84.4000], [39.2000, -84.3900]],
+        }
+        before = match_way(way, idx)
+        diagnose_way(way, idx)
+        after = match_way(way, idx)
+        assert before == after
 
 
 class TestShapelyDegradation:
