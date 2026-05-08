@@ -35,11 +35,23 @@ from .config import CONFIG_DIR
 
 log = logging.getLogger(__name__)
 
-# Source of truth for SORTA's published GTFS feed; quarterly cadence
-# per their developer page (https://www.go-metro.com/about/developer-data/).
+# Hard-coded source of truth for SORTA's published GTFS feed; quarterly
+# cadence per their developer page
+# (https://www.go-metro.com/about/developer-data/). Used as the fallback
+# when the Mobility Database catalog lookup is unreachable. The catalog's
+# urls.direct_download for mdb-366 currently matches this exact URL.
 SORTA_GTFS_URL = (
     "https://www.go-metro.com/uploads/GTFS/google_transit_info.zip"
 )
+
+# Mobility Database catalog — bit.ly redirects to the canonical CSV
+# at storage.googleapis.com/storage/v1/b/mdb-csv/o/sources.csv. SORTA's
+# entry is mdb_source_id = 366; the catalog publishes both the publisher's
+# direct_download URL and a stable MDB-hosted mirror (urls.latest).
+MDB_CATALOG_CSV_URL = "https://bit.ly/catalogs-csv"
+MDB_SOURCE_ID = "366"
+MDB_CACHE = CONFIG_DIR / "gtfs_cache" / "mdb_sorta_resolved.json"
+MDB_CACHE_TTL_DAYS = 30
 
 # Cache the parsed stops list (not the raw zip) so the detector path
 # stays cheap. Refreshing weekly is enough — SORTA's feed updates
@@ -97,6 +109,85 @@ def _read_stops_from_zip(zip_bytes: bytes) -> list[GtfsStop]:
     return parse_stops_csv(text)
 
 
+def parse_mdb_catalog(text: str, source_id: str = MDB_SOURCE_ID) -> dict | None:
+    """Find ``source_id``'s row in the Mobility Database CSV.
+
+    Returns ``{'direct_download': str, 'latest': str, 'provider': str}``
+    or ``None`` if the row is missing. Strict parser — won't fall back
+    to fuzzy provider-name matching, because mdb_source_id is the
+    stable contract.
+    """
+    reader = csv.DictReader(io.StringIO(text))
+    for row in reader:
+        if (row.get("mdb_source_id") or "").strip() == str(source_id):
+            return {
+                "direct_download": (row.get("urls.direct_download") or "").strip(),
+                "latest": (row.get("urls.latest") or "").strip(),
+                "provider": (row.get("provider") or "").strip(),
+            }
+    return None
+
+
+def resolve_sorta_feed_url(
+    *, force_refresh: bool = False, timeout: int = 30,
+) -> str:
+    """Resolve SORTA's GTFS feed URL via the Mobility Database catalog.
+
+    Decouples the code from SORTA's WordPress URL changes. Falls back
+    to ``SORTA_GTFS_URL`` (the hard-coded constant) on any failure — a
+    bad MDB lookup never breaks the main scan path.
+
+    The resolved URL is cached at ``~/.config/osm/gtfs_cache/mdb_sorta_resolved.json``
+    with a 30-day TTL — the catalog is updated quarterly at most, and a
+    stale resolution still produces a valid request because both
+    publishers (SORTA and MDB) host the same content.
+    """
+    if not force_refresh and is_cache_fresh(
+        MDB_CACHE, MDB_CACHE_TTL_DAYS * 86_400,
+    ):
+        try:
+            with MDB_CACHE.open("r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+            url = (payload or {}).get("direct_download")
+            if url:
+                log.info(
+                    "MDB catalog: SORTA feed resolved from cache to %s", url,
+                )
+                return url
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    try:
+        resp = requests.get(MDB_CATALOG_CSV_URL, timeout=timeout, allow_redirects=True)
+        resp.raise_for_status()
+        entry = parse_mdb_catalog(resp.text)
+        if entry is None or not entry["direct_download"]:
+            log.warning(
+                "MDB catalog: mdb-%s not found or has no direct_download URL; "
+                "falling back to hard-coded SORTA_GTFS_URL.",
+                MDB_SOURCE_ID,
+            )
+            return SORTA_GTFS_URL
+        log.info(
+            "MDB catalog: SORTA mdb-%s direct_download = %s "
+            "(provider: %s)",
+            MDB_SOURCE_ID, entry["direct_download"], entry["provider"],
+        )
+        try:
+            MDB_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            with MDB_CACHE.open("w", encoding="utf-8") as fh:
+                json.dump(entry, fh, ensure_ascii=False)
+        except OSError as exc:
+            log.warning("Could not write MDB cache: %s", exc)
+        return entry["direct_download"]
+    except (requests.RequestException, ValueError) as exc:
+        log.warning(
+            "MDB catalog lookup failed (%s); falling back to "
+            "hard-coded SORTA_GTFS_URL.", exc,
+        )
+        return SORTA_GTFS_URL
+
+
 def fetch_sorta_stops(
     *, force_refresh: bool = False, timeout: int = 60,
 ) -> list[GtfsStop]:
@@ -119,9 +210,10 @@ def fetch_sorta_stops(
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
             log.warning("GTFS cache unreadable (%s); re-fetching.", exc)
 
-    log.info("SORTA GTFS: fetching %s", SORTA_GTFS_URL)
+    feed_url = resolve_sorta_feed_url()
+    log.info("SORTA GTFS: fetching %s", feed_url)
     try:
-        resp = requests.get(SORTA_GTFS_URL, timeout=timeout, allow_redirects=True)
+        resp = requests.get(feed_url, timeout=timeout, allow_redirects=True)
         resp.raise_for_status()
         stops = _read_stops_from_zip(resp.content)
         log.info("SORTA GTFS: parsed %d stops from feed", len(stops))

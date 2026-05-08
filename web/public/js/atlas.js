@@ -1005,11 +1005,25 @@
     const visible = rows.slice(0, PAGE);
     const more = rows.length - visible.length;
 
+    // Baseline-diff block — empty placeholder; populated asynchronously
+    // from /api/baseline-diff/:zone after the panel paints. Keeps the
+    // initial render fast even when the diff requires reading two
+    // 40-MB manifests.
+    const lines = [
+      `<div class="bd-block" id="bdBlock" style="margin: 6px 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-elevated);">`,
+      `<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">`,
+      `<strong style="font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-mute);">Matcher tuning</strong>`,
+      `<span id="bdHeadline" style="font-size: 12.5px; color: var(--ink-soft);">Loading baseline-diff…</span>`,
+      `</div>`,
+      `<div id="bdBody" style="margin-top: 8px; font-size: 12.5px; color: var(--ink-mute); font-family: var(--mono);"></div>`,
+      `</div>`,
+    ];
+
     // MapRoulette generator block — surfaces the Phase 3 task generator
     // alongside the same population it operates on. The button kicks off
     // the server-side regeneration; the result is downloadable as a
     // line-delimited GeoJSON for upload via the MapRoulette UI.
-    const lines = [
+    lines.push(
       `<div class="mr-block" id="mrBlock" style="margin: 6px 0 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-elevated);">`,
       `<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">`,
       `<strong style="font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-mute);">MapRoulette</strong>`,
@@ -1023,7 +1037,7 @@
       `<th>Way</th><th>Class</th><th>Name</th><th>CAGIS conf.</th>`,
       `<th>Hausdorff (m)</th><th>Name sim.</th><th>Routing impact</th>`,
       `</tr></thead><tbody>`,
-    ];
+    );
     for (const { w, impact } of visible) {
       const cm = w.cagis_match;
       const conf = cm && typeof cm.confidence === "number" ? Math.round(cm.confidence * 100) + "%" : "—";
@@ -1082,6 +1096,82 @@
           mrBtn.disabled = false;
         }
       });
+    }
+
+    // Asynchronously load and render the baseline-diff. Failures are
+    // silent on purpose — the panel works fine without it; the diff is
+    // a tuning aid, not load-bearing for the queue.
+    loadBaselineDiff();
+  }
+
+  function fmtDelta(n) {
+    if (typeof n !== "number" || Number.isNaN(n)) return "—";
+    const sign = n > 0 ? "+" : (n < 0 ? "" : "±");
+    return `${sign}${n}`;
+  }
+
+  function fmtDeltaPct(n) {
+    if (typeof n !== "number" || Number.isNaN(n)) return "—";
+    const sign = n > 0 ? "+" : (n < 0 ? "" : "±");
+    return `${sign}${n.toFixed(2)}pp`;
+  }
+
+  async function loadBaselineDiff() {
+    const headline = $("#bdHeadline");
+    const body = $("#bdBody");
+    if (!headline || !body || !state.currentZone) return;
+    try {
+      const data = await api(
+        "/api/baseline-diff/" + encodeURIComponent(state.currentZone),
+      );
+      const pair = data && data.pair;
+      if (!pair) {
+        headline.textContent =
+          "Need ≥2 cagis_baseline_*.json manifests to diff. " +
+          "Run 'osm conflate --baseline-manifest' twice between matcher tweaks.";
+        body.innerHTML = "";
+        return;
+      }
+      const head = pair.headline || {};
+      const ar = head.auto_submit_rate_pct || {};
+      const mr = head.match_rate_pct || {};
+      const shaA = (pair.git_sha_a || "?").slice(0, 7);
+      const shaB = (pair.git_sha_b || "?").slice(0, 7);
+      const arDelta = typeof ar.delta === "number" ? fmtDeltaPct(ar.delta) : "—";
+      const mrDelta = typeof mr.delta === "number" ? fmtDeltaPct(mr.delta) : "—";
+      headline.innerHTML =
+        `<code>${esc(shaA)}</code> → <code>${esc(shaB)}</code> · ` +
+        `auto-submit <strong>${arDelta}</strong> · ` +
+        `match-rate <strong>${mrDelta}</strong>`;
+      const buckets = pair.buckets || {};
+      const rows = Object.keys(buckets).sort().map((k) => {
+        const v = buckets[k] || {};
+        const cls = (v.delta || 0) > 0
+          ? "color: var(--ok, #2a7a2a);"
+          : ((v.delta || 0) < 0 ? "color: var(--err, #b34040);" : "");
+        return (
+          `<tr>` +
+          `<td style="padding: 2px 8px 2px 0;">${esc(k)}</td>` +
+          `<td style="padding: 2px 8px; text-align: right;">${v.a || 0}</td>` +
+          `<td style="padding: 2px 8px; text-align: right;">${v.b || 0}</td>` +
+          `<td style="padding: 2px 8px; text-align: right; ${cls}">${esc(fmtDelta(v.delta))}</td>` +
+          `</tr>`
+        );
+      }).join("");
+      const alerts = (pair.alerts || []).map((a) =>
+        `<div style="margin-top: 6px; color: var(--err, #b34040);">⚠ ${esc(a)}</div>`
+      ).join("");
+      body.innerHTML =
+        `<table style="border-collapse: collapse;"><thead><tr>` +
+        `<th style="text-align: left; padding: 2px 8px 4px 0; font-weight: 600;">Bucket</th>` +
+        `<th style="text-align: right; padding: 2px 8px 4px;">A</th>` +
+        `<th style="text-align: right; padding: 2px 8px 4px;">B</th>` +
+        `<th style="text-align: right; padding: 2px 8px 4px;">Δ</th>` +
+        `</tr></thead><tbody>${rows}</tbody></table>` +
+        alerts;
+    } catch (e) {
+      headline.textContent = "baseline-diff unavailable: " + ((e && e.message) || e);
+      body.innerHTML = "";
     }
   }
 

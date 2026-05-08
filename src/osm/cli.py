@@ -1165,6 +1165,246 @@ def maproulette_cmd(zone: str, kind: str, out: str | None):
         _write_gaps()
 
 
+# --- transit-status / transit-budget ---
+
+@main.command(name="transit-status")
+def transit_status_cmd():
+    """Show Transit App API client health (no network calls).
+
+    Prints whether the key file is present, monthly-quota usage,
+    budget-cap headroom, and the cache directory location. Safe to
+    run at any time — never makes a network call.
+    """
+    from .transit import (
+        CACHE_DIR,
+        KEY_FILE,
+        POWERED_BY_TRANSIT_ATTRIBUTION,
+        QUOTA_BUDGET_FRACTION,
+        RATE_LIMIT_PER_MINUTE,
+        USAGE_FILE,
+        status,
+    )
+
+    s = status()
+    click.echo("Transit App API — client status")
+    click.echo("")
+    click.echo(f"  Key file:        {KEY_FILE}")
+    click.echo(f"  Has API key:     {'yes' if s.has_key else 'NO — set ~/.config/osm/transit_api.json'}")
+    click.echo(f"  Usage file:      {USAGE_FILE}")
+    click.echo(f"  Monthly quota:   {s.monthly_quota:,} calls (free tier)")
+    click.echo(
+        f"  Used this month: {s.used_this_month:,} / "
+        f"{s.budget_cap:,} budget cap "
+        f"({QUOTA_BUDGET_FRACTION:.0%} of quota)"
+    )
+    remaining = max(0, s.budget_cap - s.used_this_month)
+    click.echo(f"  Remaining:       {remaining:,} calls before client refuses")
+    click.echo(f"  Quota exhausted: {'YES' if s.quota_exhausted else 'no'}")
+    click.echo(f"  Rate limit:      {RATE_LIMIT_PER_MINUTE} calls/minute")
+    click.echo(f"  Cache dir:       {CACHE_DIR} ({'exists' if s.cache_dir_exists else 'will be created on first call'})")
+    click.echo("")
+    click.echo("  Required attribution wherever Transit data is shown:")
+    click.echo(f"    {POWERED_BY_TRANSIT_ATTRIBUTION!r} (verbatim, per Transit ToS §3.2)")
+
+
+@main.command(name="transit-budget")
+@click.option(
+    "--calls", type=int, default=None,
+    help="Hypothetical number of calls — report whether it fits in remaining budget",
+)
+@click.option(
+    "--per-day", is_flag=True,
+    help="Print suggested per-day cap to land at exactly 100%% of budget by month-end",
+)
+def transit_budget_cmd(calls: int | None, per_day: bool):
+    """Plan Transit API usage against the remaining monthly budget.
+
+    Default: print remaining headroom and a recommended per-day pacing
+    figure so the budget lasts the rest of the month.
+
+    With --calls N: report whether a hypothetical N-call run fits in the
+    remaining budget and what fraction of headroom it would consume.
+    Exits with status 1 if N exceeds the remaining budget.
+    """
+    from calendar import monthrange
+
+    from .transit import status
+
+    s = status()
+    remaining = max(0, s.budget_cap - s.used_this_month)
+    today = dt.datetime.now(dt.UTC)
+    _, days_in_month = monthrange(today.year, today.month)
+    days_left = max(1, days_in_month - today.day + 1)
+
+    click.echo("Transit App API — budget calculator")
+    click.echo("")
+    click.echo(f"  Used:        {s.used_this_month:,} / {s.budget_cap:,}")
+    click.echo(f"  Remaining:   {remaining:,} calls")
+    click.echo(
+        f"  Days left:   {days_left} (of {days_in_month}; rollover on the 1st)"
+    )
+
+    if per_day or calls is None:
+        per_day_cap = remaining // days_left if days_left else remaining
+        click.echo(
+            f"  Per-day cap: {per_day_cap:,} calls/day to land at 100% of budget"
+        )
+
+    if calls is not None:
+        if calls <= 0:
+            click.echo("  --calls must be > 0", err=True)
+            raise SystemExit(2)
+        fits = calls <= remaining
+        pct = (calls / remaining * 100.0) if remaining else float("inf")
+        click.echo("")
+        click.echo(f"  Hypothetical: {calls:,} calls")
+        if fits:
+            click.echo(
+                f"  → Fits. Consumes {pct:.1f}% of remaining budget; "
+                f"{remaining - calls:,} calls would still be available."
+            )
+        else:
+            shortfall = calls - remaining
+            click.echo(
+                f"  → DOES NOT FIT. Short by {shortfall:,} calls "
+                f"({pct:.1f}% of remaining). Wait for the next month or "
+                f"request a quota uplift before running."
+            )
+            raise SystemExit(1)
+
+
+# --- motis-status ---
+
+@main.command(name="motis-status")
+@click.option(
+    "--probe/--no-probe",
+    default=True,
+    help="Send a one-shot /api/v5/plan request to verify the instance "
+         "answers; --no-probe just prints the configured base URL.",
+)
+def motis_status_cmd(probe: bool):
+    """Show MOTIS routing-engine reachability (prototype).
+
+    The MOTIS client is opt-in. Set MOTIS_BASE to point at a hosted or
+    self-managed instance; with --probe (default) this command sends a
+    trivial /api/v5/plan request to confirm reachability before any
+    pipeline component tries to use it.
+
+    See docs/motis-deployment.md for stand-up notes.
+    """
+    from .motis import MOTIS_DEFAULT_BASE, _base_url, is_available
+
+    base = _base_url()
+    click.echo(f"MOTIS base URL: {base}")
+    if base == MOTIS_DEFAULT_BASE:
+        click.echo("  (default; set MOTIS_BASE to override)")
+    if not probe:
+        return
+    click.echo("Probing /api/v5/plan…")
+    if is_available():
+        click.echo("  → MOTIS is reachable and answering /api/v5/plan.")
+    else:
+        click.echo(
+            "  → MOTIS not reachable. The pipeline will continue using "
+            "BRouter; see docs/motis-deployment.md for setup."
+        )
+        raise SystemExit(1)
+
+
+# --- preflight ---
+
+_PREFLIGHT_GLYPH = {
+    "PASS": "✓",
+    "FAIL": "✗",
+    "WARN": "⚠",
+    "MANUAL": "☐",
+}
+
+
+@main.command()
+@click.option(
+    "--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE,
+    help="Zone whose first-changeset readiness to verify",
+)
+@click.option(
+    "--strict",
+    is_flag=True,
+    help="Treat WARN as a non-zero exit (default: only FAIL is non-zero)",
+)
+@click.option(
+    "--skip-pytest",
+    is_flag=True,
+    help="Skip the pytest run (faster, but the test-suite gate is not enforced)",
+)
+def preflight(zone: str, strict: bool, skip_pytest: bool):
+    """Pre-flight readiness for the first live changeset.
+
+    Codifies the codable items of docs/community-prep/04-pre-flight-checklist.md
+    and surfaces the human-attestation items as MANUAL so nothing slips
+    through the cracks on the day of the first submission.
+
+    Exit codes:
+
+    \b
+        0  No FAIL (and no WARN if --strict)
+        1  At least one FAIL
+        2  At least one WARN with --strict
+    """
+    from .preflight import (
+        CAT_ACCOUNT,
+        CAT_COMMUNITY,
+        CAT_FIX,
+        CAT_MONITORING,
+        CAT_PIPELINE,
+        CAT_SCAN,
+        run_preflight,
+    )
+
+    report_obj = run_preflight(zone, run_pytest=not skip_pytest)
+
+    click.echo(f"Pre-flight check — zone: {zone}")
+    click.echo("")
+
+    category_order = [
+        CAT_COMMUNITY,
+        CAT_ACCOUNT,
+        CAT_PIPELINE,
+        CAT_SCAN,
+        CAT_FIX,
+        CAT_MONITORING,
+    ]
+    by_cat: dict[str, list] = {cat: [] for cat in category_order}
+    for c in report_obj.checks:
+        by_cat.setdefault(c.category, []).append(c)
+
+    for cat in category_order:
+        items = by_cat.get(cat, [])
+        if not items:
+            continue
+        click.echo(f"{cat}")
+        click.echo("-" * len(cat))
+        for c in items:
+            glyph = _PREFLIGHT_GLYPH.get(c.status, "?")
+            click.echo(f"  {glyph} [{c.status:<6}] {c.name}")
+            if c.detail:
+                click.echo(f"             {c.detail}")
+        click.echo("")
+
+    click.echo(
+        f"Summary: {report_obj.n_pass} PASS · "
+        f"{report_obj.n_fail} FAIL · "
+        f"{report_obj.n_warn} WARN · "
+        f"{report_obj.n_manual} MANUAL"
+    )
+    if report_obj.n_manual:
+        click.echo(
+            "  (MANUAL items require human attestation — the checklist "
+            "exists to keep them visible, not to auto-clear them.)"
+        )
+
+    raise SystemExit(report_obj.exit_code(strict=strict))
+
+
 # --- report ---
 
 @main.command()

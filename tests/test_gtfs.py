@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest import mock
+
 
 SAMPLE_STOPS_CSV = (
     "stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id,"
@@ -115,3 +117,107 @@ class TestBusStopGtfsCrossCheck:
             gtfs_stops=gtfs, gtfs_match_threshold_m=100.0,
         )
         assert out2 == []
+
+
+SAMPLE_MDB_CSV = (
+    "mdb_source_id,data_type,location.country_code,provider,"
+    "urls.direct_download,urls.latest\n"
+    "13,gtfs,US,San Diego MTS,"
+    "https://example.com/sd.zip,"
+    "https://storage.googleapis.com/sd-13.zip\n"
+    "366,gtfs,US,Southwest Ohio Regional Transit Authority (SORTA Metro),"
+    "https://www.go-metro.com/uploads/GTFS/google_transit_info.zip,"
+    "https://storage.googleapis.com/sorta-366.zip\n"
+)
+
+
+class TestCatalogParser:
+
+    def test_parse_mdb_catalog_finds_sorta(self):
+        from urllib.parse import urlparse
+        from osm.gtfs import parse_mdb_catalog
+        entry = parse_mdb_catalog(SAMPLE_MDB_CSV, source_id="366")
+        assert entry is not None
+        host = urlparse(entry["direct_download"]).hostname
+        assert host == "go-metro.com" or (host is not None and host.endswith(".go-metro.com"))
+        assert entry["latest"].endswith("sorta-366.zip")
+        assert "SORTA" in entry["provider"]
+
+    def test_parse_mdb_catalog_returns_none_for_unknown(self):
+        from osm.gtfs import parse_mdb_catalog
+        assert parse_mdb_catalog(SAMPLE_MDB_CSV, source_id="9999") is None
+
+    def test_parse_mdb_catalog_default_source_is_sorta(self):
+        from osm.gtfs import parse_mdb_catalog
+        entry = parse_mdb_catalog(SAMPLE_MDB_CSV)  # default = "366"
+        assert entry is not None
+        assert "SORTA" in entry["provider"]
+
+
+class TestResolveSortaFeedUrl:
+
+    def test_resolves_to_direct_download(self, tmp_path, monkeypatch):
+        from osm import gtfs as gtfs_mod
+        # Redirect cache to a tmp file so the test doesn't read stale state.
+        monkeypatch.setattr(gtfs_mod, "MDB_CACHE", tmp_path / "mdb.json")
+
+        class _Resp:
+            text = SAMPLE_MDB_CSV
+            def raise_for_status(self): pass
+
+        with mock.patch.object(
+            gtfs_mod.requests, "get", autospec=True,
+        ) as mreq:
+            mreq.return_value = _Resp()
+            url = gtfs_mod.resolve_sorta_feed_url(force_refresh=True)
+        assert url == "https://www.go-metro.com/uploads/GTFS/google_transit_info.zip"
+
+    def test_falls_back_on_network_failure(self, tmp_path, monkeypatch):
+        from osm import gtfs as gtfs_mod
+        monkeypatch.setattr(gtfs_mod, "MDB_CACHE", tmp_path / "mdb.json")
+        with mock.patch.object(
+            gtfs_mod.requests, "get", autospec=True,
+        ) as mreq:
+            mreq.side_effect = gtfs_mod.requests.RequestException("offline")
+            url = gtfs_mod.resolve_sorta_feed_url(force_refresh=True)
+        assert url == gtfs_mod.SORTA_GTFS_URL
+
+    def test_falls_back_when_source_id_missing(self, tmp_path, monkeypatch):
+        from osm import gtfs as gtfs_mod
+        monkeypatch.setattr(gtfs_mod, "MDB_CACHE", tmp_path / "mdb.json")
+        # CSV with no row 366
+        bad_csv = (
+            "mdb_source_id,data_type,provider,"
+            "urls.direct_download,urls.latest\n"
+            "13,gtfs,Other,https://other.example/feed.zip,\n"
+        )
+
+        class _Resp:
+            text = bad_csv
+            def raise_for_status(self): pass
+
+        with mock.patch.object(
+            gtfs_mod.requests, "get", autospec=True,
+        ) as mreq:
+            mreq.return_value = _Resp()
+            url = gtfs_mod.resolve_sorta_feed_url(force_refresh=True)
+        assert url == gtfs_mod.SORTA_GTFS_URL
+
+    def test_uses_cache_when_fresh(self, tmp_path, monkeypatch):
+        import json as _json
+
+        from osm import gtfs as gtfs_mod
+        cache = tmp_path / "mdb.json"
+        cache.write_text(_json.dumps({
+            "direct_download": "https://cached.example/sorta.zip",
+            "latest": "",
+            "provider": "SORTA",
+        }))
+        monkeypatch.setattr(gtfs_mod, "MDB_CACHE", cache)
+        # Network mock to ensure it's NOT called.
+        with mock.patch.object(
+            gtfs_mod.requests, "get", autospec=True,
+        ) as mreq:
+            url = gtfs_mod.resolve_sorta_feed_url()
+            assert mreq.call_count == 0
+        assert url == "https://cached.example/sorta.zip"
