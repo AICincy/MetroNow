@@ -81,11 +81,14 @@ answer themselves; nothing left implicit. If any item is **No**,
       `bot=yes`, `description=<wiki URL>`, `cagis:attribution=<...>`.
 - [ ] No fix in the dry-run output has `requires_human_review=true`
       (all are CAGIS-verified at confidence ≥ 0.85).
-- [ ] `osm fix-impact --zone blue-ash-montgomery --limit 10` was run
-      against the same 10 fixes; BRouter's `summary.real` count
-      indicates the fixes will measurably change routing (or that the
-      `set_maxspeed_cagis`-only batch is correctly skipped because
-      maxspeed doesn't perturb the routing graph).
+- [ ] `osm fix --zone blue-ash-montgomery --dry-run --with-route-impact`
+      was run; the inline `[ROUTE-IMPACT]` summary in the dry-run
+      output indicates the fixes will measurably change routing
+      (or correctly reports "No oneway fixes in this batch" because
+      `set_maxspeed_cagis` doesn't perturb the routing graph).
+      Equivalent to running `osm fix-impact --zone <key>` separately
+      — kept as an inline option so the value-story payload appears
+      in the same preview the maintainer is already reviewing.
 
 ## Production submission
 

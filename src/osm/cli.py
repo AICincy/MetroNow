@@ -392,7 +392,22 @@ def scan(
         "osmose_match descriptor."
     ),
 )
-def fix(zone: str, dry_run: bool, annotate_fixes: bool):
+@click.option(
+    "--with-route-impact",
+    is_flag=True,
+    default=False,
+    help=(
+        "On dry-run only: run BRouter route-impact for the accepted "
+        "set_oneway_cagis / remove_oneway_cagis fixes and print the "
+        "value-story summary inline (\"this batch will change N "
+        "MetroNow-relevant routes by avg X%\"). Adds ~1 sec per oneway "
+        "fix (polite-rate-limit). Skipped on non-dry-run runs because "
+        "the actual submission path doesn't need it."
+    ),
+)
+def fix(
+    zone: str, dry_run: bool, annotate_fixes: bool, with_route_impact: bool,
+):
     """Review and submit corrections to OSM."""
     from .changeset import submit_fixes
     from .review import review_defects
@@ -438,6 +453,66 @@ def fix(zone: str, dry_run: bool, annotate_fixes: bool):
 
     z = ZONES[zone]
     comment = f"Fix false oneway=yes on residential streets in {z['name']} (TIGER audit)"
+
+    # Phase 4b inline value-story payload — only for dry-run, only for
+    # oneway fixes (the kinds that perturb the routing graph). Maxspeed
+    # / name fixes don't move BRouter routes, so they're skipped with
+    # an explicit reason in the summary.
+    if with_route_impact and dry_run:
+        from rich.progress import Progress
+
+        from .route_diff import (
+            ONEWAY_FIX_KINDS,
+            route_impact_for_fixes,
+            summarize_route_impact,
+        )
+
+        oneway_fixes = [f for f in accepted if f.get("kind") in ONEWAY_FIX_KINDS]
+        if not oneway_fixes:
+            click.echo(
+                "[ROUTE-IMPACT] No oneway fixes in this batch — "
+                "set_maxspeed_cagis / set_name_cagis don't perturb routing."
+            )
+        else:
+            click.echo(
+                f"[ROUTE-IMPACT] Running BRouter route-diff on "
+                f"{len(oneway_fixes):,} oneway fix(es)..."
+            )
+            with Progress() as progress:
+                task = progress.add_task(
+                    "Route-impact", total=len(oneway_fixes),
+                )
+
+                def _progress(done, total, _task=task):
+                    progress.update(_task, completed=done)
+
+                route_impact_for_fixes(
+                    oneway_fixes,
+                    classified.get("all_ways", []),
+                    progress_callback=_progress,
+                )
+            summary = summarize_route_impact(oneway_fixes)
+            click.echo(
+                f"[ROUTE-IMPACT] real={summary['real']}, "
+                f"inconclusive={summary['inconclusive']}, "
+                f"noisy={summary['noisy']}, skipped={summary['fixes_skipped']}"
+            )
+            if summary["real"]:
+                click.echo(
+                    f"[ROUTE-IMPACT] Of the {summary['real']} fixes that "
+                    "change routing meaningfully: "
+                    f"avg delta {summary['avg_delta_pct_real']}% of route "
+                    f"cost, max {summary['max_delta_pct_real']}%, "
+                    f"avg duration shift {summary['avg_duration_delta_s_real']} s."
+                )
+    elif with_route_impact and not dry_run:
+        click.echo(
+            "--with-route-impact ignored on non-dry-run; the harness is "
+            "for previewing impact before submission, not for the "
+            "submission itself.",
+            err=True,
+        )
+
     result = submit_fixes(accepted, comment, dry_run=dry_run)
 
     if result.get("dry_run"):
