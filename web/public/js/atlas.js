@@ -739,21 +739,70 @@
     });
   }
 
+  // --------------------------------------------------------------- Osmose overlay
+  // One-shot fetch of the Osmose-flagged ways for the current zone. Used
+  // to show "Also flagged by Osmose" badges in the inventory & fix tables.
+  // Map shape: { wayId(number) -> {issue_id, item, item_title, url} }
+  const osmoseMatchByWay = new Map();
+  let osmoseFetchedZone = null;
+
+  async function ensureOsmoseLoaded() {
+    if (!state.currentZone) return;
+    if (osmoseFetchedZone === state.currentZone) return;
+    osmoseFetchedZone = state.currentZone;
+    osmoseMatchByWay.clear();
+    try {
+      const data = await api(`/api/osmose/${encodeURIComponent(state.currentZone)}`);
+      const issues = Array.isArray(data && data.issues) ? data.issues : [];
+      for (const issue of issues) {
+        const ways = (issue.osm_ids && issue.osm_ids.ways) || [];
+        for (const wid of ways) {
+          if (!osmoseMatchByWay.has(wid)) {
+            osmoseMatchByWay.set(wid, {
+              issue_id: issue.id,
+              item: issue.item,
+              item_title: issue.item_title,
+              url: issue.url,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // Non-fatal — graceful degradation just like the Python side.
+      consoleLog("Osmose fetch failed: " + e.message, "warn");
+    }
+  }
+
+  function osmoseBadge(wayId) {
+    if (wayId == null) return "";
+    const m = osmoseMatchByWay.get(Number(wayId));
+    if (!m) return "";
+    const tip = `Osmose-QA flagged this way (item ${m.item || "?"}${m.item_title ? ": " + m.item_title : ""}). ` +
+      "Osmose is a community quality-assurance tool that mirrors OSM and reports defects independently.";
+    return ` <a class="osmose-badge" href="${esc(m.url || "https://osmose.openstreetmap.fr/")}" target="_blank" rel="noopener" title="${esc(tip)}">Osmose</a>`;
+  }
+
   // --------------------------------------------------------------- results panel
-  function renderResultsPanel() {
+  async function renderResultsPanel() {
     const body = $("#resultsBody");
     if (!body) return;
     if (!state.results) {
       body.innerHTML = `<div class="empty"><div class="em-title">No scan yet</div>Run a scan to see the defect inventory.</div>`;
       return;
     }
+    // Kick off Osmose fetch in parallel; render once, then re-render to
+    // attach badges (avoids a perceived hang on slow links).
     const ab = (state.results.class_ab || []);
     const a = (state.results.class_a_only || []);
     const findings = (state.results.extra_findings || []);
-    body.innerHTML =
-      sectionTable("Class AB — compound (highest risk)", ab, "ab") +
-      sectionTable("Class A — false oneway", a, "a") +
-      findingsSection(findings);
+    const draw = () =>
+      (body.innerHTML =
+        sectionTable("Class AB — compound (highest risk)", ab, "ab") +
+        sectionTable("Class A — false oneway", a, "a") +
+        findingsSection(findings));
+    draw();
+    await ensureOsmoseLoaded();
+    draw();
   }
 
   // Rider-impact findings — top 50 across all extra_findings, sorted by
@@ -814,7 +863,7 @@
       const review = w.review_status ? `<span class="badge">${esc(w.review_status)}</span>` : "";
       const wayId = w.id || "?";
       return `<tr>
-        <td><a href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank" rel="noopener">${esc(wayId)}</a></td>
+        <td><a href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank" rel="noopener">${esc(wayId)}</a>${osmoseBadge(wayId)}</td>
         <td>${esc(w.name_display || "—")}</td>
         <td>${esc(w.highway || "—")}</td>
         <td>${esc(w.oneway || "—")}</td>
@@ -843,6 +892,9 @@
       state.pendingFixes = data.fixes || [];
       $("#dryRunBtn").disabled = state.pendingFixes.length === 0;
       $("#submitBtn").disabled = state.pendingFixes.length === 0;
+      // Make sure Osmose data is in cache before we render so the badge
+      // is visible on first paint.
+      await ensureOsmoseLoaded();
       renderFixPanel();
       toast(`${data.count.toLocaleString()} fixable defect(s) loaded`);
     } catch (e) {
@@ -876,7 +928,7 @@
       }
       return `<tr>
         <td><input type="checkbox" class="fix-check" data-i="${i}" ${(ev && Number(ev.confidence ?? 0) >= 0.85) || !f.requires_human_review ? "checked" : ""}></td>
-        <td><a href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank" rel="noopener">${esc(wayId)}</a></td>
+        <td><a href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank" rel="noopener">${esc(wayId)}</a>${osmoseBadge(wayId)}</td>
         <td>${esc(w.name_display || "—")}</td>
         <td>${esc(w.defect_class || "?")}</td>
         <td>${esc(f.description || "")}</td>
@@ -1006,42 +1058,161 @@
     </li>`;
   }
 
-  // --------------------------------------------------------------- discuss panel (localStorage-only)
+  // --------------------------------------------------------------- discuss panel
+  // Two tabs: live OSM Notes (public, fetched from /api/notes/:zone) and a
+  // localStorage-only private board (the "New thread" workflow).
+
   function loadDiscuss() {
     try { return JSON.parse(localStorage.getItem(state.discussKey()) || "[]"); } catch { return []; }
   }
   function saveDiscuss(items) { localStorage.setItem(state.discussKey(), JSON.stringify(items)); }
 
-  function renderDiscussPanel() {
-    const body = $("#discussBody");
-    if (!body) return;
-    const items = loadDiscuss();
-    body.innerHTML = items.length === 0
-      ? `<div class="empty"><div class="em-title">No threads yet</div>Use Discussion to track decisions about specific corrections — saved locally to this browser, scoped to the active zone.</div>`
-      : `<ol class="threads">${items.slice().reverse().map((it, idx) => `
-          <li class="thread">
-            <div class="th-head"><span class="th-author">${esc(it.author || "you")}</span><span class="th-time">${esc(it.ts || "")}</span></div>
-            <div class="th-title">${esc(it.title || "")}</div>
-            <div class="th-body">${esc(it.body || "")}</div>
-          </li>`).join("")}</ol>`;
-    const dock = $("#dockDiscuss");
-    if (dock) {
-      dock.style.display = items.length ? "" : "none";
-      dock.textContent = items.length;
+  // Per-tab cache so re-opening the panel doesn't re-fetch every time.
+  const discussTabState = {
+    tab: "osm-notes",
+    osmNotes: null,        // [{id, lat, lon, status, ...}]
+    osmNotesError: null,
+  };
+
+  async function loadOsmNotes(force) {
+    if (!state.currentZone) return [];
+    if (!force && discussTabState.osmNotes) return discussTabState.osmNotes;
+    try {
+      const data = await api(`/api/notes/${encodeURIComponent(state.currentZone)}${force ? "?force=1" : ""}`);
+      const list = Array.isArray(data && data.notes) ? data.notes : [];
+      discussTabState.osmNotes = list;
+      discussTabState.osmNotesError = null;
+      return list;
+    } catch (e) {
+      discussTabState.osmNotesError = e.message || String(e);
+      discussTabState.osmNotes = [];
+      return [];
     }
   }
 
+  function renderDiscussPanel() {
+    const body = $("#discussBody");
+    if (!body) return;
+    const tab = discussTabState.tab;
+    const localItems = loadDiscuss();
+    body.innerHTML = `
+      <div class="discuss-tabs" role="tablist">
+        <button class="discuss-tab" data-tab="osm-notes" role="tab" aria-selected="${tab === "osm-notes"}">
+          OSM Notes (public)
+        </button>
+        <button class="discuss-tab" data-tab="local" role="tab" aria-selected="${tab === "local"}">
+          Private board (this browser)
+          ${localItems.length ? `<span class="rs-count">${localItems.length}</span>` : ""}
+        </button>
+      </div>
+      <div id="discuss-tab-body"></div>
+    `;
+    $$(".discuss-tab", body).forEach((b) => {
+      b.addEventListener("click", () => {
+        discussTabState.tab = b.dataset.tab;
+        renderDiscussPanel();
+      });
+    });
+
+    const tabBody = $("#discuss-tab-body", body);
+    if (tab === "local") {
+      renderLocalBoard(tabBody, localItems);
+    } else {
+      renderOsmNotes(tabBody);
+    }
+
+    // Dock chip: show count = open OSM notes + local items.
+    const dock = $("#dockDiscuss");
+    if (dock) {
+      const remoteCount = (discussTabState.osmNotes || []).filter((n) => n.status === "open").length;
+      const total = remoteCount + localItems.length;
+      dock.style.display = total ? "" : "none";
+      dock.textContent = String(total);
+    }
+  }
+
+  function renderLocalBoard(host, items) {
+    if (!host) return;
+    if (!items.length) {
+      host.innerHTML = `
+        <div class="empty">
+          <div class="em-title">No private notes yet</div>
+          The private board is saved to this browser only and is scoped to the active zone.
+          The OSM Notes tab shows the public feed any mapper can see.
+        </div>`;
+      return;
+    }
+    host.innerHTML = `<ol class="threads">${items.slice().reverse().map((it) => `
+      <li class="thread">
+        <div class="th-head"><span class="th-author">${esc(it.author || "you")}</span><span class="th-time">${esc(it.ts || "")}</span></div>
+        <div class="th-title">${esc(it.title || "")}</div>
+        <div class="th-body">${esc(it.body || "")}</div>
+      </li>`).join("")}</ol>`;
+  }
+
+  async function renderOsmNotes(host) {
+    if (!host) return;
+    host.innerHTML = `<p class="muted">Loading OSM Notes…</p>`;
+    const notes = await loadOsmNotes(false);
+    if (discussTabState.osmNotesError) {
+      host.innerHTML = `<div class="fx-result err">Could not fetch OSM Notes: ${esc(discussTabState.osmNotesError)}</div>`;
+      return;
+    }
+    if (!notes.length) {
+      host.innerHTML = `
+        <div class="empty">
+          <div class="em-title">No OSM Notes in this zone</div>
+          Open notes from the public OSM Notes feed will appear here.
+          <a href="https://wiki.openstreetmap.org/wiki/Notes" target="_blank" rel="noopener">About OSM Notes</a>.
+        </div>`;
+      return;
+    }
+    const open = notes.filter((n) => n.status === "open");
+    const closed = notes.filter((n) => n.status !== "open");
+    const tip = "OSM Notes is the public, ODbL-licensed feedback feed any visitor can drop on the map. Use these to deduplicate or elevate the pipeline's findings.";
+    host.innerHTML = `
+      <p class="muted" title="${esc(tip)}">${esc(tip)}</p>
+      <p class="muted">${open.length} open, ${closed.length} closed.</p>
+      <ol class="threads">${notes.slice(0, 200).map(noteItem).join("")}</ol>
+      ${notes.length > 200 ? `<p class="muted">Showing 200 of ${notes.length.toLocaleString()}.</p>` : ""}
+    `;
+  }
+
+  function noteItem(n) {
+    const comments = Array.isArray(n.comments) ? n.comments : [];
+    const first = comments[0] || {};
+    const ts = n.date_created || first.date || "";
+    const status = n.status === "open" ? "open" : "closed";
+    const author = first.user || "anonymous";
+    const text = first.text || "";
+    return `<li class="thread">
+      <div class="th-head">
+        <span class="th-author">${esc(author)}</span>
+        <span class="badge badge-${status}">${esc(status)}</span>
+        <span class="th-time">${esc(formatTimeAgo(ts))}</span>
+        <span class="muted"> · ${comments.length} comment${comments.length === 1 ? "" : "s"}</span>
+      </div>
+      <div class="th-title">
+        <a href="${esc(n.url || ("https://www.openstreetmap.org/note/" + n.id))}" target="_blank" rel="noopener">
+          Note #${esc(n.id)}
+        </a>
+      </div>
+      <div class="th-body">${esc(text)}</div>
+    </li>`;
+  }
+
   function newThread() {
-    const title = prompt("Thread title");
+    const title = prompt("Thread title (saved locally to this browser only)");
     if (!title) return;
     const body = prompt("Notes / context");
     const items = loadDiscuss();
     items.push({ title, body: body || "", author: "you", ts: new Date().toLocaleString() });
     saveDiscuss(items);
+    discussTabState.tab = "local";
     renderDiscussPanel();
   }
   function clearDiscuss() {
-    if (!confirm("Clear all discussion threads for this zone?")) return;
+    if (!confirm("Clear all private (local) discussion threads for this zone?\n\nThis only clears the local-board tab, not OSM Notes.")) return;
     saveDiscuss([]);
     renderDiscussPanel();
   }

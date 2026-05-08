@@ -18,11 +18,9 @@ returns ``None`` for everything, and the rest of the pipeline keeps working.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import math
-import time
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -30,6 +28,9 @@ from typing import Any
 
 import requests
 
+from osm.cache import bbox_hash as _bbox_hash_helper
+from osm.cache import cache_path as _bbox_cache_path
+from osm.cache import is_cache_fresh
 from osm.config import CONFIG_DIR
 from osm.geo import haversine_m, norm_name
 from osm.zones import ZONES
@@ -118,20 +119,24 @@ except Exception as exc:  # noqa: BLE001
 # ---------------------------------------------------------------------------
 
 def _bbox_hash(bbox: tuple[float, float, float, float]) -> str:
-    """Stable short hash for cache filenames keyed by bbox."""
-    payload = ",".join(f"{v:.6f}" for v in bbox)
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
+    """Stable short hash for cache filenames keyed by bbox.
+
+    Thin wrapper around :func:`osm.cache.bbox_hash` preserved as an internal
+    name so existing imports in this module keep working.
+    """
+    return _bbox_hash_helper(bbox)
 
 
 def _cache_path(bbox: tuple[float, float, float, float]) -> Path:
-    return CAGIS_CACHE_DIR / f"centerlines-{_bbox_hash(bbox)}.geojson"
+    # CAGIS uses .geojson extension because the FeatureServer returns GeoJSON;
+    # other modules use .json.
+    return _bbox_cache_path(
+        CAGIS_CACHE_DIR, bbox, prefix="centerlines", suffix="geojson"
+    )
 
 
 def _cache_fresh(path: Path) -> bool:
-    if not path.exists():
-        return False
-    age = time.time() - path.stat().st_mtime
-    return age < CAGIS_CACHE_TTL_DAYS * 86_400
+    return is_cache_fresh(path, CAGIS_CACHE_TTL_DAYS * 86_400)
 
 
 # ---------------------------------------------------------------------------

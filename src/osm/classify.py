@@ -62,11 +62,22 @@ def _safe_run(name: str, fn: Callable[..., list[dict]], *args, **kwargs) -> list
         return []
 
 
-def classify(raw: dict) -> dict:
+def classify(
+    raw: dict,
+    *,
+    osm_notes: list[dict] | None = None,
+    note_threshold_m: float = 50.0,
+) -> dict:
     """Classify all way elements from an Overpass response into defect classes.
 
     Returns a dict with all_ways, class_a, class_a_only, class_ab,
     class_b_streets, gaps, summary_stats, and extra_findings.
+
+    Optional ``osm_notes`` is a list of normalized notes (see
+    :func:`osm.notes.fetch_notes`); when supplied each ``extra_finding``
+    gets a ``near_note`` field if any open note is within
+    ``note_threshold_m`` of the finding's coordinate. classify() never
+    calls out to the OSM Notes API itself — keep classify offline-capable.
     """
     elements_ways, elements_nodes, elements_relations = _split_elements(raw)
     elements = elements_ways
@@ -223,6 +234,17 @@ def classify(raw: dict) -> dict:
             elements_ways,
         )
     )
+
+    # Optional OSM Notes overlay. Only runs when caller passed notes — keeps
+    # classify offline-capable in CLI/test paths.
+    if osm_notes:
+        try:
+            from . import notes as _notes_mod
+            _notes_mod.annotate_findings_with_notes(
+                extra_findings, osm_notes, threshold_m=note_threshold_m
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("OSM Notes annotation failed: %s", exc)
 
     findings_by_kind: dict[str, int] = defaultdict(int)
     for f in extra_findings:

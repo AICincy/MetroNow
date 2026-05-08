@@ -465,6 +465,80 @@ app.post("/api/fix", async (req, res) => {
   }
 });
 
+// ---- OSM Notes ----
+
+app.get("/api/notes/:zone", async (req, res) => {
+  const zone = req.params.zone;
+  if (!validateZone(zone, res)) return;
+  const force = req.query && req.query.force === "1";
+  try {
+    const pyCode = [
+      "import json, sys, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "sys.stdout = open(os.devnull, 'w')",
+      "from osm.notes import fetch_notes_for_zone",
+      "force = " + (force ? "True" : "False"),
+      "out = fetch_notes_for_zone(" + JSON.stringify(zone) + ", force_refresh=force)",
+      "sys.stdout = sys.__stdout__",
+      "print(json.dumps({'count': len(out), 'notes': out}))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    res.json(JSON.parse(out.trim()));
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
+// ---- Osmose ----
+
+app.get("/api/osmose/:zone", async (req, res) => {
+  const zone = req.params.zone;
+  if (!validateZone(zone, res)) return;
+  const force = req.query && req.query.force === "1";
+  try {
+    const pyCode = [
+      "import json, sys, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "sys.stdout = open(os.devnull, 'w')",
+      "from osm.osmose import fetch_issues_for_zone",
+      "force = " + (force ? "True" : "False"),
+      "out = fetch_issues_for_zone(" + JSON.stringify(zone) + ", force_refresh=force)",
+      "sys.stdout = sys.__stdout__",
+      "print(json.dumps({'count': len(out), 'issues': out}))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    res.json(JSON.parse(out.trim()));
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
+app.get("/api/osmose/:zone/by-way/:wayId", async (req, res) => {
+  const zone = req.params.zone;
+  if (!validateZone(zone, res)) return;
+  const wayId = parseInt(req.params.wayId, 10);
+  if (!Number.isFinite(wayId) || wayId <= 0)
+    return res.status(400).json({ error: "Invalid way id" });
+  try {
+    const pyCode = [
+      "import json, sys, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "sys.stdout = open(os.devnull, 'w')",
+      "from osm.osmose import fetch_issues_for_zone, index_issues_by_osm_id",
+      "issues = fetch_issues_for_zone(" + JSON.stringify(zone) + ")",
+      "idx = index_issues_by_osm_id(issues)",
+      "wid = " + JSON.stringify(wayId),
+      "matches = idx.get(('way', wid), [])",
+      "sys.stdout = sys.__stdout__",
+      "print(json.dumps({'count': len(matches), 'issues': matches}))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    res.json(JSON.parse(out.trim()));
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
 // ---- history ----
 
 app.get("/api/history", (_req, res) => {

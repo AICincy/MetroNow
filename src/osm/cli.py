@@ -186,7 +186,17 @@ def scan(zone: str, from_cache: bool, skip_history: bool, import_only: bool, wit
 @main.command()
 @click.option("--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE, help="Zone to fix")
 @click.option("--dry-run", is_flag=True, help="Preview fixes without submitting")
-def fix(zone: str, dry_run: bool):
+@click.option(
+    "--annotate-fixes",
+    is_flag=True,
+    default=False,
+    help=(
+        "Cross-reference Osmose-QA before review: any fix targeting a way "
+        "already flagged by Osmose is marked human-review and gets an "
+        "osmose_match descriptor."
+    ),
+)
+def fix(zone: str, dry_run: bool, annotate_fixes: bool):
     """Review and submit corrections to OSM."""
     from .changeset import submit_fixes
     from .review import review_defects
@@ -197,6 +207,33 @@ def fix(zone: str, dry_run: bool):
         raise SystemExit(1)
 
     classified = _load_scan_results(results_path)
+
+    if annotate_fixes:
+        try:
+            from .osmose import (
+                annotate_fixes_with_osmose,
+                fetch_issues_for_zone,
+            )
+            from .review import proposed_fixes_for_way
+            issues = fetch_issues_for_zone(zone)
+            click.echo(f"  Osmose issues fetched: {len(issues):,}")
+            for w in classified.get("all_ways", []):
+                fixes_for_way = proposed_fixes_for_way(w)
+                if not fixes_for_way:
+                    continue
+                annotate_fixes_with_osmose(fixes_for_way, issues)
+                # Stash the annotated osmose hits onto the way so the
+                # interactive UI surfaces them downstream.
+                hits = [
+                    f["osmose_match"]
+                    for f in fixes_for_way
+                    if "osmose_match" in f
+                ]
+                if hits:
+                    w["osmose_matches"] = hits
+        except Exception as exc:  # noqa: BLE001
+            click.echo(f"  Osmose annotation failed: {exc}")
+
     accepted = review_defects(classified)
 
     if not accepted:
@@ -307,6 +344,101 @@ def report(zone: str):
 
     write_csvs(classified, out_dir / "csv")
     click.echo(f"Reports regenerated in {out_dir}")
+
+
+# --- notes ---
+
+@main.command()
+@click.option(
+    "--zone",
+    type=click.Choice(ZONE_KEYS),
+    default=DEFAULT_ZONE,
+    help="Zone to query for OSM notes",
+)
+@click.option(
+    "--force-refresh",
+    is_flag=True,
+    help="Bypass the 1-hour cache and re-fetch live",
+)
+@click.option(
+    "--status",
+    type=click.Choice(["open", "all"]),
+    default="open",
+    help="Note status filter",
+)
+def notes(zone: str, force_refresh: bool, status: str):
+    """Print community-reported OSM notes for a zone."""
+    from .notes import fetch_notes_for_zone
+
+    items = fetch_notes_for_zone(
+        zone, force_refresh=force_refresh, status=status
+    )
+    z = ZONES[zone]
+    click.echo(f"OSM Notes — {z['name']} ({status}): {len(items)} note(s)")
+    for n in items[:10]:
+        comments = n.get("comments") or []
+        first_text = (comments[0].get("text") if comments else "") or ""
+        first_text_short = (first_text[:80] + "…") if len(first_text) > 80 else first_text
+        click.echo(
+            f"  #{n['id']}  ({n['lat']:.5f}, {n['lon']:.5f})  "
+            f"{n.get('status'):>6}  "
+            f"{(n.get('date_created') or '')[:10]}  "
+            f"{len(comments)}c  {first_text_short}"
+        )
+    if len(items) > 10:
+        click.echo(f"  …and {len(items) - 10:,} more.")
+
+
+# --- osmose ---
+
+@main.command()
+@click.option(
+    "--zone",
+    type=click.Choice(ZONE_KEYS),
+    default=DEFAULT_ZONE,
+    help="Zone to query for Osmose issues",
+)
+@click.option(
+    "--force-refresh",
+    is_flag=True,
+    help="Bypass the 24-hour cache and re-fetch live",
+)
+@click.option(
+    "--item",
+    multiple=True,
+    help="Restrict to one or more Osmose item codes (e.g. --item 3070)",
+)
+def osmose(zone: str, force_refresh: bool, item: tuple[str, ...]):
+    """Print Osmose-QA issues for a zone."""
+    from .osmose import fetch_issues_for_zone
+
+    item_filter = list(item) if item else None
+    items = fetch_issues_for_zone(
+        zone,
+        force_refresh=force_refresh,
+        item_filter=item_filter,
+    )
+    z = ZONES[zone]
+    click.echo(f"Osmose — {z['name']}: {len(items)} issue(s)")
+    for i in items[:10]:
+        ids = i.get("osm_ids") or {}
+        ways = ids.get("ways") or []
+        nodes = ids.get("nodes") or []
+        relations = ids.get("relations") or []
+        first_target = (
+            f"way/{ways[0]}" if ways else
+            f"node/{nodes[0]}" if nodes else
+            f"relation/{relations[0]}" if relations else
+            "?"
+        )
+        click.echo(
+            f"  item={i.get('item') or '?':>5}  "
+            f"{first_target:<14}  "
+            f"{(i.get('item_title') or '')[:50]}  "
+            f"{i.get('subtitle') or ''}"
+        )
+    if len(items) > 10:
+        click.echo(f"  …and {len(items) - 10:,} more.")
 
 
 # --- helpers ---

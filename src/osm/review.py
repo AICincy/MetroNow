@@ -100,7 +100,11 @@ def proposed_fix(way: dict) -> dict | None:
     return high[0] if high else None
 
 
-def proposed_fixes_for_way(way: dict) -> list[dict]:
+def proposed_fixes_for_way(
+    way: dict,
+    *,
+    osmose_index: dict[tuple[str, int], list[dict]] | None = None,
+) -> list[dict]:
     """Return every applicable proposed fix for a way.
 
     Combines:
@@ -112,6 +116,12 @@ def proposed_fixes_for_way(way: dict) -> list[dict]:
     Each fix dict has ``action``, ``element_type``, ``element_id``,
     ``description``, ``changes`` (or ``tag`` for remove_tag), plus optional
     ``confidence``, ``source_evidence``, ``requires_human_review``, ``kind``.
+
+    When ``osmose_index`` is supplied (from
+    :func:`osm.osmose.index_issues_by_osm_id`) every emitted fix is run
+    through :func:`osm.osmose.annotate_fixes_with_osmose` before being
+    returned, so any way already flagged by Osmose-QA gets ``osmose_match``
+    attached and ``requires_human_review`` flipped to ``True``.
     """
     fixes: list[dict] = []
     way_id = way.get("id")
@@ -164,8 +174,11 @@ def proposed_fixes_for_way(way: dict) -> list[dict]:
             "requires_human_review": not cagis_confirmed,
         })
 
-    # If CAGIS has nothing useful (or shapely was unavailable), stop here.
+    # If CAGIS has nothing useful (or shapely was unavailable), stop here —
+    # but still apply the optional Osmose annotation pass so heuristic-only
+    # fixes get flagged when Osmose has independently called them out.
     if cagis is None or confidence < REVIEW_CONFIDENCE:
+        _apply_osmose_annotation(fixes, osmose_index)
         return fixes
 
     # ------------------------------------------------------------------
@@ -289,7 +302,35 @@ def proposed_fixes_for_way(way: dict) -> list[dict]:
             "requires_human_review": confidence < HIGH_CONFIDENCE,
         })
 
+    _apply_osmose_annotation(fixes, osmose_index)
     return fixes
+
+
+def _apply_osmose_annotation(
+    fixes: list[dict],
+    osmose_index: dict[tuple[str, int], list[dict]] | None,
+) -> None:
+    """Annotate ``fixes`` in place from a pre-built Osmose index.
+
+    Imported lazily so reviewers/changeset callers that don't pass an index
+    don't pull in the requests/network transitive surface.
+    """
+    if not osmose_index or not fixes:
+        return
+    from osm.osmose import annotate_fixes_with_osmose
+
+    # annotate_fixes_with_osmose takes a list of issues, not the index;
+    # the caller already paid the indexing cost so we just rebuild a cheap
+    # deduplicated list from the index values.
+    seen_uuids: set[str] = set()
+    flat_issues: list[dict] = []
+    for issue_list in osmose_index.values():
+        for iss in issue_list:
+            uid = str(iss.get("id"))
+            if uid not in seen_uuids:
+                seen_uuids.add(uid)
+                flat_issues.append(iss)
+    annotate_fixes_with_osmose(fixes, flat_issues)
 
 
 def review_defects(classified: dict) -> list[dict]:

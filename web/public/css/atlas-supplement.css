@@ -402,3 +402,50 @@
   font-size: 11px;
   font-style: italic;
 }
+
+/* ---- Osmose-QA badge (shown on inventory & fix-queue rows when the way
+   is also flagged by Osmose). The link opens the Osmose issue page. ---- */
+.osmose-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-family: var(--sans);
+  background: #fff3cd;
+  color: #664d03;
+  border-radius: 999px;
+  text-decoration: none;
+}
+.osmose-badge:hover { text-decoration: underline; }
+
+/* ---- Discuss panel: tabs (OSM Notes vs private board) ---- */
+.discuss-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.discuss-tab {
+  background: transparent;
+  border: none;
+  padding: 8px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-mute);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.discuss-tab[aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--brand);
+}
+.discuss-tab:hover { color: var(--ink); }
+.badge-open   { background: #d3f4dc; color: #0f5132; }
+.badge-closed { background: #e7e7e7; color: #5a5a5a; }
