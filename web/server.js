@@ -783,10 +783,14 @@ app.post("/api/maproulette/:zone", async (req, res) => {
 // 404 if the file doesn't exist yet — call POST first.
 app.get("/api/maproulette/:zone", (req, res) => {
   if (!validateZone(req.params.zone, res)) return;
-  const outFile = path.join(
-    PROJECT_ROOT, "osm-audit-" + req.params.zone, "maproulette",
+  const zoneRoot = path.resolve(PROJECT_ROOT, "osm-audit-" + req.params.zone, "maproulette");
+  const outFile = path.resolve(
+    zoneRoot,
     req.params.zone + "-class-a-unverified.geojsonl",
   );
+  if (!(outFile === zoneRoot || outFile.startsWith(zoneRoot + path.sep))) {
+    return res.status(400).json({ error: "Invalid zone path." });
+  }
   if (!fs.existsSync(outFile)) {
     return res.status(404).json({
       error: "No MapRoulette challenge yet. POST /api/maproulette/:zone first.",
