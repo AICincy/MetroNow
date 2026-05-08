@@ -1165,6 +1165,100 @@ def maproulette_cmd(zone: str, kind: str, out: str | None):
         _write_gaps()
 
 
+# --- preflight ---
+
+_PREFLIGHT_GLYPH = {
+    "PASS": "✓",
+    "FAIL": "✗",
+    "WARN": "⚠",
+    "MANUAL": "☐",
+}
+
+
+@main.command()
+@click.option(
+    "--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE,
+    help="Zone whose first-changeset readiness to verify",
+)
+@click.option(
+    "--strict",
+    is_flag=True,
+    help="Treat WARN as a non-zero exit (default: only FAIL is non-zero)",
+)
+@click.option(
+    "--skip-pytest",
+    is_flag=True,
+    help="Skip the pytest run (faster, but the test-suite gate is not enforced)",
+)
+def preflight(zone: str, strict: bool, skip_pytest: bool):
+    """Pre-flight readiness for the first live changeset.
+
+    Codifies the codable items of docs/community-prep/04-pre-flight-checklist.md
+    and surfaces the human-attestation items as MANUAL so nothing slips
+    through the cracks on the day of the first submission.
+
+    Exit codes:
+
+    \b
+        0  No FAIL (and no WARN if --strict)
+        1  At least one FAIL
+        2  At least one WARN with --strict
+    """
+    from .preflight import (
+        CAT_ACCOUNT,
+        CAT_COMMUNITY,
+        CAT_FIX,
+        CAT_MONITORING,
+        CAT_PIPELINE,
+        CAT_SCAN,
+        run_preflight,
+    )
+
+    report_obj = run_preflight(zone, run_pytest=not skip_pytest)
+
+    click.echo(f"Pre-flight check — zone: {zone}")
+    click.echo("")
+
+    category_order = [
+        CAT_COMMUNITY,
+        CAT_ACCOUNT,
+        CAT_PIPELINE,
+        CAT_SCAN,
+        CAT_FIX,
+        CAT_MONITORING,
+    ]
+    by_cat: dict[str, list] = {cat: [] for cat in category_order}
+    for c in report_obj.checks:
+        by_cat.setdefault(c.category, []).append(c)
+
+    for cat in category_order:
+        items = by_cat.get(cat, [])
+        if not items:
+            continue
+        click.echo(f"{cat}")
+        click.echo("-" * len(cat))
+        for c in items:
+            glyph = _PREFLIGHT_GLYPH.get(c.status, "?")
+            click.echo(f"  {glyph} [{c.status:<6}] {c.name}")
+            if c.detail:
+                click.echo(f"             {c.detail}")
+        click.echo("")
+
+    click.echo(
+        f"Summary: {report_obj.n_pass} PASS · "
+        f"{report_obj.n_fail} FAIL · "
+        f"{report_obj.n_warn} WARN · "
+        f"{report_obj.n_manual} MANUAL"
+    )
+    if report_obj.n_manual:
+        click.echo(
+            "  (MANUAL items require human attestation — the checklist "
+            "exists to keep them visible, not to auto-clear them.)"
+        )
+
+    raise SystemExit(report_obj.exit_code(strict=strict))
+
+
 # --- report ---
 
 @main.command()
