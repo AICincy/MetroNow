@@ -71,7 +71,8 @@ def auth_status():
 @click.option("--skip-history", is_flag=True, help="Skip revision history analysis (legacy tiger:reviewed=no mode)")
 @click.option("--import-only", is_flag=True, help="Only find ways still on original TIGER import version (smaller, high-confidence set)")
 @click.option("--with-conflation", is_flag=True, help="Cross-reference every OSM way against CAGIS street centerlines (Hamilton County)")
-def scan(zone: str, from_cache: bool, skip_history: bool, import_only: bool, with_conflation: bool):
+@click.option("--tiger-only", is_flag=True, help="Skip CAGIS and conflate against TIGER/Line 2024 only (use where CAGIS coverage is incomplete)")
+def scan(zone: str, from_cache: bool, skip_history: bool, import_only: bool, with_conflation: bool, tiger_only: bool):
     """Fetch OSM data, analyse history, classify defects, and generate reports."""
     from rich.progress import Progress
 
@@ -115,7 +116,9 @@ def scan(zone: str, from_cache: bool, skip_history: bool, import_only: bool, wit
                 filter_by_history(classified["all_ways"], skip_history=False, progress_callback=_progress)
 
         # Phase 2c: CAGIS conflation (optional)
-        if with_conflation:
+        run_cagis = with_conflation and not tiger_only
+        run_tiger = with_conflation or tiger_only
+        if run_cagis:
             click.echo("\nPhase 2c: Conflating against CAGIS centerlines...")
             try:
                 from .conflate import (
@@ -142,7 +145,72 @@ def scan(zone: str, from_cache: bool, skip_history: bool, import_only: bool, wit
                         f"  Matched {matched:,} of {len(classified['all_ways']):,} OSM ways"
                     )
             except Exception as exc:  # noqa: BLE001
-                click.echo(f"  Conflation failed: {exc}")
+                click.echo(f"  CAGIS conflation failed: {exc}")
+
+        # Phase 2d: TIGER 2024 fallback conflation. Runs only on ways without
+        # a high-confidence CAGIS match (or, in --tiger-only mode, every way).
+        if run_tiger:
+            click.echo(
+                "\nPhase 2d: Conflating against TIGER/Line 2024 (county roads)..."
+            )
+            try:
+                from .tiger2024 import (
+                    REVIEW_CONFIDENCE as _TIGER_REV,
+                )
+                from .tiger2024 import (
+                    SHAPELY_AVAILABLE as TIGER_SHAPELY,
+                )
+                from .tiger2024 import (
+                    build_tiger_index,
+                    conflate_with_tiger,
+                    features_in_bbox,
+                    load_tiger2024_features,
+                )
+                if not TIGER_SHAPELY:
+                    click.echo("  shapely unavailable; skipping TIGER.")
+                else:
+                    tiger_all = load_tiger2024_features()
+                    if not tiger_all:
+                        click.echo(
+                            "  TIGER shapefile unavailable; skipping (CAGIS"
+                            " evidence unaffected)."
+                        )
+                    else:
+                        zone_bbox = tuple(ZONES[zk]["bbox"])
+                        tiger_zone = features_in_bbox(tiger_all, zone_bbox)
+                        click.echo(
+                            f"  TIGER features in zone bbox: {len(tiger_zone):,}"
+                            f" (of {len(tiger_all):,} county-wide)"
+                        )
+                        tiger_idx = build_tiger_index(tiger_zone)
+                        # Restrict TIGER to ways CAGIS didn't already cover
+                        # at high confidence — TIGER is fallback evidence,
+                        # not co-equal. In --tiger-only mode, run on all.
+                        if tiger_only:
+                            unmatched = classified["all_ways"]
+                        else:
+                            unmatched = [
+                                w for w in classified["all_ways"]
+                                if not (
+                                    w.get("cagis_match")
+                                    and w["cagis_match"]["confidence"] >= _TIGER_REV
+                                )
+                            ]
+                        conflate_with_tiger(unmatched, tiger_idx)
+                        # Make sure every way has tiger_match=None when not run.
+                        for w in classified["all_ways"]:
+                            w.setdefault("tiger_match", None)
+                        tiger_matched = sum(
+                            1 for w in classified["all_ways"] if w.get("tiger_match")
+                        )
+                        classified["summary_stats"]["tiger_features"] = len(tiger_zone)
+                        classified["summary_stats"]["tiger_matched"] = tiger_matched
+                        click.echo(
+                            f"  TIGER matched (fallback): {tiger_matched:,} of"
+                            f" {len(unmatched):,} candidate way(s)"
+                        )
+            except Exception as exc:  # noqa: BLE001
+                click.echo(f"  TIGER conflation failed: {exc}")
 
         # Phase 3: Reports
         click.echo("\nPhase 3: Generating reports...")
@@ -309,6 +377,95 @@ def conflate(zone: str, force_refresh: bool):
     click.echo(
         f"Matched {matched:,} of {len(classified['all_ways']):,} OSM ways"
         " against CAGIS centerlines."
+    )
+    click.echo(f"Updated {results_path}")
+
+
+# --- conflate-tiger ---
+
+@main.command(name="conflate-tiger")
+@click.option(
+    "--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE,
+    help="Zone to conflate against TIGER/Line 2024",
+)
+@click.option(
+    "--force-refresh", is_flag=True,
+    help="Re-download the TIGER 2024 ZIP instead of using the local cache",
+)
+@click.option(
+    "--all-ways", is_flag=True,
+    help="Conflate every way (default: skip ways with high-confidence CAGIS)",
+)
+def conflate_tiger(zone: str, force_refresh: bool, all_ways: bool):
+    """Conflate the most recent scan against TIGER/Line 2024.
+
+    By default this only annotates ways that don't already have a
+    high-confidence CAGIS match (TIGER is fallback evidence). Pass
+    ``--all-ways`` to run TIGER on every way regardless.
+
+    Source: U.S. Census Bureau, TIGER/Line Shapefiles 2024 (public domain).
+    """
+    from .tiger2024 import (
+        REVIEW_CONFIDENCE as TIGER_REV,
+    )
+    from .tiger2024 import (
+        SHAPELY_AVAILABLE,
+        build_tiger_index,
+        conflate_with_tiger,
+        features_in_bbox,
+        load_tiger2024_features,
+    )
+
+    if not SHAPELY_AVAILABLE:
+        click.echo(
+            "shapely is not installed; TIGER conflation cannot run.", err=True,
+        )
+        raise SystemExit(1)
+
+    results_path = _output_dir(zone) / "scan-results.json"
+    if not results_path.exists():
+        click.echo(
+            f"No scan results found for {zone}. Run 'osm scan --zone {zone}' first."
+        )
+        raise SystemExit(1)
+
+    classified = _load_scan_results(results_path)
+    click.echo(f"Loaded {len(classified.get('all_ways', [])):,} OSM ways from scan.")
+
+    tiger_all = load_tiger2024_features(force_refresh=force_refresh)
+    if not tiger_all:
+        click.echo("TIGER shapefile unavailable; aborting.", err=True)
+        raise SystemExit(1)
+    zone_bbox = tuple(ZONES[zone]["bbox"])
+    tiger_zone = features_in_bbox(tiger_all, zone_bbox)
+    click.echo(
+        f"TIGER features in {zone} bbox: {len(tiger_zone):,}"
+        f" (of {len(tiger_all):,} county-wide)"
+    )
+    tiger_idx = build_tiger_index(tiger_zone)
+
+    if all_ways:
+        unmatched = classified["all_ways"]
+    else:
+        unmatched = [
+            w for w in classified["all_ways"]
+            if not (
+                w.get("cagis_match")
+                and w["cagis_match"]["confidence"] >= TIGER_REV
+            )
+        ]
+    conflate_with_tiger(unmatched, tiger_idx)
+    for w in classified["all_ways"]:
+        w.setdefault("tiger_match", None)
+
+    matched = sum(1 for w in classified["all_ways"] if w.get("tiger_match"))
+    classified.setdefault("summary_stats", {})
+    classified["summary_stats"]["tiger_features"] = len(tiger_zone)
+    classified["summary_stats"]["tiger_matched"] = matched
+
+    _save_scan_results(classified, results_path)
+    click.echo(
+        f"TIGER matched {matched:,} of {len(unmatched):,} candidate way(s)."
     )
     click.echo(f"Updated {results_path}")
 

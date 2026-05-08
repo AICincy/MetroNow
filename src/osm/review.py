@@ -1,6 +1,6 @@
 """Terminal-based review UI for proposed corrections.
 
-Two layers of fix proposals:
+Three layers of fix proposals:
 
 1. **Heuristic** — :func:`proposed_fix` (kept for backwards compatibility)
    detects Class A/AB ways with truthy ``oneway`` tags and proposes
@@ -12,6 +12,15 @@ Two layers of fix proposals:
    the CAGIS feature and are auto-submittable when confidence ≥ 0.85.
 
    Source: CAGIS Open Data Hub, Hamilton County, Ohio.
+
+3. **TIGER-verified (fallback)** — when no high-confidence CAGIS match
+   exists for a way, :func:`proposed_fixes_for_way` also consults
+   ``tiger_match`` (set by :mod:`osm.tiger2024`) and emits ``set_name_tiger``
+   / ``reclass_highway_tiger`` fixes. TIGER fixes are always
+   ``requires_human_review=True`` because TIGER is a less-current,
+   coarser-class baseline than CAGIS.
+
+   Source: U.S. Census Bureau, TIGER/Line 2024 (public domain).
 """
 
 from __future__ import annotations
@@ -112,6 +121,9 @@ def proposed_fixes_for_way(
     * CAGIS-verified oneway disagreement.
     * CAGIS-verified street name disagreement.
     * CAGIS-verified missing-maxspeed.
+    * TIGER 2024 fallback name fix (only when CAGIS evidence is absent or
+      below ``REVIEW_CONFIDENCE``).
+    * TIGER 2024 fallback highway reclass from MTFCC (likewise).
 
     Each fix dict has ``action``, ``element_type``, ``element_id``,
     ``description``, ``changes`` (or ``tag`` for remove_tag), plus optional
@@ -174,10 +186,12 @@ def proposed_fixes_for_way(
             "requires_human_review": not cagis_confirmed,
         })
 
-    # If CAGIS has nothing useful (or shapely was unavailable), stop here —
-    # but still apply the optional Osmose annotation pass so heuristic-only
-    # fixes get flagged when Osmose has independently called them out.
+    # If CAGIS has nothing useful (or shapely was unavailable), try TIGER
+    # 2024 as fallback evidence, then stop here. We still apply the optional
+    # Osmose annotation pass so heuristic-only fixes get flagged when
+    # Osmose has independently called them out.
     if cagis is None or confidence < REVIEW_CONFIDENCE:
+        _maybe_emit_tiger_fixes(way, fixes)
         _apply_osmose_annotation(fixes, osmose_index)
         return fixes
 
@@ -302,8 +316,135 @@ def proposed_fixes_for_way(
             "requires_human_review": confidence < HIGH_CONFIDENCE,
         })
 
+    # NOTE: TIGER fallback fires only when CAGIS evidence is absent or
+    # weak (handled in the early-return path above). When we get here, CAGIS
+    # already covers this way at REVIEW_CONFIDENCE or higher and TIGER must
+    # not override it.
+
     _apply_osmose_annotation(fixes, osmose_index)
     return fixes
+
+
+# Confidence at which a TIGER name fix becomes proposable. Higher than the
+# generic REVIEW threshold because TIGER is fallback evidence, not primary —
+# and TIGER name fixes are always human-review regardless.
+TIGER_NAME_CONFIDENCE = 0.85
+
+
+def _maybe_emit_tiger_fixes(way: dict, fixes: list[dict]) -> None:
+    """Append TIGER-verified fixes when CAGIS provides no usable evidence.
+
+    TIGER is fallback evidence, never co-equal with CAGIS:
+      * If a high-confidence CAGIS match (>= REVIEW_CONFIDENCE) exists, we
+        defer to it entirely and emit no TIGER fixes.
+      * If no CAGIS match exists (or it's below the review threshold), we
+        emit TIGER fixes at slightly stricter confidence bars and always
+        with ``requires_human_review=True``.
+
+    Two TIGER fix kinds are supported:
+
+    1. ``set_name_tiger`` — TIGER ``FULLNAME`` disagrees with OSM ``name``
+       at confidence >= 0.85. Always human-review (TIGER, like CAGIS, uses
+       postal abbreviations).
+    2. ``reclass_highway_tiger`` — TIGER ``MTFCC`` strongly suggests a
+       different OSM ``highway`` than what's tagged. The MTFCC -> highway
+       mapping lives in :data:`osm.tiger2024.MTFCC_TO_OSM_HIGHWAY`. S1400
+       (residential vs unclassified) is intentionally absent from that map
+       because the ambiguity is too high to auto-suggest a reclass.
+    """
+    cagis = way.get("cagis_match") or None
+    if cagis is not None:
+        cagis_conf = float(cagis.get("confidence", 0.0))
+        if cagis_conf >= REVIEW_CONFIDENCE:
+            return  # CAGIS already covered this way; defer to it.
+
+    tiger = way.get("tiger_match") or None
+    if not tiger:
+        return
+    confidence = float(tiger.get("confidence", 0.0))
+    if confidence < REVIEW_CONFIDENCE:
+        return
+
+    way_id = way.get("id")
+    name_display = way.get("name_display") or way.get("name") or "?"
+    evidence = {
+        "tiger_id": tiger.get("tiger_id"),
+        "tiger_name": tiger.get("tiger_name"),
+        "tiger_mtfcc": tiger.get("tiger_mtfcc"),
+        "tiger_rttyp": tiger.get("tiger_rttyp"),
+        "confidence": confidence,
+        "hausdorff_m": tiger.get("hausdorff_m"),
+        "name_similarity": tiger.get("name_similarity"),
+    }
+
+    # 5a. TIGER name fix (always human-review).
+    osm_name_norm = norm_name(way.get("name"))
+    tiger_name = (tiger.get("tiger_name") or "").strip()
+    tiger_name_norm = norm_name(tiger_name)
+    name_match_after_expansion = bool(tiger.get("name_match"))
+    if (
+        tiger_name
+        and tiger_name_norm
+        and not name_match_after_expansion
+        and (osm_name_norm is None or osm_name_norm != tiger_name_norm)
+        and confidence >= TIGER_NAME_CONFIDENCE
+    ):
+        desc = (
+            f"Set name='{tiger_name}' on way {way_id} "
+            f"(was '{way.get('name') or '(unnamed)'}'; "
+            f"verified against TIGER/Line 2024 feature "
+            f"{tiger.get('tiger_id')}, confidence {confidence:.2f})"
+        )
+        fixes.append({
+            "kind": "set_name_tiger",
+            "action": "modify_tag",
+            "description": desc,
+            "element_type": "way",
+            "element_id": way_id,
+            "changes": {"name": tiger_name},
+            "confidence": confidence,
+            "source_evidence": evidence,
+            "requires_human_review": True,
+        })
+
+    # 5b. Highway reclass from MTFCC (always human-review).
+    suggested = _tiger_suggested_highway(tiger.get("tiger_mtfcc"))
+    osm_highway = (way.get("highway") or "").strip().lower()
+    if (
+        suggested
+        and suggested != osm_highway
+        and confidence >= REVIEW_CONFIDENCE
+    ):
+        desc = (
+            f"Reclassify way {way_id} ({name_display}) from "
+            f"highway={osm_highway or '(unset)'} to highway={suggested} "
+            f"(MTFCC {tiger.get('tiger_mtfcc')} per TIGER/Line 2024 feature "
+            f"{tiger.get('tiger_id')}, confidence {confidence:.2f})"
+        )
+        fixes.append({
+            "kind": "reclass_highway_tiger",
+            "action": "modify_tag",
+            "description": desc,
+            "element_type": "way",
+            "element_id": way_id,
+            "changes": {"highway": suggested},
+            "confidence": confidence,
+            "source_evidence": evidence,
+            # TIGER class is too coarse for auto-submission.
+            "requires_human_review": True,
+        })
+
+
+def _tiger_suggested_highway(mtfcc: str | None) -> str | None:
+    """Map a TIGER MTFCC to an OSM highway value.
+
+    Imports lazily so review.py doesn't pull in the shapefile reader at
+    module load time.
+    """
+    if not mtfcc:
+        return None
+    from osm.tiger2024 import suggested_highway_for_mtfcc
+    return suggested_highway_for_mtfcc(mtfcc)
 
 
 def _apply_osmose_annotation(

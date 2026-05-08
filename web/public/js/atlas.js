@@ -434,6 +434,33 @@
       `;
     }
 
+    // TIGER 2024 fallback evidence — only shown when CAGIS has nothing for
+    // this way (TIGER is fallback, not co-equal). The conflate-tiger step
+    // attaches w.tiger_match keyed off the U.S. Census Bureau TIGER/Line
+    // 2024 county-roads shapefile.
+    let tigerBlock = "";
+    if (w.tiger_match && !w.cagis_match) {
+      const tm = w.tiger_match;
+      const conf = Number(tm.confidence ?? 0);
+      const pct = Math.round(conf * 100);
+      const tone = conf >= 0.85 ? "ok" : (conf >= 0.6 ? "warn" : "err");
+      const mtfcc = tm.tiger_mtfcc ? esc(tm.tiger_mtfcc) : "—";
+      tigerBlock = `
+        <div class="ins-section ins-section-tiger">
+          <div class="ins-section-head">
+            Ground-truth (TIGER 2024)
+            <span class="conf-badge conf-${tone}">${pct}%</span>
+          </div>
+          <div class="ins-row"><span class="ins-k">TIGER name</span><span class="ins-v">${esc(tm.tiger_name || "—")}</span></div>
+          <div class="ins-row"><span class="ins-k">MTFCC</span><span class="ins-v">${mtfcc}</span></div>
+          <div class="ins-row"><span class="ins-k">Route type</span><span class="ins-v">${esc(tm.tiger_rttyp || "—")}</span></div>
+          <div class="ins-row"><span class="ins-k">Hausdorff</span><span class="ins-v">${esc((tm.hausdorff_m ?? "—").toString())} m</span></div>
+          <div class="ins-row"><span class="ins-k">LINEARID</span><span class="ins-v">${esc(tm.tiger_id || "—")}</span></div>
+          <div class="ins-attrib muted">Source: U.S. Census Bureau, TIGER/Line 2024 (public domain) — fallback evidence only</div>
+        </div>
+      `;
+    }
+
     r.innerHTML = `
       <div class="ins-head">
         <div class="ins-title">${esc(w.name_display || "Way " + wayId)}</div>
@@ -451,6 +478,7 @@
         <div class="ins-row"><span class="ins-k">Last edit</span><span class="ins-v">${esc(w.user || "—")} · v${esc(w.version || "?")}</span></div>
         ${review}${reason}
         ${cagisBlock}
+        ${tigerBlock}
         <div class="ins-actions">
           <a class="btn btn-sm" href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank" rel="noopener">Open in OSM ↗</a>
           <a class="btn btn-sm" href="http://127.0.0.1:8111/load_object?objects=w${encodeURIComponent(wayId)}" target="_blank" rel="noopener">Edit in JOSM</a>
@@ -923,6 +951,13 @@
         const pct = Math.round(conf * 100);
         const tone = conf >= 0.85 ? "ok" : (conf >= 0.6 ? "warn" : "err");
         evidenceCell = `<a href="${cagisUrl}" target="_blank" rel="noopener" title="View CAGIS feature">CAGIS ${esc(ev.cagis_id)}</a> <span class="conf-badge conf-${tone}">${pct}%</span>`;
+      } else if (ev && ev.tiger_id != null) {
+        // TIGER evidence — gray badge styling reflects fallback authority
+        // (CAGIS is primary, TIGER is federal baseline used where CAGIS
+        // is absent).
+        const conf = Number(ev.confidence ?? 0);
+        const pct = Math.round(conf * 100);
+        evidenceCell = `<span class="ev-tiger" title="TIGER/Line 2024 LINEARID — fallback evidence">TIGER ${esc(ev.tiger_id)}</span> <span class="conf-badge conf-tiger">${pct}%</span>`;
       } else if (f.requires_human_review) {
         evidenceCell = `<span class="muted">heuristic — review</span>`;
       }
@@ -945,7 +980,7 @@
         <tbody>${rows}</tbody>
       </table>
       ${state.pendingFixes.length > 500 ? `<p class="muted">Showing 500 of ${state.pendingFixes.length.toLocaleString()}; all will be submitted when you click Submit.</p>` : ""}
-      <p class="muted fx-attrib">Fixes marked CAGIS-verified cite Hamilton County's authoritative street centerlines (Source: CAGIS Open Data Hub). Other proposed fixes are flagged from heuristics and require human review.</p>
+      <p class="muted fx-attrib">Fixes marked CAGIS-verified cite Hamilton County's authoritative street centerlines. TIGER-verified fixes cite the U.S. Census Bureau's TIGER/Line 2024 — a less-current but federally-maintained baseline used where CAGIS coverage is absent.</p>
       <div id="fxResult"></div>
     `;
     $("#fxSelectAll")?.addEventListener("change", (ev) => {

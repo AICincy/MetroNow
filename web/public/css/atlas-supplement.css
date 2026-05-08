@@ -397,6 +397,16 @@
 .conf-badge.conf-ok   { background: #d3f4dc; color: #0f5132; }
 .conf-badge.conf-warn { background: #fff3cd; color: #664d03; }
 .conf-badge.conf-err  { background: #f8d7da; color: #842029; }
+/* TIGER badge: deliberately gray (less authoritative than CAGIS green). */
+.conf-badge.conf-tiger { background: #e0e0e0; color: #495057; }
+.ev-tiger {
+  font-weight: 600;
+  color: #495057;
+}
+.ins-section-tiger {
+  border-style: dashed;
+  background: #fafafa;
+}
 .fx-attrib {
   margin-top: 8px;
   font-size: 11px;

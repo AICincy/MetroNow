@@ -20,19 +20,35 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
 import requests
 
+from osm._geometry import (
+    direction_alignment as _direction_alignment,
+)
+from osm._geometry import (
+    hausdorff_meters as _hausdorff_meters,
+)
+from osm._geometry import (
+    line_unit_vector as _line_unit_vector,
+)
+from osm._geometry import (
+    line_unit_vector_lonlat as _line_unit_vector_lonlat,
+)
+from osm._geometry import (
+    meters_to_degrees as _meters_to_degrees_helper,
+)
+from osm._geometry import (
+    name_similarity as _name_similarity,
+)
 from osm.cache import bbox_hash as _bbox_hash_helper
 from osm.cache import cache_path as _bbox_cache_path
 from osm.cache import is_cache_fresh
 from osm.config import CONFIG_DIR
-from osm.geo import haversine_m, norm_name
+from osm.geo import norm_name
 from osm.zones import ZONES
 
 log = logging.getLogger(__name__)
@@ -505,184 +521,12 @@ def conflate(all_ways: list[dict], index: ConflationIndex) -> list[dict]:
 def _meters_to_degrees(geom: Any, meters: float) -> float:
     """Approximate buffer width in degrees for a geometry near its centroid.
 
-    1 deg latitude ≈ 111_320 m; we use that as a conservative bound (longitude
-    degrees are smaller at Hamilton County's latitude, which makes the buffer
-    *bigger* in practice — fine for candidate selection).
+    Wraps :func:`osm._geometry.meters_to_degrees` (kept as a shim because
+    :class:`ConflationIndex` calls it with a ``geom`` argument it doesn't
+    actually use, and an older test mocked the two-arg form).
     """
-    return meters / 111_000.0
-
-
-# CAGIS uses abbreviated street suffixes/prefixes; OSM uses spelled-out
-# forms. Without expanding both sides, similarity scores get artificially
-# low. The map is intentionally minimal — extend as we see new shorthand.
-_CAGIS_EXPANSIONS = {
-    " av ": " avenue ",
-    " blvd ": " boulevard ",
-    " cir ": " circle ",
-    " ct ": " court ",
-    " dr ": " drive ",
-    " expy ": " expressway ",
-    " exwy ": " expressway ",
-    " fwy ": " freeway ",
-    " hwy ": " highway ",
-    " ln ": " lane ",
-    " pkwy ": " parkway ",
-    " pl ": " place ",
-    " rd ": " road ",
-    " sq ": " square ",
-    " st ": " street ",
-    " ter ": " terrace ",
-    " trl ": " trail ",
-    " way ": " way ",
-    " e ": " east ",
-    " w ": " west ",
-    " n ": " north ",
-    " s ": " south ",
-    " ne ": " northeast ",
-    " nw ": " northwest ",
-    " se ": " southeast ",
-    " sw ": " southwest ",
-}
-
-
-def _expand_abbrev(s: str) -> str:
-    """Expand common CAGIS abbreviations so name-similarity matches OSM
-    spelled-out forms ("OAK ST" ↔ "Oak Street").
-    """
-    padded = " " + s + " "
-    # Run multiple passes so consecutive tokens (e.g. "E OAK ST") expand.
-    for _ in range(2):
-        for short, long_ in _CAGIS_EXPANSIONS.items():
-            padded = padded.replace(short, long_)
-    return padded.strip()
-
-
-def _name_similarity(a: str | None, b: str | None) -> float:
-    if not a or not b:
-        return 0.0
-    if a == b:
-        return 1.0
-    expanded_a = _expand_abbrev(a)
-    expanded_b = _expand_abbrev(b)
-    if expanded_a == expanded_b:
-        return 1.0
-    return SequenceMatcher(None, expanded_a, expanded_b).ratio()
-
-
-def _line_unit_vector(geom_latlon: list[list[float]]) -> tuple[float, float] | None:
-    if len(geom_latlon) < 2:
-        return None
-    lat1, lon1 = geom_latlon[0][0], geom_latlon[0][1]
-    lat2, lon2 = geom_latlon[-1][0], geom_latlon[-1][1]
-    dx = lon2 - lon1
-    dy = lat2 - lat1
-    mag = math.hypot(dx, dy)
-    if mag == 0:
-        return None
-    return (dx / mag, dy / mag)
-
-
-def _line_unit_vector_lonlat(
-    geom_lonlat: list[tuple[float, float]]
-) -> tuple[float, float] | None:
-    if len(geom_lonlat) < 2:
-        return None
-    lon1, lat1 = geom_lonlat[0]
-    lon2, lat2 = geom_lonlat[-1]
-    dx = lon2 - lon1
-    dy = lat2 - lat1
-    mag = math.hypot(dx, dy)
-    if mag == 0:
-        return None
-    return (dx / mag, dy / mag)
-
-
-def _direction_alignment(
-    a: tuple[float, float] | None, b: tuple[float, float] | None
-) -> float:
-    """0..1 alignment score (parallel = 1, perpendicular/anti-parallel ≤ 0).
-
-    Streets are *un*directed in geometry — the user-facing oneway flag is
-    handled separately — so we use ``abs(cos)`` to treat A→B and B→A as
-    equally aligned.
-    """
-    if a is None or b is None:
-        return 0.0
-    dot = a[0] * b[0] + a[1] * b[1]
-    return max(0.0, min(1.0, abs(dot)))
-
-
-def _hausdorff_meters(
-    osm_latlon: list[list[float]],
-    cagis_lonlat: list[tuple[float, float]],
-) -> float | None:
-    """Symmetric Hausdorff distance in metres.
-
-    "Every point of A is within X metres of B" implies same physical line.
-    We measure point-to-segment (true perpendicular projection), not
-    point-to-vertex, so two polylines representing the same street with
-    different vertex break-points still score near-zero Hausdorff.
-    """
-    if not osm_latlon or not cagis_lonlat:
-        return None
-    osm_pts = [(p[0], p[1]) for p in osm_latlon]  # (lat, lon)
-    cag_pts = [(lat, lon) for lon, lat in cagis_lonlat]
-    d1 = max(_min_dist_to_polyline(p, cag_pts) for p in osm_pts)
-    d2 = max(_min_dist_to_polyline(p, osm_pts) for p in cag_pts)
-    return max(d1, d2)
-
-
-def _point_segment_dist_m(
-    p_lat: float, p_lon: float,
-    a_lat: float, a_lon: float,
-    b_lat: float, b_lon: float,
-) -> float:
-    """Approximate distance from point P to segment A-B in metres.
-
-    Project P onto AB in flat ENU-ish coordinates (fine for ≪ 1 km segments
-    near Hamilton County's latitude), then take the haversine of the foot.
-    """
-    # Flat-earth deltas in metres.
-    lat_m = 111_320.0
-    lon_m = 111_320.0 * math.cos(math.radians((a_lat + b_lat) / 2.0))
-    ax = (a_lon - p_lon) * lon_m
-    ay = (a_lat - p_lat) * lat_m
-    bx = (b_lon - p_lon) * lon_m
-    by = (b_lat - p_lat) * lat_m
-    dx = bx - ax
-    dy = by - ay
-    seg_len2 = dx * dx + dy * dy
-    if seg_len2 == 0:
-        # Degenerate segment — fall back to vertex distance.
-        return haversine_m(p_lat, p_lon, a_lat, a_lon)
-    # t = ((P - A) · (B - A)) / |B - A|^2
-    # In our P-shifted frame, P is at origin, so (P - A) = -A.
-    t = (-ax * dx + -ay * dy) / seg_len2
-    t = max(0.0, min(1.0, t))
-    fx = ax + t * dx
-    fy = ay + t * dy
-    return math.hypot(fx, fy)
-
-
-def _min_dist_to_polyline(
-    point_latlon: tuple[float, float],
-    polyline_latlon: list[tuple[float, float]],
-) -> float:
-    """Min distance from a point to any segment of the polyline (metres)."""
-    if not polyline_latlon:
-        return float("inf")
-    if len(polyline_latlon) == 1:
-        lat, lon = polyline_latlon[0]
-        return haversine_m(point_latlon[0], point_latlon[1], lat, lon)
-    p_lat, p_lon = point_latlon
-    best = float("inf")
-    for i in range(len(polyline_latlon) - 1):
-        a_lat, a_lon = polyline_latlon[i]
-        b_lat, b_lon = polyline_latlon[i + 1]
-        d = _point_segment_dist_m(p_lat, p_lon, a_lat, a_lon, b_lat, b_lon)
-        if d < best:
-            best = d
-    return best
+    del geom  # unused — geometry-independent under the WGS-84 approximation
+    return _meters_to_degrees_helper(meters)
 
 
 def feature_url(cagis_id: int | str) -> str:
