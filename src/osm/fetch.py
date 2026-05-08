@@ -68,10 +68,22 @@ def overpass_query(
     return (
         "[out:json][timeout:180];\n"
         "(\n"
+        # Ways: TIGER-origin + oneway candidates (Class A/B/AB/C source set).
         f'  way["highway"]["tiger:cfcc"]({bbox_str});\n'
         f'  way["highway"="residential"]["oneway"="yes"]({bbox_str});\n'
         f'  way["highway"~"^(residential|unclassified|tertiary|service)$"]'
         f'["oneway"="yes"]({bbox_str});\n'
+        # Ways needed by rider-impact detectors (full driveable network so
+        # access/maxspeed/named-residential checks see all candidates, plus
+        # bus-stop nearest-way computation has somewhere to snap to).
+        f'  way["highway"~"^(motorway|trunk|primary|secondary|tertiary|'
+        f"unclassified|residential|service)$\"]({bbox_str});\n"
+        # Turn restrictions (relations).
+        f'  relation["type"="restriction"]({bbox_str});\n'
+        # Access barriers, transit stops, building entrances (nodes).
+        f'  node["barrier"]({bbox_str});\n'
+        f'  node["highway"="bus_stop"]({bbox_str});\n'
+        f'  node["entrance"]({bbox_str});\n'
         ");\n"
         "out meta geom;\n"
     )

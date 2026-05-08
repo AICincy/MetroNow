@@ -502,6 +502,55 @@
     });
   }
 
+  // Rider-impact findings (counts per detector kind from summary_stats).
+  // Each row, when clicked, opens the inventory panel with focus scrolled to
+  // that finding kind. We deliberately do NOT toggle map filters here — the
+  // findings overlay nodes/relations that the map layer doesn't currently
+  // render, and human review is required before any mechanical fix.
+  const FINDINGS_ROWS = [
+    { kind: "oneway_minus_one",          stat: "findings_oneway_minus_one",          label: "oneway=-1 (reversed-tag)" },
+    { kind: "oneway_conflict",           stat: "findings_oneway_conflicts",          label: "Same-name oneway conflicts" },
+    { kind: "access_blocked",            stat: "findings_access_blocked",            label: "access=private/no on residential" },
+    { kind: "barrier_unqualified",       stat: "findings_barriers_unqualified",      label: "Barriers w/o access qualifier" },
+    { kind: "broken_turn_restriction",   stat: "findings_broken_turn_restrictions",  label: "Broken turn-restriction relations" },
+    { kind: "arterial_named_residential",stat: "findings_arterial_named_residential",label: "Resi w/ arterial-suffix name" },
+    { kind: "missing_maxspeed",          stat: "findings_missing_maxspeed",          label: "Tert/uncl missing maxspeed" },
+    { kind: "bus_stop_misplaced",        stat: "findings_bus_stops_misplaced",       label: "Bus stops >20 m from drivable" },
+  ];
+
+  function renderFindings(stats) {
+    const list = document.getElementById("findingsList");
+    const section = document.getElementById("findingsSection");
+    if (!list || !section) return;
+    if (!stats) { list.innerHTML = ""; section.style.display = "none"; return; }
+    const total = FINDINGS_ROWS.reduce((s, r) => s + (Number(stats[r.stat]) || 0), 0);
+    if (total === 0) { section.style.display = "none"; return; }
+    section.style.display = "";
+    list.innerHTML = FINDINGS_ROWS.map((r) => {
+      const v = Number(stats[r.stat]) || 0;
+      const dim = v === 0 ? " dim" : "";
+      return `
+        <button class="class-row${dim}" data-finding-kind="${r.kind}"
+                title="Open inventory and scroll to ${esc(r.label)}. Findings need human review and are not auto-fixable.">
+          <span class="class-swatch" style="background: var(--accent); opacity: ${v ? 1 : 0.35};"></span>
+          <span class="class-label">${esc(r.label)}</span>
+          <span class="class-count">${v.toLocaleString()}</span>
+        </button>
+      `;
+    }).join("");
+    list.querySelectorAll(".class-row[data-finding-kind]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        openPanel("results");
+        const id = "rs-finding-" + btn.dataset.findingKind;
+        // Scroll the row into view once the panel renders.
+        setTimeout(() => {
+          const target = document.getElementById(id);
+          if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 50);
+      });
+    });
+  }
+
   function toggleClassFilter(c) {
     state.classFilters[c] = !state.classFilters[c];
     // class-row and leg-item presses
@@ -618,6 +667,7 @@
       drawResults(full);
       renderStats(full.summary_stats || {});
       renderClasses(full.summary_stats || {});
+      renderFindings(full.summary_stats || {});
       setLastRun(new Date().toLocaleString());
       applyCacheBadge(full.summary_stats || {});
       setReportsEnabled(true);
@@ -666,9 +716,62 @@
     }
     const ab = (state.results.class_ab || []);
     const a = (state.results.class_a_only || []);
+    const findings = (state.results.extra_findings || []);
     body.innerHTML =
       sectionTable("Class AB — compound (highest risk)", ab, "ab") +
-      sectionTable("Class A — false oneway", a, "a");
+      sectionTable("Class A — false oneway", a, "a") +
+      findingsSection(findings);
+  }
+
+  // Rider-impact findings — top 50 across all extra_findings, sorted by
+  // routing_impact desc. These are intentionally NOT shown in the Fix panel:
+  // node, relation, and tag-rewrite changes need human review before
+  // mechanical edits.
+  function findingsSection(findings) {
+    if (!Array.isArray(findings) || findings.length === 0) return "";
+    const sorted = findings.slice().sort((x, y) => {
+      const dx = (Number(y.routing_impact) || 0) - (Number(x.routing_impact) || 0);
+      if (dx !== 0) return dx;
+      const sevOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+      return (sevOrder[x.severity] ?? 9) - (sevOrder[y.severity] ?? 9);
+    });
+    const top = sorted.slice(0, 50);
+    // Anchor rows by kind so the sidebar findings buttons can scroll to them.
+    const seenKinds = new Set();
+    const rows = top.map((f) => {
+      const kind = f.kind || "?";
+      const id = f.id || "?";
+      const elemType =
+        kind === "barrier_unqualified" || kind === "bus_stop_misplaced" ? "node" :
+        kind === "broken_turn_restriction" ? "relation" :
+        "way";
+      const url = `https://www.openstreetmap.org/${elemType}/${encodeURIComponent(id)}`;
+      const anchorAttr = !seenKinds.has(kind) ? ` id="rs-finding-${esc(kind)}"` : "";
+      seenKinds.add(kind);
+      return `<tr${anchorAttr}>
+        <td>${esc(kind)}</td>
+        <td><a href="${url}" target="_blank" rel="noopener">${esc(elemType)}/${esc(id)}</a></td>
+        <td>${esc(f.name || "—")}</td>
+        <td>${esc(f.severity || "—")}</td>
+        <td>${esc(String(f.routing_impact ?? "—"))}</td>
+        <td>${esc(f.description || "")}</td>
+      </tr>`;
+    }).join("");
+    const tip = "Rider-impact findings are surfaced for review but not auto-fixed. " +
+      "Node, relation, and tag-rewrite edits need human verification before submission.";
+    return `
+      <div class="rs-section findings" title="${esc(tip)}">
+        <h3>Rider-impact findings <span class="rs-count">${findings.length.toLocaleString()}</span>
+          <span class="muted" style="margin-left:6px;font-weight:normal;font-size:11px;">(read-only — see tooltip)</span>
+        </h3>
+        <p class="muted" style="margin:4px 0 8px;">${esc(tip)}</p>
+        <table class="rs-table">
+          <thead><tr><th>Kind</th><th>Element</th><th>Name</th><th>Severity</th><th>Impact</th><th>Description</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${findings.length > 50 ? `<p class="muted">Showing top 50 of ${findings.length.toLocaleString()} by routing impact.</p>` : ""}
+      </div>
+    `;
   }
   function sectionTable(title, ways, kind) {
     if (!ways.length) {

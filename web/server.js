@@ -223,6 +223,7 @@ app.post("/api/scan", async (req, res) => {
       "    'class_b_streets': dict(classified['class_b_streets']),",
       "    'gaps': classified['gaps'],",
       "    'summary_stats': classified['summary_stats'],",
+      "    'extra_findings': classified.get('extra_findings', []),",
       "}",
       "with open(results_path, 'w', encoding='utf-8') as fh:",
       "    json.dump(ser, fh, ensure_ascii=False)",

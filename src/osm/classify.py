@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 
 from .config import CLASS_A, CLASS_AB, CLASS_B, CLASS_C, CRITICAL, HIGH, LOW
 from .gaps import detect_gaps
@@ -29,13 +30,46 @@ def is_oneway_truthy(value) -> bool:
     return str(value).strip().lower() in ONEWAY_TRUTHY
 
 
+def _split_elements(raw: dict) -> tuple[list[dict], list[dict], list[dict]]:
+    """Partition Overpass elements into (ways, nodes, relations).
+
+    Tolerant of unknown element types (returned as ``None`` ``type``, future
+    Overpass additions, etc.) — they're just skipped.
+    """
+    ways: list[dict] = []
+    nodes: list[dict] = []
+    relations: list[dict] = []
+    for el in raw.get("elements", []) or []:
+        et = el.get("type")
+        if et == "way":
+            ways.append(el)
+        elif et == "node":
+            nodes.append(el)
+        elif et == "relation":
+            relations.append(el)
+        # else: silently ignore — unknown future types shouldn't crash.
+    return ways, nodes, relations
+
+
+def _safe_run(name: str, fn: Callable[..., list[dict]], *args, **kwargs) -> list[dict]:
+    """Call a detector; log + return [] on any error so one bad detector
+    doesn't kill the classify run."""
+    try:
+        result = fn(*args, **kwargs)
+        return result if isinstance(result, list) else []
+    except Exception as exc:  # noqa: BLE001 — intentional broad catch
+        log.warning("Detector %s failed: %s", name, exc)
+        return []
+
+
 def classify(raw: dict) -> dict:
     """Classify all way elements from an Overpass response into defect classes.
 
     Returns a dict with all_ways, class_a, class_a_only, class_ab,
-    class_b_streets, gaps, and summary_stats.
+    class_b_streets, gaps, summary_stats, and extra_findings.
     """
-    elements = [e for e in raw.get("elements", []) if e.get("type") == "way"]
+    elements_ways, elements_nodes, elements_relations = _split_elements(raw)
+    elements = elements_ways
     by_norm: dict[str, list[dict]] = defaultdict(list)
 
     all_ways: list[dict] = []
@@ -124,6 +158,76 @@ def classify(raw: dict) -> dict:
             skipped_geom,
         )
 
+    # Rider-impact detectors. These run on the raw harvested elements
+    # (ways still carry their dict-shape Overpass geometry) so detectors that
+    # need original tags work without re-deriving them. Each is wrapped in
+    # _safe_run so a single broken detector cannot kill the audit.
+    from . import detectors as _det  # local import to avoid cycle at import time
+
+    bus_stops = [
+        n for n in elements_nodes
+        if (n.get("tags") or {}).get("highway") == "bus_stop"
+    ]
+    barrier_nodes = [
+        n for n in elements_nodes
+        if (n.get("tags") or {}).get("barrier")
+    ]
+
+    extra_findings: list[dict] = []
+    extra_findings.extend(
+        _safe_run("oneway_minus_one", _det.detect_oneway_minus_one, elements_ways)
+    )
+    extra_findings.extend(
+        _safe_run("oneway_conflicts", _det.detect_oneway_conflicts, elements_ways)
+    )
+    extra_findings.extend(
+        _safe_run(
+            "access_blocked_residential",
+            _det.detect_access_blocked_residential,
+            elements_ways,
+        )
+    )
+    extra_findings.extend(
+        _safe_run(
+            "barriers_without_access",
+            _det.detect_barriers_without_access,
+            barrier_nodes,
+        )
+    )
+    extra_findings.extend(
+        _safe_run(
+            "broken_turn_restrictions",
+            _det.detect_broken_turn_restrictions,
+            elements_relations,
+        )
+    )
+    extra_findings.extend(
+        _safe_run(
+            "arterial_named_residential",
+            _det.detect_arterial_named_residential,
+            elements_ways,
+        )
+    )
+    extra_findings.extend(
+        _safe_run(
+            "missing_maxspeed_arterial",
+            _det.detect_missing_maxspeed_arterial,
+            elements_ways,
+        )
+    )
+    extra_findings.extend(
+        _safe_run(
+            "misplaced_bus_stops",
+            _det.detect_misplaced_bus_stops,
+            bus_stops,
+            elements_ways,
+        )
+    )
+
+    findings_by_kind: dict[str, int] = defaultdict(int)
+    for f in extra_findings:
+        findings_by_kind[f.get("kind") or ""] += 1
+
     summary_stats = {
         "total": len(all_ways),
         "residential": residential_count,
@@ -142,6 +246,18 @@ def classify(raw: dict) -> dict:
         "cache_age_seconds": raw.get("_cache_age_seconds"),
         "by_highway": dict(by_highway),
         "by_class": dict(by_class),
+        # Rider-impact findings counts (extend the inventory beyond TIGER ways).
+        "findings_oneway_minus_one": findings_by_kind.get("oneway_minus_one", 0),
+        "findings_oneway_conflicts": findings_by_kind.get("oneway_conflict", 0),
+        "findings_access_blocked": findings_by_kind.get("access_blocked", 0),
+        "findings_barriers_unqualified": findings_by_kind.get("barrier_unqualified", 0),
+        "findings_broken_turn_restrictions":
+            findings_by_kind.get("broken_turn_restriction", 0),
+        "findings_arterial_named_residential":
+            findings_by_kind.get("arterial_named_residential", 0),
+        "findings_missing_maxspeed": findings_by_kind.get("missing_maxspeed", 0),
+        "findings_bus_stops_misplaced": findings_by_kind.get("bus_stop_misplaced", 0),
+        "findings_total": len(extra_findings),
     }
 
     return {
@@ -152,4 +268,5 @@ def classify(raw: dict) -> dict:
         "class_b_streets": class_b_streets,
         "gaps": gaps,
         "summary_stats": summary_stats,
+        "extra_findings": extra_findings,
     }
