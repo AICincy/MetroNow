@@ -580,10 +580,6 @@ class ConflationIndex:
             scored.append(
                 (confidence, rec, name_sim, haus, dir_align, passed_haus)
             )
-            if passed_haus:
-                haus_under_buffer.append(haus)
-            else:
-                haus_over_buffer.append(haus)
 
         if not scored:
             diag["bucket"] = BUCKET_F3_GEOMETRY_FAIL
