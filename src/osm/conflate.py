@@ -567,8 +567,6 @@ class ConflationIndex:
         scored: list[
             tuple[float, _CagisRecord, float, float, float, bool]
         ] = []
-        haus_under_buffer: list[float] = []
-        haus_over_buffer: list[float] = []
         for rec in candidates:
             haus = _hausdorff_meters(osm_geometry, rec.geometry_lonlat)
             if haus is None:
