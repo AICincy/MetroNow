@@ -691,9 +691,17 @@ app.get("/api/export/:zone/json", (req, res) => {
 app.post("/api/fix-impact/:zone", async (req, res) => {
   const zone = req.params.zone;
   if (!validateZone(zone, res)) return;
-  const resultsPath = path.join(
+  const projectRootResolved = path.resolve(PROJECT_ROOT);
+  const resultsPathCandidate = path.join(
     PROJECT_ROOT, "osm-audit-" + zone, "scan-results.json"
   );
+  const resultsPath = path.resolve(resultsPathCandidate);
+  if (
+    resultsPath !== projectRootResolved &&
+    !resultsPath.startsWith(projectRootResolved + path.sep)
+  ) {
+    return res.status(400).json({ error: "Invalid zone path." });
+  }
   if (!fs.existsSync(resultsPath))
     return res.status(404).json({ error: "No scan results for this zone." });
   try {
