@@ -552,7 +552,7 @@ def detect_misplaced_bus_stops(
         if gtfs_pts:
             gtfs_best: float | None = None
             for glat, glon in gtfs_pts:
-                if abs(glat - lat_f) > 0.005 and abs(glon - lon_f) > 0.005:
+                if abs(glat - lat_f) > LAT_LON_THRESHOLD or abs(glon - lon_f) > LAT_LON_THRESHOLD:
                     continue
                 d = haversine_m(lat_f, lon_f, glat, glon)
                 if gtfs_best is None or d < gtfs_best:
