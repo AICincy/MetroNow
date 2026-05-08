@@ -112,10 +112,21 @@ def auth_status():
         "enable for exhaustive audits where signal-to-noise is acceptable."
     ),
 )
+@click.option(
+    "--with-gtfs-cross-check/--no-gtfs-cross-check",
+    default=True,
+    help=(
+        "Cross-check the misplaced_bus_stops detector against SORTA's "
+        "published GTFS feed. An OSM bus_stop within 30 m of a GTFS stop "
+        "is treated as a valid off-curb shelter and suppressed. On by "
+        "default; pass --no-gtfs-cross-check to skip the GTFS fetch."
+    ),
+)
 def scan(
     zone: str, from_cache: bool, skip_history: bool, import_only: bool,
     with_conflation: bool, tiger_only: bool, with_route_diff: bool,
     route_diff_profile: str, include_unnamed_service: bool,
+    with_gtfs_cross_check: bool,
 ):
     """Fetch OSM data, analyse history, classify defects, and generate reports."""
     from rich.progress import Progress
@@ -147,7 +158,28 @@ def scan(
         click.echo("\nPhase 2: Classifying defects...")
         if include_unnamed_service:
             click.echo("  (unnamed service-oneway ways included in Class A)")
-        classified = classify(raw, include_unnamed_service=include_unnamed_service)
+
+        gtfs_stops_for_classify = None
+        if with_gtfs_cross_check:
+            try:
+                from .gtfs import fetch_sorta_stops
+                gtfs_stops_for_classify = fetch_sorta_stops()
+                click.echo(
+                    f"  SORTA GTFS: loaded {len(gtfs_stops_for_classify):,} "
+                    "stop position(s) for bus_stop cross-check"
+                )
+            except Exception as exc:  # noqa: BLE001
+                click.echo(
+                    f"  SORTA GTFS fetch failed ({exc}); "
+                    "bus_stop cross-check disabled for this scan",
+                    err=True,
+                )
+
+        classified = classify(
+            raw,
+            include_unnamed_service=include_unnamed_service,
+            gtfs_stops=gtfs_stops_for_classify,
+        )
 
         if skip_history:
             click.echo("  History analysis: SKIPPED (legacy mode)")

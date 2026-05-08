@@ -102,6 +102,7 @@ def classify(
     osm_notes: list[dict] | None = None,
     note_threshold_m: float = 50.0,
     include_unnamed_service: bool = False,
+    gtfs_stops: list | None = None,
 ) -> dict:
     """Classify all way elements from an Overpass response into defect classes.
 
@@ -121,6 +122,13 @@ def classify(
     dispatch into anyway, so flagging them produces noise without rider
     benefit. Set ``True`` for an exhaustive audit; the resulting Class A
     set will roughly double in volume on Hamilton County zones.
+
+    ``gtfs_stops`` (Phase 4c) is a list of GTFS stop rows (typically
+    :class:`osm.gtfs.GtfsStop`) used to suppress false-positive
+    ``misplaced_bus_stops`` findings. An OSM ``highway=bus_stop`` whose
+    nearest SORTA-published stop is within 30 m is treated as a valid
+    off-curb shelter and not flagged. classify() never fetches the
+    feed itself — pass ``osm.gtfs.fetch_sorta_stops()`` from the caller.
     """
     elements_ways, elements_nodes, elements_relations = _split_elements(raw)
     elements = elements_ways
@@ -299,6 +307,7 @@ def classify(
             _det.detect_misplaced_bus_stops,
             bus_stops,
             elements_ways,
+            gtfs_stops=gtfs_stops,
         )
     )
 

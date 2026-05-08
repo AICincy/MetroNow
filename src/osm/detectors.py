@@ -453,11 +453,26 @@ def detect_misplaced_bus_stops(
     bus_stops: Iterable[dict],
     ways: Iterable[dict],
     threshold_m: float = 20.0,
+    *,
+    gtfs_stops: Iterable[object] | None = None,
+    gtfs_match_threshold_m: float = 30.0,
 ) -> list[dict]:
     """Flag bus stops further than ``threshold_m`` from any drivable-way vertex.
 
     "Drivable" excludes ``service=parking_aisle`` to avoid spuriously
     snapping a stop to a parking lot lane.
+
+    Phase 4c GTFS cross-check: when ``gtfs_stops`` is provided (a list
+    of objects with ``lat`` / ``lon`` attributes — typically
+    :class:`osm.gtfs.GtfsStop` rows from SORTA's published feed), an
+    OSM ``highway=bus_stop`` whose distance to the nearest GTFS stop
+    is within ``gtfs_match_threshold_m`` is treated as a valid
+    off-curb shelter / sign placement and suppressed. This removes
+    the false-positive class flagged by the screenshot-driven Transit
+    "trip never arrived" complaint flow: stops set back from the curb
+    (sheltered shelters, transit-oriented development plazas) read as
+    "20 m from the road" but are correctly placed for SORTA's own
+    operations.
     """
     drivable_pts: list[tuple[float, float]] = []
     for w in ways:
@@ -471,6 +486,18 @@ def detect_misplaced_bus_stops(
     out: list[dict] = []
     if not drivable_pts:
         return out
+
+    gtfs_pts: list[tuple[float, float]] = []
+    if gtfs_stops is not None:
+        for s in gtfs_stops:
+            slat = getattr(s, "lat", None)
+            slon = getattr(s, "lon", None)
+            if (
+                isinstance(slat, (int, float))
+                and isinstance(slon, (int, float))
+                and valid_latlon(float(slat), float(slon))
+            ):
+                gtfs_pts.append((float(slat), float(slon)))
 
     for stop in bus_stops:
         lat = stop.get("lat")
@@ -502,6 +529,20 @@ def detect_misplaced_bus_stops(
                     best = d
         if best is None or best <= threshold_m:
             continue
+
+        # GTFS cross-check: a stop matching a SORTA stop position is a
+        # valid placement, not a defect.
+        if gtfs_pts:
+            gtfs_best: float | None = None
+            for glat, glon in gtfs_pts:
+                if abs(glat - lat_f) > 0.005 and abs(glon - lon_f) > 0.005:
+                    continue
+                d = haversine_m(lat_f, lon_f, glat, glon)
+                if gtfs_best is None or d < gtfs_best:
+                    gtfs_best = d
+            if gtfs_best is not None and gtfs_best <= gtfs_match_threshold_m:
+                continue
+
         tags = _tags(stop)
         out.append({
             "kind": "bus_stop_misplaced",
@@ -511,6 +552,11 @@ def detect_misplaced_bus_stops(
             "description": (
                 f"bus stop {stop.get('id')} is {best:.0f} m from nearest "
                 f"drivable way (>{threshold_m:.0f} m threshold)"
+                + (
+                    " and not within "
+                    f"{gtfs_match_threshold_m:.0f} m of any SORTA GTFS stop"
+                    if gtfs_pts else ""
+                )
             ),
             "routing_impact": 3,
             "lat": lat_f,

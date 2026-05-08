@@ -68,6 +68,16 @@ TIGER_IMPORT_END = "2008-05-04T00:00:00Z"
 # Project wiki URL for changeset documentation
 WIKI_URL = "https://wiki.openstreetmap.org/wiki/Hamilton_County_TIGER_Audit"
 
+# SORTA agency identifiers — pinned for cross-references in changeset
+# metadata, GTFS feed lookups, and Transit.land queries.
+# - Onestop ID: Transit.land federated identifier
+# - NTD ID: U.S. National Transit Database (annual reporting)
+# - Wikidata: stable cross-language identifier
+SORTA_AGENCY_ID = "METRO"  # value of agency_id in SORTA's GTFS agency.txt
+SORTA_ONESTOP_ID = "o-dngy-southwestohioregionaltransitauthority"
+SORTA_NTD_ID = "50012"
+SORTA_WIKIDATA_ID = "Q7571329"
+
 
 def ensure_config_dirs() -> None:
     """Create config directories if they don't exist."""

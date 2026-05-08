@@ -11,6 +11,8 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
   - Pipeline: `fetch.py`, `polygons.py`, `classify.py`, `detectors.py`,
     `gaps.py`, `history.py`, `history_filter.py`, `conflate.py`,
     `review.py`, `changeset.py`
+  - External feeds: `gtfs.py` (SORTA GTFS stops cross-check), `notes.py`
+    (OSM Notes), `osmose.py` (Osmose quality issues)
   - Zone polygons: `src/osm/zones/<zone-key>.geojson` (real MetroNow
     operational polygons from SORTA's web map) + `hamilton-county.geojson`
     (TIGER FIPS 39061 fallback)
@@ -27,7 +29,7 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
   - `web/public/js/atlas-extras.js` — theme/density/accent/weight tweaks
   - `web/public/css/atlas-supplement.css` — components added by atlas.js
   - `web/public/.legacy/` — original UI preserved for rollback
-- `tests/` — pytest suite (230 passing as of last commit)
+- `tests/` — pytest suite (236 passing as of last commit)
 - `osm-audit-{zone}/` — generated outputs per zone (gitignored): raw Overpass
   cache under `data/`, `scan-results.json`, `reports/`, `csv/`
 
