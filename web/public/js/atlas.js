@@ -186,6 +186,7 @@
     clearMap();
     renderStats(null);
     renderClasses(null);
+    updateInvestigationsBadge();
     setLastRun("—");
     closeAllPanels();
     await tryLoadExistingResults();
@@ -211,6 +212,16 @@
   })();
   const wayLayer = L.layerGroup();
   const gapLayer = L.layerGroup();
+
+  // Phase 2c: CAGIS centerlines overlay (Esri FeatureServer/26 via esri-leaflet).
+  // Lazy-loaded — created on first toggle-on. Keeps the basemap fast for users
+  // who never need ground-truth comparison.
+  const CAGIS_FEATURE_LAYER_URL =
+    "https://services.arcgis.com/JyZag7oO4NteHGiq/arcgis/rest/services/Open_Data/FeatureServer/26";
+  const CAGIS_ATTRIBUTION =
+    'CAGIS Open Data Hub, Hamilton County (<a href="https://cagisonline.hamilton-co.org/" target="_blank" rel="noopener">cagisonline</a>)';
+  let cagisOverlay = null;
+  let cagisOverlayVisible = false;
 
   function initMap() {
     mapRef = L.map("map", { zoomControl: false, preferCanvas: true }).setView([39.20, -84.39], 11);
@@ -255,9 +266,56 @@
     baseLayers[name].addTo(mapRef);
     currentBase = name;
     try { localStorage.setItem(BASEMAP_KEY, name); } catch {}
-    $$(".bm-btn").forEach((b) => {
+    $$(".bm-btn[data-base]").forEach((b) => {
       b.setAttribute("aria-pressed", b.dataset.base === name ? "true" : "false");
     });
+  }
+
+  // Phase 2c: toggle the CAGIS centerlines overlay. The featureLayer is
+  // built lazily on first toggle-on so users who never need ground-truth
+  // comparison don't pay the FeatureServer fetch.
+  function toggleCagisOverlay() {
+    if (!mapRef) return;
+    const btn = document.getElementById("cagisOverlayToggle");
+    if (cagisOverlayVisible) {
+      if (cagisOverlay) mapRef.removeLayer(cagisOverlay);
+      cagisOverlayVisible = false;
+      if (btn) btn.setAttribute("aria-pressed", "false");
+      return;
+    }
+    if (!cagisOverlay) {
+      // Guard against esri-leaflet not loading (CDN block, offline, etc.).
+      if (!window.L || !window.L.esri || !window.L.esri.featureLayer) {
+        showToast("Esri Leaflet plugin not available; CAGIS overlay disabled.");
+        return;
+      }
+      cagisOverlay = window.L.esri.featureLayer({
+        url: CAGIS_FEATURE_LAYER_URL,
+        attribution: CAGIS_ATTRIBUTION,
+        style: () => ({
+          color: "#2c5282", // matches --accent
+          weight: 1.5,
+          opacity: 0.65,
+          dashArray: "4 3",
+        }),
+      });
+      cagisOverlay.bindPopup((feat) => {
+        const p = (feat && feat.feature && feat.feature.properties) || {};
+        const label = p.STRLABEL || p.MAPLABEL || "(unnamed)";
+        const speed = p.SPEEDLIMIT ? `${p.SPEEDLIMIT} mph` : "—";
+        const trvl = p.TRVL_DIR;
+        const direction = trvl === 1 || trvl === -1 ? `oneway (${trvl})` : "two-way";
+        return `<div style="font-family: var(--sans, sans-serif); font-size: 12.5px;">
+          <div style="font-weight: 600; margin-bottom: 4px;">${label}</div>
+          <div>Speed: ${speed}</div>
+          <div>Direction: ${direction}</div>
+          <div style="margin-top: 6px; font-size: 11px; color: #847e72;">CAGIS feature ${p.OBJECTID ?? "?"}</div>
+        </div>`;
+      });
+    }
+    cagisOverlay.addTo(mapRef);
+    cagisOverlayVisible = true;
+    if (btn) btn.setAttribute("aria-pressed", "true");
   }
 
   // class colors / weights — read from CSS custom properties so theme/tweaks update naturally
@@ -665,6 +723,7 @@
       drawResults(data);
       renderStats(data.summary_stats || {});
       renderClasses(data.summary_stats || {});
+      updateInvestigationsBadge();
       setLastRun(new Date().toLocaleString());
       applyCacheBadge(data.summary_stats || {});
       setReportsEnabled(true);
@@ -738,6 +797,7 @@
       renderStats(full.summary_stats || {});
       renderClasses(full.summary_stats || {});
       renderFindings(full.summary_stats || {});
+      updateInvestigationsBadge();
       setLastRun(new Date().toLocaleString());
       applyCacheBadge(full.summary_stats || {});
       setReportsEnabled(true);
@@ -764,6 +824,7 @@
       b.setAttribute("aria-pressed", b.dataset.view === name ? "true" : "false");
     });
     if (name === "results") renderResultsPanel();
+    if (name === "investigations") renderInvestigationsPanel();
     if (name === "history") renderHistoryPanel();
     if (name === "discuss") renderDiscussPanel();
     if (name === "formality") renderFormalityPanel();
@@ -859,6 +920,123 @@
     draw();
     await ensureOsmoseLoaded();
     draw();
+  }
+
+  // -------------------------------------------------- Investigations panel
+  // Phase 2c: surface the CAGIS review-band (0.6 ≤ confidence < 0.85) and
+  // the unmatched-way subset (no cagis_match at all). Without this view,
+  // the 8.7% match rate is just a number — here it becomes a triage queue
+  // that joins routing_impact from the rider-impact detectors.
+  const INVEST_FILTER_KEY = "metronow.investFilter";
+  let investFilter = (() => {
+    try {
+      const v = localStorage.getItem(INVEST_FILTER_KEY);
+      return ["review", "unmatched", "all"].includes(v) ? v : "review";
+    } catch { return "review"; }
+  })();
+
+  function investWays() {
+    const all = (state.results && state.results.all_ways) || [];
+    if (investFilter === "all") return all;
+    return all.filter((w) => {
+      const cm = w.cagis_match;
+      if (investFilter === "unmatched") return !cm;
+      if (investFilter === "review") {
+        return cm && Number(cm.confidence) >= 0.6 && Number(cm.confidence) < 0.85;
+      }
+      return false;
+    });
+  }
+
+  function routingImpactFor(wayId) {
+    // Join: extra_findings carries routing_impact per detector hit, keyed
+    // by way_id. Take the max so the worst detector dominates this row.
+    const findings = (state.results && state.results.extra_findings) || [];
+    let best = 0;
+    for (const f of findings) {
+      const wid = (f.way && f.way.id) || f.way_id || (f.subject && f.subject.id);
+      if (Number(wid) === Number(wayId) && typeof f.routing_impact === "number") {
+        if (f.routing_impact > best) best = f.routing_impact;
+      }
+    }
+    return best;
+  }
+
+  // Lightweight: update only the dock badge without rendering the panel
+  // body. Used after drawResults() so the badge stays accurate even when
+  // the user never opens Investigations.
+  function updateInvestigationsBadge() {
+    const dockBadge = $("#dockInvestigate");
+    if (!dockBadge) return;
+    if (!state.results) {
+      dockBadge.style.display = "none";
+      return;
+    }
+    const n = investWays().length;
+    dockBadge.textContent = String(n);
+    dockBadge.style.display = n ? "inline-flex" : "none";
+  }
+
+  function renderInvestigationsPanel() {
+    const body = $("#investigationsBody");
+    if (!body) return;
+    if (!state.results) {
+      body.innerHTML = `<div class="empty"><div class="em-title">No scan yet</div>Run a scan with conflation to populate the Investigations queue.</div>`;
+      $("#investCount") && ($("#investCount").textContent = "");
+      return;
+    }
+    const rows = investWays()
+      .map((w) => ({ w, impact: routingImpactFor(w.id) }))
+      .sort((a, b) => b.impact - a.impact);
+
+    const counter = $("#investCount");
+    if (counter) counter.textContent = `${rows.length} way(s) — filter: ${investFilter}`;
+    const dockBadge = $("#dockInvestigate");
+    if (dockBadge) {
+      dockBadge.textContent = String(rows.length);
+      dockBadge.style.display = rows.length ? "inline-flex" : "none";
+    }
+    if (rows.length === 0) {
+      body.innerHTML = `<div class="empty"><div class="em-title">Nothing to investigate</div>No ways match this filter. Try "Unmatched" or "All".</div>`;
+      return;
+    }
+
+    const PAGE = 100;
+    const visible = rows.slice(0, PAGE);
+    const more = rows.length - visible.length;
+
+    const lines = [
+      `<table class="rs-table"><thead><tr>`,
+      `<th>Way</th><th>Class</th><th>Name</th><th>CAGIS conf.</th>`,
+      `<th>Hausdorff (m)</th><th>Name sim.</th><th>Routing impact</th>`,
+      `</tr></thead><tbody>`,
+    ];
+    for (const { w, impact } of visible) {
+      const cm = w.cagis_match;
+      const conf = cm && typeof cm.confidence === "number" ? Math.round(cm.confidence * 100) + "%" : "—";
+      const haus = cm && typeof cm.hausdorff_m === "number" ? cm.hausdorff_m.toFixed(1) : "—";
+      const nameSim = cm && typeof cm.name_similarity === "number" ? cm.name_similarity.toFixed(2) : "—";
+      const cls = (w.defect_class || "C").toUpperCase();
+      const name = esc(w.name_display || w.name || "(unnamed)");
+      const tone = !cm ? "err" : (cm.confidence >= 0.6 ? "warn" : "err");
+      const osmUrl = `https://www.openstreetmap.org/way/${encodeURIComponent(w.id)}`;
+      lines.push(
+        `<tr>`,
+        `<td><a href="${osmUrl}" target="_blank" rel="noopener">${esc(w.id)} ↗</a></td>`,
+        `<td><span class="cls-pill cls-${cls.toLowerCase()}">${cls}</span></td>`,
+        `<td>${name}</td>`,
+        `<td><span class="conf-badge conf-${tone}">${conf}</span></td>`,
+        `<td>${haus}</td>`,
+        `<td>${nameSim}</td>`,
+        `<td>${impact || "—"}</td>`,
+        `</tr>`,
+      );
+    }
+    lines.push("</tbody></table>");
+    if (more > 0) {
+      lines.push(`<div class="rs-more"><span>${more} more way(s) hidden — refine the filter or use the inventory CSV export.</span></div>`);
+    }
+    body.innerHTML = lines.join("");
   }
 
   // Rider-impact findings — top 50 across all extra_findings, sorted by
@@ -1624,6 +1802,23 @@
     $("#resCsv")?.addEventListener("click", () => window.open("/api/export/" + state.currentZone + "/csv", "_blank"));
     $("#resJson")?.addEventListener("click", () => window.open("/api/export/" + state.currentZone + "/json", "_blank"));
     $("#resShare")?.addEventListener("click", shareSummary);
+
+    // Phase 2c — CAGIS overlay toggle (Esri FeatureServer/26 via esri-leaflet)
+    $("#cagisOverlayToggle")?.addEventListener("click", toggleCagisOverlay);
+
+    // Phase 2c — Investigations filter buttons
+    $$("#investFilterSeg .seg-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        investFilter = btn.dataset.v || "review";
+        try { localStorage.setItem(INVEST_FILTER_KEY, investFilter); } catch {}
+        $$("#investFilterSeg .seg-btn").forEach((b) => {
+          b.setAttribute("aria-pressed", b.dataset.v === investFilter ? "true" : "false");
+        });
+        renderInvestigationsPanel();
+      });
+      // Sync the persisted choice on first paint.
+      btn.setAttribute("aria-pressed", btn.dataset.v === investFilter ? "true" : "false");
+    });
 
     // fix
     $("#loadFixesBtn")?.addEventListener("click", loadFixes);
