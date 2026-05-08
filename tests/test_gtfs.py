@@ -134,10 +134,12 @@ SAMPLE_MDB_CSV = (
 class TestCatalogParser:
 
     def test_parse_mdb_catalog_finds_sorta(self):
+        from urllib.parse import urlparse
         from osm.gtfs import parse_mdb_catalog
         entry = parse_mdb_catalog(SAMPLE_MDB_CSV, source_id="366")
         assert entry is not None
-        assert "go-metro.com" in entry["direct_download"]
+        host = urlparse(entry["direct_download"]).hostname
+        assert host == "go-metro.com" or (host is not None and host.endswith(".go-metro.com"))
         assert entry["latest"].endswith("sorta-366.zip")
         assert "SORTA" in entry["provider"]
 
