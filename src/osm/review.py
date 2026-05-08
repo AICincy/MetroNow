@@ -447,6 +447,127 @@ def _tiger_suggested_highway(mtfcc: str | None) -> str | None:
     return suggested_highway_for_mtfcc(mtfcc)
 
 
+def proposed_fixes_for_finding(finding: dict) -> list[dict]:
+    """Emit mechanical fixes for a rider-impact finding that route-diff verified.
+
+    A finding only graduates to a mechanical fix when:
+
+    1. ``finding["route_diff"]["decision"] == 'real'`` (BRouter says routing
+       does change with the hypothetical correction), AND
+    2. ``finding["kind"]`` is in
+       :data:`osm.route_diff.AUTO_FIXABLE_KINDS`.
+
+    Other findings — including ones whose route-diff decision is
+    ``'real'`` but whose kind is not auto-fixable — are intentionally
+    skipped here and left to the human-review queue.
+
+    Each emitted fix carries a ``source_evidence`` block referencing the
+    BRouter decision so changesets can cite it just like CAGIS-verified
+    fixes do.
+    """
+    rd = finding.get("route_diff")
+    if not isinstance(rd, dict):
+        return []
+    if rd.get("decision") != "real":
+        return []
+
+    # Local import — avoids importing osm.route_diff (and transitively
+    # osm.cache + requests) when nothing in this call needs them.
+    from osm.route_diff import AUTO_FIXABLE_KINDS
+
+    kind = finding.get("kind")
+    if kind not in AUTO_FIXABLE_KINDS:
+        return []
+
+    fid = finding.get("id")
+    name_display = finding.get("name") or "(unnamed)"
+    evidence = {
+        "brouter_decision": rd.get("decision"),
+        "brouter_confidence": rd.get("confidence"),
+        "delta_pct": rd.get("delta_pct"),
+        "before": rd.get("before"),
+        "after_predicted": rd.get("after_predicted"),
+        "profile": rd.get("profile"),
+    }
+
+    if kind == "oneway_minus_one":
+        return [{
+            "kind": "remove_false_oneway_minus_one",
+            "action": "remove_tag",
+            "tag": "oneway",
+            "description": (
+                f"Remove false oneway=-1 from way {fid} ({name_display}); "
+                f"BRouter route-diff: routing changes by "
+                f"{rd.get('delta_pct'):.1f}% when the tag is hypothetically "
+                "removed (decision=real)."
+            ),
+            "element_type": "way",
+            "element_id": fid,
+            "changes": {"oneway": None},
+            "confidence": rd.get("confidence"),
+            "source_evidence": evidence,
+            # Even with route-diff confirmation, oneway tag rewrites are
+            # high-impact. Keep human in the loop until the harness has
+            # proven itself in production.
+            "requires_human_review": True,
+        }]
+
+    if kind == "oneway_conflict":
+        return [{
+            "kind": "remove_oneway_conflict",
+            "action": "remove_tag",
+            "tag": "oneway",
+            "description": (
+                f"Remove conflicting oneway tag from way {fid} ({name_display}); "
+                f"BRouter route-diff: routing changes by "
+                f"{rd.get('delta_pct'):.1f}% (decision=real)."
+            ),
+            "element_type": "way",
+            "element_id": fid,
+            "changes": {"oneway": None},
+            "confidence": rd.get("confidence"),
+            "source_evidence": evidence,
+            "requires_human_review": True,
+        }]
+
+    if kind == "broken_turn_restriction":
+        return [{
+            "kind": "remove_broken_restriction",
+            "action": "remove_relation",
+            "description": (
+                f"Remove broken turn-restriction relation {fid}; "
+                f"BRouter route-diff: routing changes by "
+                f"{rd.get('delta_pct'):.1f}% when the restriction is "
+                "hypothetically dropped (decision=real)."
+            ),
+            "element_type": "relation",
+            "element_id": fid,
+            "changes": None,
+            "confidence": rd.get("confidence"),
+            "source_evidence": evidence,
+            "requires_human_review": True,
+        }]
+
+    if kind == "barrier_unqualified":
+        return [{
+            "kind": "add_access_to_barrier",
+            "action": "modify_tag",
+            "description": (
+                f"Add access=yes to barrier node {fid}; BRouter route-diff "
+                f"confirms the barrier wrongly blocks a rider path "
+                f"({rd.get('delta_pct'):.1f}% routing change, decision=real)."
+            ),
+            "element_type": "node",
+            "element_id": fid,
+            "changes": {"access": "yes"},
+            "confidence": rd.get("confidence"),
+            "source_evidence": evidence,
+            "requires_human_review": True,
+        }]
+
+    return []
+
+
 def _apply_osmose_annotation(
     fixes: list[dict],
     osmose_index: dict[tuple[str, int], list[dict]] | None,

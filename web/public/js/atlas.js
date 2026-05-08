@@ -823,11 +823,16 @@
     const ab = (state.results.class_ab || []);
     const a = (state.results.class_a_only || []);
     const findings = (state.results.extra_findings || []);
-    const draw = () =>
-      (body.innerHTML =
+    const draw = () => {
+      body.innerHTML =
         sectionTable("Class AB — compound (highest risk)", ab, "ab") +
         sectionTable("Class A — false oneway", a, "a") +
-        findingsSection(findings));
+        findingsSection(findings);
+      // Re-bind the route-diff button after every redraw — innerHTML wipes
+      // event listeners.
+      const rdBtn = $("#runRouteDiffBtn");
+      if (rdBtn) rdBtn.addEventListener("click", runRouteDiff);
+    };
     draw();
     await ensureOsmoseLoaded();
     draw();
@@ -836,7 +841,32 @@
   // Rider-impact findings — top 50 across all extra_findings, sorted by
   // routing_impact desc. These are intentionally NOT shown in the Fix panel:
   // node, relation, and tag-rewrite changes need human review before
-  // mechanical edits.
+  // mechanical edits. The "Run route-diff" button (rendered below) hits
+  // BRouter to verify which of these change real routing behaviour and
+  // tags each row with a green/amber/grey decision badge.
+  const ROUTE_DIFF_TESTABLE_KINDS = new Set([
+    "oneway_minus_one", "oneway_conflict",
+    "broken_turn_restriction", "barrier_unqualified",
+  ]);
+
+  function routeDiffBadge(rd, kind) {
+    if (!rd || typeof rd !== "object") {
+      if (ROUTE_DIFF_TESTABLE_KINDS.has(kind)) {
+        return '<span class="rd-badge rd-untested" title="Not yet route-diff tested">—</span>';
+      }
+      return '<span class="rd-badge rd-na" title="This finding kind is not testable with BRouter alone">n/a</span>';
+    }
+    const decision = rd.decision || "?";
+    const delta = typeof rd.delta_pct === "number" ? `Δ ${rd.delta_pct.toFixed(1)}%` : "";
+    const tip = `BRouter route-diff: decision=${decision}, ${delta}, confidence=${rd.confidence ?? "?"}`;
+    let cls = "rd-untested";
+    let label = decision;
+    if (decision === "real") { cls = "rd-real"; label = "real"; }
+    else if (decision === "noisy") { cls = "rd-noisy"; label = "noisy"; }
+    else if (decision === "inconclusive") { cls = "rd-inconclusive"; label = "?"; }
+    return `<span class="rd-badge ${cls}" title="${esc(tip)}">${esc(label)}</span>`;
+  }
+
   function findingsSection(findings) {
     if (!Array.isArray(findings) || findings.length === 0) return "";
     const sorted = findings.slice().sort((x, y) => {
@@ -858,30 +888,74 @@
       const url = `https://www.openstreetmap.org/${elemType}/${encodeURIComponent(id)}`;
       const anchorAttr = !seenKinds.has(kind) ? ` id="rs-finding-${esc(kind)}"` : "";
       seenKinds.add(kind);
+      const rdBadge = routeDiffBadge(f.route_diff, kind);
       return `<tr${anchorAttr}>
         <td>${esc(kind)}</td>
         <td><a href="${url}" target="_blank" rel="noopener">${esc(elemType)}/${esc(id)}</a></td>
         <td>${esc(f.name || "—")}</td>
         <td>${esc(f.severity || "—")}</td>
         <td>${esc(String(f.routing_impact ?? "—"))}</td>
+        <td>${rdBadge}</td>
         <td>${esc(f.description || "")}</td>
       </tr>`;
     }).join("");
     const tip = "Rider-impact findings are surfaced for review but not auto-fixed. " +
       "Node, relation, and tag-rewrite edits need human verification before submission.";
+    const testableCount = findings.filter((f) => ROUTE_DIFF_TESTABLE_KINDS.has(f.kind)).length;
+    const rdHist = (state.results && state.results.summary_stats &&
+      state.results.summary_stats.route_diff_decisions) || null;
+    const rdSummary = rdHist
+      ? `Last route-diff: real=${rdHist.real || 0} · inconclusive=${rdHist.inconclusive || 0} · noisy=${rdHist.noisy || 0} · untested=${rdHist.untested || 0}`
+      : "Route-diff has not been run for this zone yet.";
     return `
       <div class="rs-section findings" title="${esc(tip)}">
         <h3>Rider-impact findings <span class="rs-count">${findings.length.toLocaleString()}</span>
           <span class="muted" style="margin-left:6px;font-weight:normal;font-size:11px;">(read-only — see tooltip)</span>
         </h3>
         <p class="muted" style="margin:4px 0 8px;">${esc(tip)}</p>
+        <div class="rd-controls" style="display:flex;gap:8px;align-items:center;margin:6px 0 10px;">
+          <button id="runRouteDiffBtn" class="rd-run-btn"
+                  title="Hit BRouter to test which of the ${testableCount.toLocaleString()} testable findings change real routing behaviour."
+                  ${testableCount === 0 ? "disabled" : ""}>
+            Run route-diff (${testableCount.toLocaleString()} testable)
+          </button>
+          <span id="rdStatus" class="muted" style="font-size:12px;">${esc(rdSummary)}</span>
+        </div>
         <table class="rs-table">
-          <thead><tr><th>Kind</th><th>Element</th><th>Name</th><th>Severity</th><th>Impact</th><th>Description</th></tr></thead>
+          <thead><tr><th>Kind</th><th>Element</th><th>Name</th><th>Severity</th><th>Impact</th><th>Route-diff</th><th>Description</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
         ${findings.length > 50 ? `<p class="muted">Showing top 50 of ${findings.length.toLocaleString()} by routing impact.</p>` : ""}
       </div>
     `;
+  }
+
+  async function runRouteDiff() {
+    if (!state.currentZone) {
+      toast("Pick a zone first", "warn");
+      return;
+    }
+    const btn = $("#runRouteDiffBtn");
+    const status = $("#rdStatus");
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = "Running route-diff (1s/call rate-limited)…";
+    try {
+      const data = await api(`/api/route-diff/${encodeURIComponent(state.currentZone)}`, {
+        method: "POST",
+        body: { profile: "car-fast" },
+      });
+      const dec = (data && data.decisions) || {};
+      const summary = `Route-diff complete: real=${dec.real || 0} · inconclusive=${dec.inconclusive || 0} · noisy=${dec.noisy || 0} · untested=${dec.untested || 0}`;
+      if (status) status.textContent = summary;
+      toast(summary, "ok");
+      // Refresh the inventory so badges show up.
+      await tryLoadExistingResults();
+    } catch (e) {
+      toast("Route-diff failed: " + e.message, "err");
+      if (status) status.textContent = "Route-diff failed: " + e.message;
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
   function sectionTable(title, ways, kind) {
     if (!ways.length) {

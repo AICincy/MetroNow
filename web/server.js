@@ -485,6 +485,66 @@ app.post("/api/fix", async (req, res) => {
   }
 });
 
+// ---- Route-diff (BRouter) ----
+
+app.post("/api/route-diff/:zone", async (req, res) => {
+  const zone = req.params.zone;
+  if (!validateZone(zone, res)) return;
+  const resultsPath = path.join(
+    PROJECT_ROOT, "osm-audit-" + zone, "scan-results.json"
+  );
+  if (!fs.existsSync(resultsPath))
+    return res.status(404).json({ error: "No scan results for this zone. Run a scan first." });
+  const ALLOWED_PROFILES = new Set(["car-fast", "car-vehicle"]);
+  const profile = ALLOWED_PROFILES.has(req.body && req.body.profile)
+    ? req.body.profile
+    : "car-fast";
+  const limitRaw = req.body && Number(req.body.limit);
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 0;
+  try {
+    const pyCode = [
+      "import json, sys, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "from pathlib import Path",
+      "sys.stdout = open(os.devnull, 'w')",
+      "from osm.route_diff import (",
+      "    TESTABLE_KINDS, decision_histogram, diff_findings, graduate_findings,",
+      ")",
+      "results_path = Path(" + JSON.stringify(resultsPath.replace(/\\/g, "/")) + ")",
+      "with results_path.open('r', encoding='utf-8') as fh:",
+      "    classified = json.load(fh)",
+      "findings = classified.get('extra_findings') or []",
+      "testable = [f for f in findings if f.get('kind') in TESTABLE_KINDS]",
+      "limit = " + JSON.stringify(limit),
+      "if limit and limit > 0:",
+      "    testable = testable[:limit]",
+      "profile = " + JSON.stringify(profile),
+      "diff_findings(testable, classified.get('all_ways') or [], profile=profile)",
+      "hist = decision_histogram(testable)",
+      "graduated, human = graduate_findings(testable)",
+      "classified.setdefault('summary_stats', {})",
+      "classified['summary_stats']['route_diff_decisions'] = hist",
+      "classified['summary_stats']['route_diff_profile'] = profile",
+      "with results_path.open('w', encoding='utf-8') as fh:",
+      "    json.dump(classified, fh, ensure_ascii=False)",
+      "sys.stdout = sys.__stdout__",
+      "print(json.dumps({",
+      "    'tested': len(testable),",
+      "    'decisions': hist,",
+      "    'graduated': len(graduated),",
+      "    'human_review': len(human),",
+      "    'profile': profile,",
+      "}))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    const result = JSON.parse(out.trim());
+    res.json({ success: true, ...result });
+    try { appendHistory({ action: "route_diff", zone, result }); } catch {}
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
 // ---- OSM Notes ----
 
 app.get("/api/notes/:zone", async (req, res) => {

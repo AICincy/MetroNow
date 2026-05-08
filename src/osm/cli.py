@@ -72,7 +72,26 @@ def auth_status():
 @click.option("--import-only", is_flag=True, help="Only find ways still on original TIGER import version (smaller, high-confidence set)")
 @click.option("--with-conflation", is_flag=True, help="Cross-reference every OSM way against CAGIS street centerlines (Hamilton County)")
 @click.option("--tiger-only", is_flag=True, help="Skip CAGIS and conflate against TIGER/Line 2024 only (use where CAGIS coverage is incomplete)")
-def scan(zone: str, from_cache: bool, skip_history: bool, import_only: bool, with_conflation: bool, tiger_only: bool):
+@click.option(
+    "--with-route-diff", is_flag=True,
+    help=(
+        "After detectors run, hit BRouter to test which rider-impact "
+        "findings actually change routing. Adds ~1 s per finding "
+        "(polite rate limit) and only tests the four kinds we can verify "
+        "via routing graph perturbation."
+    ),
+)
+@click.option(
+    "--route-diff-profile",
+    type=click.Choice(["car-fast", "car-vehicle"]),
+    default="car-fast",
+    help="BRouter profile to use for the route-diff harness.",
+)
+def scan(
+    zone: str, from_cache: bool, skip_history: bool, import_only: bool,
+    with_conflation: bool, tiger_only: bool, with_route_diff: bool,
+    route_diff_profile: str,
+):
     """Fetch OSM data, analyse history, classify defects, and generate reports."""
     from rich.progress import Progress
 
@@ -211,6 +230,56 @@ def scan(zone: str, from_cache: bool, skip_history: bool, import_only: bool, wit
                         )
             except Exception as exc:  # noqa: BLE001
                 click.echo(f"  TIGER conflation failed: {exc}")
+
+        # Phase 2e: Route-diff via BRouter (optional). Promotes rider-impact
+        # findings from human-review-only to "decision-tagged" by checking
+        # whether a hypothetical fix actually changes routing behaviour.
+        if with_route_diff:
+            click.echo(
+                "\nPhase 2e: Route-diff against BRouter "
+                f"(profile={route_diff_profile})..."
+            )
+            try:
+                from .route_diff import (
+                    TESTABLE_KINDS,
+                    decision_histogram,
+                    diff_findings,
+                )
+                findings = classified.get("extra_findings") or []
+                testable = [
+                    f for f in findings if f.get("kind") in TESTABLE_KINDS
+                ]
+                click.echo(
+                    f"  {len(testable):,} of {len(findings):,} finding(s) "
+                    "are route-diff-testable."
+                )
+                with Progress() as progress:
+                    task = progress.add_task(
+                        "Route-diff", total=len(testable),
+                    )
+
+                    def _rd_progress(done, total, _task=task):
+                        progress.update(_task, completed=done)
+
+                    diff_findings(
+                        testable,
+                        classified["all_ways"],
+                        profile=route_diff_profile,
+                        progress_callback=_rd_progress,
+                    )
+                hist = decision_histogram(testable)
+                classified.setdefault("summary_stats", {})
+                classified["summary_stats"]["route_diff_decisions"] = hist
+                classified["summary_stats"]["route_diff_profile"] = (
+                    route_diff_profile
+                )
+                click.echo(
+                    f"  Decisions: real={hist['real']}, "
+                    f"inconclusive={hist['inconclusive']}, "
+                    f"noisy={hist['noisy']}, untested={hist['untested']}"
+                )
+            except Exception as exc:  # noqa: BLE001
+                click.echo(f"  Route-diff failed: {exc}")
 
         # Phase 3: Reports
         click.echo("\nPhase 3: Generating reports...")
@@ -466,6 +535,97 @@ def conflate_tiger(zone: str, force_refresh: bool, all_ways: bool):
     _save_scan_results(classified, results_path)
     click.echo(
         f"TIGER matched {matched:,} of {len(unmatched):,} candidate way(s)."
+    )
+    click.echo(f"Updated {results_path}")
+
+
+# --- route-diff ---
+
+@main.command(name="route-diff")
+@click.option(
+    "--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE,
+    help="Zone whose scan-results.json to test",
+)
+@click.option(
+    "--profile",
+    type=click.Choice(["car-fast", "car-vehicle"]),
+    default="car-fast",
+    help="BRouter profile to use.",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=0,
+    help=(
+        "Cap the number of testable findings to test in this run "
+        "(0 = no cap). BRouter is rate-limited at 1 sec/call by default; "
+        "use this to keep batches short during exploration."
+    ),
+)
+def route_diff_cmd(zone: str, profile: str, limit: int):
+    """Run BRouter route-diff against the most recent scan-results.json.
+
+    Tests every rider-impact finding whose kind is in
+    :data:`osm.route_diff.TESTABLE_KINDS` and writes the augmented
+    findings (each with a ``route_diff`` key) back to
+    ``osm-audit-{zone}/scan-results.json``.
+
+    BRouter source: https://brouter.de/brouter (GPL engine over OSM data).
+    """
+    from rich.progress import Progress
+
+    from .route_diff import (
+        TESTABLE_KINDS,
+        decision_histogram,
+        diff_findings,
+        graduate_findings,
+    )
+
+    results_path = _output_dir(zone) / "scan-results.json"
+    if not results_path.exists():
+        click.echo(
+            f"No scan results found for {zone}. Run 'osm scan --zone {zone}' first."
+        )
+        raise SystemExit(1)
+
+    classified = _load_scan_results(results_path)
+    findings = classified.get("extra_findings") or []
+    testable = [f for f in findings if f.get("kind") in TESTABLE_KINDS]
+    if limit and limit > 0:
+        testable = testable[:limit]
+    click.echo(
+        f"Loaded {len(findings):,} finding(s); testing {len(testable):,} "
+        "via BRouter route-diff."
+    )
+
+    with Progress() as progress:
+        task = progress.add_task("Route-diff", total=len(testable))
+
+        def _progress(done, total, _task=task):
+            progress.update(_task, completed=done)
+
+        diff_findings(
+            testable,
+            classified["all_ways"],
+            profile=profile,
+            progress_callback=_progress,
+        )
+
+    hist = decision_histogram(testable)
+    graduated, human = graduate_findings(testable)
+    classified.setdefault("summary_stats", {})
+    classified["summary_stats"]["route_diff_decisions"] = hist
+    classified["summary_stats"]["route_diff_profile"] = profile
+
+    _save_scan_results(classified, results_path)
+
+    click.echo(
+        f"Decisions: real={hist['real']}, inconclusive={hist['inconclusive']}, "
+        f"noisy={hist['noisy']}, untested={hist['untested']}"
+    )
+    click.echo(
+        f"Graduated to mechanical fix: {len(graduated):,}; "
+        f"stay human-review: {len(human):,}."
     )
     click.echo(f"Updated {results_path}")
 

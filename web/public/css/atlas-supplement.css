@@ -459,3 +459,30 @@
 .discuss-tab:hover { color: var(--ink); }
 .badge-open   { background: #d3f4dc; color: #0f5132; }
 .badge-closed { background: #e7e7e7; color: #5a5a5a; }
+
+/* Route-diff decision badges (BRouter harness output). */
+.rd-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.rd-real         { background: #d3f4dc; color: #0f5132; }
+.rd-inconclusive { background: #fff3cd; color: #664d03; }
+.rd-noisy        { background: #e7e7e7; color: #5a5a5a; }
+.rd-untested     { background: #eef2f7; color: #6b7280; }
+.rd-na           { background: transparent; color: #9ca3af; font-weight: 400; }
+.rd-run-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--brand, #2b6cb0);
+  background: var(--brand, #2b6cb0);
+  color: #fff;
+  cursor: pointer;
+}
+.rd-run-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.rd-run-btn:hover:not([disabled]) { filter: brightness(0.95); }
