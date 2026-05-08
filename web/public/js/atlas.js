@@ -1390,8 +1390,6 @@
 
   function updateSelectedCount() {
     const checked = $$(".fix-check").filter((c) => c.checked).length;
-    const all = state.pendingFixes.length;
-    const showAll = all > 500 ? all : checked + (all - $$(".fix-check").length);
     const el = $("#fxSelected");
     if (el) el.textContent = `${checked.toLocaleString()} selected`;
   }
