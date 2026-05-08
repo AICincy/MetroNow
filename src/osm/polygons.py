@@ -29,6 +29,14 @@ log = logging.getLogger(__name__)
 ZONES_DIR = Path(__file__).parent / "zones"
 HAMILTON_COUNTY_GEOJSON = ZONES_DIR / "hamilton-county.geojson"
 
+# Phase 4a stage 2: per-zone polygons live next to the county polygon
+# under src/osm/zones/, keyed by zone_key. Each is a 500m-buffered union
+# of the constituent municipalities (cities + CDPs filtered to Hamilton
+# County), sourced from Census TIGERweb Places. See the source GeoJSON
+# files for provenance.
+def _zone_geojson(zone_key: str) -> Path:
+    return ZONES_DIR / f"{zone_key}.geojson"
+
 
 # ---------------------------------------------------------------------------
 # Optional shapely import — same pattern as conflate.py. Without shapely
@@ -59,7 +67,22 @@ except Exception as exc:  # noqa: BLE001
 # Loaders
 # ---------------------------------------------------------------------------
 
-_HAMILTON_COUNTY_CACHE: Any = None
+_POLYGON_CACHE: dict[str, Any] = {}
+
+
+def _load_polygon_from(path: Path) -> Any:
+    """Read a single-feature GeoJSON polygon file. Returns None on any error."""
+    if not SHAPELY_AVAILABLE:
+        return None
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            feat = json.load(fh)
+        return shape(feat["geometry"])
+    except (OSError, KeyError, ValueError) as exc:
+        log.error("Could not parse polygon at %s: %s", path, exc)
+        return None
 
 
 def load_hamilton_county_polygon() -> Any:
@@ -67,36 +90,52 @@ def load_hamilton_county_polygon() -> Any:
 
     Returns ``None`` when shapely is unavailable. Memoised after first call.
     """
-    global _HAMILTON_COUNTY_CACHE
-    if _HAMILTON_COUNTY_CACHE is not None:
-        return _HAMILTON_COUNTY_CACHE
-    if not SHAPELY_AVAILABLE:
-        return None
-    if not HAMILTON_COUNTY_GEOJSON.exists():
+    cached = _POLYGON_CACHE.get("__county__")
+    if cached is not None:
+        return cached
+    geom = _load_polygon_from(HAMILTON_COUNTY_GEOJSON)
+    if geom is None and SHAPELY_AVAILABLE:
         log.warning(
             "Hamilton County polygon missing at %s; clip will be a no-op.",
             HAMILTON_COUNTY_GEOJSON,
         )
-        return None
-    try:
-        with HAMILTON_COUNTY_GEOJSON.open("r", encoding="utf-8") as fh:
-            feat = json.load(fh)
-        geom = shape(feat["geometry"])
-        _HAMILTON_COUNTY_CACHE = geom
-        return geom
-    except (OSError, KeyError, ValueError) as exc:
-        log.error("Could not parse Hamilton County polygon: %s", exc)
-        return None
+    if geom is not None:
+        _POLYGON_CACHE["__county__"] = geom
+    return geom
 
 
-def load_zone_polygon(zone_key: str) -> Any:
-    """Return the polygon to clip a zone's harvest against.
+def load_zone_polygon(
+    zone_key: str, *, prefer_per_zone: bool = False,
+) -> Any:
+    """Return the clip polygon for ``zone_key``.
 
-    Phase 4a stage 1: every MetroNow zone shares the Hamilton County
-    polygon. Stage 2 will replace this with per-zone municipal polygons
-    once they're traced or sourced from CAGIS jurisdictions.
+    Default (Phase 4a stage 1): returns the Hamilton County polygon for
+    every zone. This is the data-justified clip — it removes Forest
+    Park's Butler County bleed and Springdale's northern overflow
+    without dropping any in-county auto-matchable ways.
+
+    With ``prefer_per_zone=True`` (Phase 4a stage 2 opt-in): returns the
+    per-zone polygon (union of constituent municipalities + 500 m
+    buffer, intersected with the county) when available, else falls
+    back to the county polygon. Per-zone polygons trade recall for
+    precision; useful for narrowing audit scope when downstream code
+    knows the operational area is tighter than the bbox, but not a
+    universal win — Northgate/Springdale lose auto-matchable ways
+    that sit in unincorporated township territory between cities.
+
+    Phase 4a stage 3 (future) will replace these approximations with
+    the actual MetroNow operational polygons once SORTA / Via share
+    them or they're hand-traced from the published service map.
     """
-    del zone_key  # unused at stage 1; kept in the signature for stage 2.
+    if prefer_per_zone:
+        cache_key = f"zone:{zone_key}"
+        cached = _POLYGON_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+        zone_geom = _load_polygon_from(_zone_geojson(zone_key))
+        if zone_geom is not None:
+            _POLYGON_CACHE[cache_key] = zone_geom
+            return zone_geom
     return load_hamilton_county_polygon()
 
 
