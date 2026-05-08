@@ -177,3 +177,91 @@ class TestChallengeMetadata:
         assert "42" in m["description"]
         assert "blue-ash-montgomery" in m["checkin_comment"]
         assert "tiger" in m["tags"]
+
+
+class TestGapTasks:
+    """Phase 3 follow-up: node-disconnect gap → MapRoulette task."""
+
+    def _classified_with_gaps(self):
+        return {
+            "gaps": [
+                {
+                    "lat": 39.232, "lon": -84.378,
+                    "street": "Oak Street", "type": "probable_disconnect",
+                    "way1_id": 100, "way2_id": 200, "distance_m": 19.8,
+                },
+                {
+                    "lat": 39.245, "lon": -84.385,
+                    "street": "Maple Lane", "type": "probable_disconnect",
+                    "way1_id": 300, "way2_id": 400, "distance_m": 22.4,
+                },
+                # Bad coords → dropped silently.
+                {
+                    "lat": None, "lon": -84.3,
+                    "street": "Bad", "way1_id": 500, "way2_id": 600,
+                },
+            ],
+        }
+
+    def test_unverified_gaps_filters_bad_coords(self):
+        from osm.maproulette import unverified_gaps
+        out = unverified_gaps(self._classified_with_gaps())
+        assert len(out) == 2
+        assert {g["street"] for g in out} == {"Oak Street", "Maple Lane"}
+
+    def test_build_gap_tasks_carries_distance_and_ids(self):
+        from osm.maproulette import build_gap_tasks, unverified_gaps
+        gaps = unverified_gaps(self._classified_with_gaps())
+        tasks = build_gap_tasks(gaps)
+        assert len(tasks) == 2
+        oak = next(t for t in tasks if t.street == "Oak Street")
+        assert oak.way1_id == 100
+        assert oak.way2_id == 200
+        assert oak.distance_m == 19.8
+        assert "openstreetmap.org/way/100" in oak.instruction
+        assert "openstreetmap.org/way/200" in oak.instruction
+        assert "19.8 m" in oak.instruction
+
+    def test_gap_task_to_feature_uses_point_geometry(self):
+        from osm.maproulette import build_gap_tasks, gap_task_to_feature
+        gaps = [
+            {"lat": 39.232, "lon": -84.378, "street": "X",
+             "way1_id": 1, "way2_id": 2, "distance_m": 12.5},
+        ]
+        feat = gap_task_to_feature(build_gap_tasks(gaps)[0])
+        assert feat["geometry"]["type"] == "Point"
+        # GeoJSON is [lon, lat] — confirm we project correctly.
+        assert feat["geometry"]["coordinates"] == [-84.378, 39.232]
+        assert feat["properties"]["way1_id"] == 1
+        assert feat["properties"]["way2_id"] == 2
+        assert feat["properties"]["distance_m"] == 12.5
+
+    def test_write_gap_geojsonl_emits_one_line_per_task(self, tmp_path):
+        import json as _json
+        from osm.maproulette import build_gap_tasks, write_gap_geojsonl
+        tasks = build_gap_tasks([
+            {"lat": 39.232, "lon": -84.378, "street": "A",
+             "way1_id": 1, "way2_id": 2, "distance_m": 10},
+            {"lat": 39.234, "lon": -84.379, "street": "B",
+             "way1_id": 3, "way2_id": 4, "distance_m": 25},
+        ])
+        out = tmp_path / "gaps.geojsonl"
+        n = write_gap_geojsonl(tasks, out)
+        assert n == 2
+        lines = out.read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 2
+        for line in lines:
+            obj = _json.loads(line)
+            assert obj["geometry"]["type"] == "Point"
+            assert "way1_id" in obj["properties"]
+
+    def test_gap_challenge_metadata_uses_node_disconnect_tag(self):
+        from osm.maproulette import gap_challenge_metadata
+        m = gap_challenge_metadata(
+            zone_name="Blue Ash / Montgomery",
+            zone_key="blue-ash-montgomery",
+            n_tasks=238,
+        )
+        assert "node disconnects" in m["name"]
+        assert "238" in m["description"]
+        assert "node_disconnect" in m["tags"]

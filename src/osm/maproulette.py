@@ -277,3 +277,166 @@ def challenge_metadata(zone_name: str, zone_key: str, n_tasks: int) -> dict:
         "checkin_source": "MetroNow TIGER Audit / MapRoulette",
         "tags": "tiger;tiger_audit;oneway;cincinnati;sorta;metronow",
     }
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 follow-up: node-disconnect gap challenges
+#
+# Class B/AB ways that share a normalized name and have endpoints within
+# the gap detector's threshold are surfaced as candidate node disconnects
+# (gaps.py). These can't go through CAGIS auto-submission — joining two
+# ways at a node is a topological edit, not a tag change — so they're
+# the natural MapRoulette population. One task per candidate disconnect.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GapTask:
+    """One gap candidate projected to a MapRoulette task."""
+
+    way1_id: int
+    way2_id: int
+    street: str | None
+    distance_m: float
+    lat: float
+    lon: float
+    instruction: str
+
+
+def _gap_instruction(gap: dict) -> str:
+    """Markdown shown to mappers for a single gap candidate."""
+    name = gap.get("street") or "(unnamed)"
+    d = gap.get("distance_m")
+    d_str = f"{d:.1f} m" if isinstance(d, (int, float)) else "unknown"
+    way1, way2 = gap.get("way1_id"), gap.get("way2_id")
+    lines = [
+        f"Two same-named segments of **{name}** sit {d_str} apart but "
+        "are not joined at a shared node. The MetroNow audit pipeline "
+        "(Class B node-disconnect heuristic) suspects they should be "
+        "connected — a routing engine reading the OSM data would refuse "
+        "to traverse the gap.",
+        "",
+        f"* Way A: {_osm_way_url(way1)}" if way1 is not None else "",
+        f"* Way B: {_osm_way_url(way2)}" if way2 is not None else "",
+        "",
+        "**Action:** in your preferred editor (JOSM, iD), confirm "
+        "whether the two ways should share a node at this point. If "
+        "they should, join them. If the gap is intentional (a closed "
+        "alley, a missing private driveway, two streets that genuinely "
+        "share a name without connecting), mark the task as "
+        "`Already Fixed` so the audit doesn't re-flag it.",
+        "",
+        "_Sourced by the MetroNow audit pipeline_ — see "
+        "https://wiki.openstreetmap.org/wiki/Hamilton_County_TIGER_Audit.",
+    ]
+    return "\n".join(filter(None, lines))
+
+
+def unverified_gaps(classified: dict) -> list[dict]:
+    """Return gap candidates with usable lat/lon coords."""
+    out: list[dict] = []
+    for g in classified.get("gaps", []):
+        lat = g.get("lat")
+        lon = g.get("lon")
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            continue
+        out.append(g)
+    return out
+
+
+def build_gap_tasks(gaps: list[dict]) -> list[GapTask]:
+    """Project gap dicts into :class:`GapTask` rows."""
+    tasks: list[GapTask] = []
+    for g in gaps:
+        raw1 = g.get("way1_id")
+        raw2 = g.get("way2_id")
+        try:
+            way1 = int(raw1) if raw1 is not None else 0
+            way2 = int(raw2) if raw2 is not None else 0
+        except (TypeError, ValueError):
+            continue
+        try:
+            lat = float(g["lat"])
+            lon = float(g["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        d_raw = g.get("distance_m")
+        try:
+            distance = float(d_raw) if d_raw is not None else 0.0
+        except (TypeError, ValueError):
+            distance = 0.0
+        tasks.append(GapTask(
+            way1_id=way1,
+            way2_id=way2,
+            street=g.get("street"),
+            distance_m=distance,
+            lat=lat,
+            lon=lon,
+            instruction=_gap_instruction(g),
+        ))
+    return tasks
+
+
+def gap_task_to_feature(task: GapTask) -> dict:
+    """GeoJSON Point Feature for a single gap task."""
+    return {
+        "type": "Feature",
+        "geometry": {
+            "type": "Point",
+            "coordinates": [task.lon, task.lat],
+        },
+        "properties": {
+            "task_name": (
+                f"Node-disconnect: {task.street or '(unnamed)'} "
+                f"({task.distance_m:.1f} m gap)"
+            ),
+            "task_instruction": task.instruction,
+            "way1_id": task.way1_id,
+            "way2_id": task.way2_id,
+            "street": task.street,
+            "distance_m": task.distance_m,
+            "priority": PRIORITY_MEDIUM,
+        },
+    }
+
+
+def write_gap_geojsonl(tasks: list[GapTask], out_path: Path) -> int:
+    """Write gap tasks as line-delimited GeoJSON. Same shape as
+    :func:`write_geojsonl` but for Point features instead of LineStrings."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    n = 0
+    with out_path.open("w", encoding="utf-8") as fh:
+        for task in tasks:
+            fh.write(json.dumps(gap_task_to_feature(task), ensure_ascii=False))
+            fh.write("\n")
+            n += 1
+    log.info("MapRoulette: wrote %d gap task(s) to %s", n, out_path)
+    return n
+
+
+def gap_challenge_metadata(zone_name: str, zone_key: str, n_tasks: int) -> dict:
+    """Suggested challenge-level metadata for the gaps challenge."""
+    return {
+        "name": f"MetroNow TIGER Audit — {zone_name} (node disconnects)",
+        "description": (
+            f"Candidate node disconnects from the MetroNow OSM TIGER audit "
+            f"for the {zone_name} on-demand microtransit zone. "
+            f"{n_tasks} pairs of same-named OSM ways have endpoints within "
+            "30 m of each other but no shared node — likely a routing "
+            "graph break. Each task asks a mapper to confirm whether the "
+            "two ways should be joined."
+        ),
+        "instruction": (
+            "Open the location in your preferred editor (JOSM, iD). "
+            "Look at the two same-named ways and decide if they should "
+            "share a node. If they should, join them at the gap. If the "
+            "gap is intentional, mark the task as `Already Fixed`.\n\n"
+            "**Source:** MetroNow audit pipeline — "
+            "https://wiki.openstreetmap.org/wiki/Hamilton_County_TIGER_Audit"
+        ),
+        "checkin_comment": (
+            "MetroNow TIGER audit (node-disconnect review via MapRoulette "
+            f"challenge for {zone_key})"
+        ),
+        "checkin_source": "MetroNow TIGER Audit / MapRoulette",
+        "tags": "tiger;tiger_audit;node_disconnect;cincinnati;sorta;metronow",
+    }

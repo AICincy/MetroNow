@@ -82,7 +82,7 @@ API the frontend consumes. The previous (pre-redesign) UI is preserved under
 ## Testing
 
 ```bash
-pytest tests/ -v          # full test suite (268 tests at HEAD)
+pytest tests/ -v          # full test suite (273 tests at HEAD)
 ruff check src/           # lint Python sources
 mypy src/osm/ --ignore-missing-imports
 cd web && npx eslint@8 public/js/atlas.js public/js/atlas-extras.js \

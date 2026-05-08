@@ -1053,35 +1053,53 @@ def baseline_diff_cmd(zone: str, from_path: str | None, to_path: str | None):
 @main.command(name="maproulette")
 @click.option(
     "--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE,
-    help="Zone whose Class-A/AB unverified candidates to export",
+    help="Zone whose unverified candidates to export",
+)
+@click.option(
+    "--kind",
+    type=click.Choice(["class-a", "gaps", "both"]),
+    default="class-a",
+    help=(
+        "Which challenge to generate. class-a = Class A/AB ways below "
+        "the CAGIS auto-submit threshold (default). gaps = node-disconnect "
+        "candidates. both = produce two separate .geojsonl files plus two "
+        "separate metadata payloads."
+    ),
 )
 @click.option(
     "--out",
     type=click.Path(dir_okay=False, writable=True),
     default=None,
     help=(
-        "Output path for the GeoJSON Lines challenge file. Defaults to "
-        "osm-audit-{zone}/maproulette/{zone}-class-a-unverified.geojsonl."
+        "Output path for a single-kind challenge file. Defaults to "
+        "osm-audit-{zone}/maproulette/{zone}-{kind}.geojsonl. Ignored "
+        "when --kind=both."
     ),
 )
-def maproulette_cmd(zone: str, out: str | None):
-    """Phase 3 — generate a MapRoulette challenge for unverified Class-A.
+def maproulette_cmd(zone: str, kind: str, out: str | None):
+    """Phase 3 — generate MapRoulette challenges for human-review queues.
 
-    Reads the most recent scan-results.json, extracts every Class A or
-    AB way that did NOT make the auto-submit pool (no CAGIS match at
-    HIGH_CONFIDENCE), and emits a line-delimited GeoJSON file ready
-    for upload via the MapRoulette web UI or `mr-cli` cooperative
-    challenge flow.
+    Two challenge kinds:
 
-    The companion `--challenge-meta` dict (printed on stdout) is
-    suggested challenge-level metadata for the upload form.
+    \b
+    * class-a — Class A/AB ways that did NOT make the auto-submit pool
+      (no CAGIS match at HIGH_CONFIDENCE). Each task asks a mapper to
+      verify whether the way's `oneway=yes` tag is a TIGER artefact.
+    * gaps — same-named OSM ways within 30 m of each other but with no
+      shared node. Each task asks a mapper to confirm and join.
+
+    Use --kind=both to write both files in a single invocation.
     """
     from pathlib import Path as _Path
 
     from .maproulette import (
+        build_gap_tasks,
         build_tasks,
         challenge_metadata,
+        gap_challenge_metadata,
         unverified_class_a_ways,
+        unverified_gaps,
+        write_gap_geojsonl,
         write_geojsonl,
     )
 
@@ -1093,35 +1111,58 @@ def maproulette_cmd(zone: str, out: str | None):
         raise SystemExit(1)
 
     classified = _load_scan_results(results_path)
-    ways = unverified_class_a_ways(classified)
-    tasks = build_tasks(ways)
+    zone_name = ZONES[zone].get("name", zone)
 
-    if not tasks:
-        click.echo(
-            f"No Class A / AB unverified ways for {zone}. The auto-submit "
-            "pool may already cover the candidates, or the polygon clip is "
-            "too tight."
+    def _write_class_a():
+        ways = unverified_class_a_ways(classified)
+        tasks = build_tasks(ways)
+        if not tasks:
+            click.echo(
+                f"No Class A / AB unverified ways for {zone}. The auto-submit "
+                "pool may already cover the candidates, or the polygon clip is "
+                "too tight."
+            )
+            return
+        out_path = (
+            _Path(out) if (out and kind == "class-a")
+            else _output_dir(zone) / "maproulette"
+            / f"{zone}-class-a-unverified.geojsonl"
         )
-        return
+        n = write_geojsonl(tasks, out_path)
+        meta = challenge_metadata(
+            zone_name=zone_name, zone_key=zone, n_tasks=n,
+        )
+        click.echo(f"Wrote {n:,} Class A/AB task(s) to {out_path}")
+        click.echo("")
+        click.echo("Suggested challenge metadata (paste into MapRoulette UI):")
+        click.echo(json.dumps(meta, indent=2, ensure_ascii=False))
 
-    out_path = (
-        _Path(out)
-        if out
-        else _output_dir(zone) / "maproulette"
-        / f"{zone}-class-a-unverified.geojsonl"
-    )
-    n = write_geojsonl(tasks, out_path)
+    def _write_gaps():
+        gaps = unverified_gaps(classified)
+        tasks = build_gap_tasks(gaps)
+        if not tasks:
+            click.echo(f"No node-disconnect gap candidates for {zone}.")
+            return
+        out_path = (
+            _Path(out) if (out and kind == "gaps")
+            else _output_dir(zone) / "maproulette"
+            / f"{zone}-gaps.geojsonl"
+        )
+        n = write_gap_geojsonl(tasks, out_path)
+        meta = gap_challenge_metadata(
+            zone_name=zone_name, zone_key=zone, n_tasks=n,
+        )
+        click.echo(f"Wrote {n:,} node-disconnect task(s) to {out_path}")
+        click.echo("")
+        click.echo("Suggested gap-challenge metadata (paste into MapRoulette UI):")
+        click.echo(json.dumps(meta, indent=2, ensure_ascii=False))
 
-    meta = challenge_metadata(
-        zone_name=ZONES[zone].get("name", zone),
-        zone_key=zone,
-        n_tasks=n,
-    )
-
-    click.echo(f"Wrote {n:,} MapRoulette task(s) to {out_path}")
-    click.echo("")
-    click.echo("Suggested challenge metadata (paste into MapRoulette UI):")
-    click.echo(json.dumps(meta, indent=2, ensure_ascii=False))
+    if kind in ("class-a", "both"):
+        _write_class_a()
+        if kind == "both":
+            click.echo("")
+    if kind in ("gaps", "both"):
+        _write_gaps()
 
 
 # --- report ---
