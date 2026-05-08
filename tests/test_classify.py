@@ -60,6 +60,38 @@ class TestClassA:
         way = result["all_ways"][0]
         assert way["defect_class"] != CLASS_A
 
+    def test_tertiary_oneway_is_class_a(self):
+        # Bug 3: widen Class-A to non-residential TIGER survivors.
+        raw = _overpass_response(
+            _make_way(1, "Maple Pkwy", highway="tertiary", oneway="yes"),
+        )
+        result = classify(raw)
+        way = result["all_ways"][0]
+        assert way["defect_class"] == CLASS_A
+        assert way["severity"] == CRITICAL
+
+    def test_unclassified_oneway_is_class_a(self):
+        raw = _overpass_response(
+            _make_way(1, "Back Road", highway="unclassified", oneway="yes"),
+        )
+        result = classify(raw)
+        assert result["all_ways"][0]["defect_class"] == CLASS_A
+
+    def test_oneway_minus_one_is_class_a(self):
+        # Bug 7: oneway=-1 (reverse-direction one-way) is also truthy.
+        raw = _overpass_response(
+            _make_way(1, "Reverse St", highway="residential", oneway="-1"),
+        )
+        result = classify(raw)
+        assert result["all_ways"][0]["defect_class"] == CLASS_A
+
+    def test_oneway_true_is_class_a(self):
+        raw = _overpass_response(
+            _make_way(1, "True St", highway="residential", oneway="true"),
+        )
+        result = classify(raw)
+        assert result["all_ways"][0]["defect_class"] == CLASS_A
+
 
 # ---------------------------------------------------------------------------
 # Class B: 2+ ways sharing a normalised name

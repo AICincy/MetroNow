@@ -1390,6 +1390,7 @@ table.t a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
+<a href="#main-content" class="skip-nav">Skip to main content</a>
 <div class="app" id="app" data-rrail="closed">
   <!-- ============================ Header ============================ -->
   <header class="app-header">
@@ -1439,7 +1440,7 @@ table.t a:hover { text-decoration: underline; }
       </div>
       <div class="scan-card">
         <label class="opt-row">
-          <input type="checkbox" id="skipHistory" checked />
+          <input type="checkbox" id="skipHistory" />
           <span>Skip revision-history analysis (fast)</span>
         </label>
         <button class="btn btn-brand btn-block" id="scanBtn">
@@ -1452,7 +1453,7 @@ table.t a:hover { text-decoration: underline; }
             <span id="ckLabel">audit · idle</span>
             <span class="ck-elapsed" id="ckElapsed">0.0s</span>
           </div>
-          <div class="console-body" id="consoleBody"></div>
+          <div class="console-body" id="consoleBody" aria-live="polite" aria-relevant="additions"></div>
         </div>
       </div>
     </div>
@@ -1465,7 +1466,7 @@ table.t a:hover { text-decoration: underline; }
           <button class="btn btn-xs" id="clearScanBtn" style="display:none;">Clear</button>
         </span>
       </div>
-      <div class="stats" id="statsGrid"></div>
+      <div class="stats" id="statsGrid" aria-live="polite"></div>
     </div>
 
     <div class="section" id="classSection" style="display:none;">
@@ -1503,7 +1504,7 @@ table.t a:hover { text-decoration: underline; }
   </aside>
 
   <!-- ============================ Map ============================ -->
-  <main class="map-area">
+  <main class="map-area" id="main-content">
     <div id="map"></div>
 
     <!-- top-left: search -->
@@ -1582,6 +1583,7 @@ table.t a:hover { text-decoration: underline; }
         <div class="overlay-actions">
           <button class="btn btn-sm" id="resCsv">Export CSV</button>
           <button class="btn btn-sm" id="resJson">Export JSON</button>
+          <button class="btn btn-sm" id="resShare">Share</button>
           <button class="icon-btn" data-close-panel="results" aria-label="Close">
             <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           </button>
@@ -1740,7 +1742,7 @@ table.t a:hover { text-decoration: underline; }
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" aria-live="polite" role="status"></div>
 
 <script type="application/json" id="default-tweaks">/*EDITMODE-BEGIN*/{
   "theme": "light",

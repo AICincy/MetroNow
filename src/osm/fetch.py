@@ -70,6 +70,8 @@ def overpass_query(
         "(\n"
         f'  way["highway"]["tiger:cfcc"]({bbox_str});\n'
         f'  way["highway"="residential"]["oneway"="yes"]({bbox_str});\n'
+        f'  way["highway"~"^(residential|unclassified|tertiary|service)$"]'
+        f'["oneway"="yes"]({bbox_str});\n'
         ");\n"
         "out meta geom;\n"
     )
@@ -154,10 +156,12 @@ def fetch_overpass(zone_key: str, out_dir: Path, *, import_only: bool = False) -
 
     fresh_fetch = payload is not None
     payload_source = "live Overpass response"
+    cache_age_seconds: float | None = None
     if payload is None:
         latest = newest_cache(data_dir, zone_key)
         if latest:
             age_s = time.time() - latest.stat().st_mtime
+            cache_age_seconds = age_s
             age_label = f"{age_s / 3600:.1f}h" if age_s < 86400 else f"{age_s / 86400:.1f}d"
             log.info(
                 "Using cached data from %s (age %s). Live query failed.",
@@ -192,6 +196,8 @@ def fetch_overpass(zone_key: str, out_dir: Path, *, import_only: bool = False) -
 
     payload.pop("_under_threshold", None)
     payload.pop("_element_count", None)
+    payload.pop("_cache_used", None)
+    payload.pop("_cache_age_seconds", None)
     elements = payload.get("elements")
     if not isinstance(elements, list):
         keys_preview = ", ".join(repr(k) for k in list(payload.keys())[:10])
@@ -201,7 +207,8 @@ def fetch_overpass(zone_key: str, out_dir: Path, *, import_only: bool = False) -
             f"'elements' (got {elem_type}, expected list). "
             f"Top-level keys ({len(payload)}): {keys_preview}"
         )
-    if len(elements) < SANITY_THRESHOLD:
+    under_threshold = len(elements) < SANITY_THRESHOLD
+    if under_threshold:
         log.warning(
             "Only %d elements (sanity threshold %d) — audit may be based on truncated data.",
             len(elements), SANITY_THRESHOLD,
@@ -209,12 +216,20 @@ def fetch_overpass(zone_key: str, out_dir: Path, *, import_only: bool = False) -
         payload["_under_threshold"] = True
         payload["_element_count"] = len(elements)
 
-    if fresh_fetch:
+    # Bug 6 fix: do not persist a truncated/under-threshold response to disk.
+    # Writing it would later be loaded as if it were valid cache (the
+    # `_under_threshold` marker is also stripped on reload, so the truncation
+    # warning would not re-fire). Skipping the write keeps any prior healthy
+    # cache file intact for the fallback path.
+    if fresh_fetch and not under_threshold:
         out_file = data_dir / f"{zone_key}-raw-{_utc_stamp()}.json"
         with out_file.open("w", encoding="utf-8") as fh:
             json.dump(payload, fh, ensure_ascii=False, indent=2)
         log.info("Saved raw JSON to %s", out_file)
         prune_old_cache(data_dir, zone_key)
+
+    payload["_cache_used"] = not fresh_fetch
+    payload["_cache_age_seconds"] = cache_age_seconds
 
     n = len(payload.get("elements", []))
     log.info("Fetched %d elements for %s", n, zone["name"])

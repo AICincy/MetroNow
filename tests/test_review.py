@@ -55,16 +55,47 @@ class TestProposedFix:
         fix = proposed_fix(way)
         assert fix is None
 
-    def test_class_a_not_residential_returns_none(self):
+    def test_class_a_tertiary_oneway_returns_fix(self):
+        # Bug 4: trust the classifier — tertiary+oneway=yes Class A produces a fix.
         way = {
             "id": 500,
             "defect_class": "A",
-            "highway": "primary",
+            "highway": "tertiary",
             "oneway": "yes",
-            "name_display": "US 50",
+            "name_display": "Maple Pkwy",
         }
         fix = proposed_fix(way)
-        assert fix is None
+        assert fix is not None
+        assert fix["action"] == "remove_tag"
+        assert fix["tag"] == "oneway"
+        assert fix["element_id"] == 500
+
+    def test_class_a_oneway_minus_one_returns_fix(self):
+        # Bug 7: oneway=-1 is a oneway value too; classifier marks it Class A.
+        way = {
+            "id": 550,
+            "defect_class": "A",
+            "highway": "residential",
+            "oneway": "-1",
+            "name_display": "Reverse St",
+        }
+        fix = proposed_fix(way)
+        assert fix is not None
+        assert fix["element_id"] == 550
+
+    def test_trusts_classifier_no_highway_recheck(self):
+        # Bug 4: review.py no longer re-narrows on highway. If the classifier
+        # marked something Class A with truthy oneway, the fix proceeds.
+        way = {
+            "id": 580,
+            "defect_class": "A",
+            "highway": "primary",  # would have failed the old re-check
+            "oneway": "yes",
+            "name_display": "Trust Test Rd",
+        }
+        fix = proposed_fix(way)
+        assert fix is not None
+        assert fix["element_id"] == 580
 
     def test_class_a_oneway_not_yes_returns_none(self):
         way = {

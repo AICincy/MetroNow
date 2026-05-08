@@ -12,6 +12,38 @@
     return d.innerHTML;
   }
 
+  // ports legacy formatTimeAgo for ledger render
+  function formatTimeAgo(ts) {
+    if (!ts) return "—";
+    const t = new Date(ts).getTime();
+    if (!Number.isFinite(t)) return String(ts);
+    const diff = Date.now() - t;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(ts).toLocaleDateString();
+  }
+
+  // accessibility helper: surface scan completion etc to assistive tech
+  function announceToScreenReader(msg) {
+    let live = document.getElementById("sr-live-region");
+    if (!live) {
+      live = document.createElement("div");
+      live.id = "sr-live-region";
+      live.setAttribute("role", "status");
+      live.setAttribute("aria-live", "polite");
+      live.className = "sr-only";
+      document.body.appendChild(live);
+    }
+    live.textContent = "";
+    // brief delay so AT picks up the change
+    setTimeout(() => { live.textContent = msg; }, 60);
+  }
+
   // --------------------------------------------------------------- state
   const state = {
     zones: {},
@@ -147,6 +179,8 @@
     fitToZoneBounds();
     state.results = null;
     state.pendingFixes = [];
+    // reset class filters so prior zone's toggles don't leak across
+    state.classFilters = { AB: true, A: true, B: true, C: false, GAPS: true };
     setReportsEnabled(false);
     clearMap();
     renderStats(null);
@@ -166,7 +200,14 @@
   // --------------------------------------------------------------- map
   let mapRef = null;
   const baseLayers = {};
-  let currentBase = "positron";
+  const BASEMAP_KEY = "metronow.basemap";
+  const VALID_BASES = ["positron", "dark", "voyager", "esri"];
+  let currentBase = (() => {
+    try {
+      const v = localStorage.getItem(BASEMAP_KEY);
+      return VALID_BASES.includes(v) ? v : "positron";
+    } catch { return "positron"; }
+  })();
   const wayLayer = L.layerGroup();
   const gapLayer = L.layerGroup();
 
@@ -194,6 +235,11 @@
     wayLayer.addTo(mapRef);
     gapLayer.addTo(mapRef);
 
+    // sync .bm-btn aria-pressed with persisted choice
+    $$(".bm-btn").forEach((b) => {
+      b.setAttribute("aria-pressed", b.dataset.base === currentBase ? "true" : "false");
+    });
+
     $$(".bm-btn").forEach((btn) => {
       btn.addEventListener("click", () => switchBase(btn.dataset.base));
     });
@@ -207,6 +253,7 @@
     mapRef.removeLayer(baseLayers[currentBase]);
     baseLayers[name].addTo(mapRef);
     currentBase = name;
+    try { localStorage.setItem(BASEMAP_KEY, name); } catch {}
     $$(".bm-btn").forEach((b) => {
       b.setAttribute("aria-pressed", b.dataset.base === name ? "true" : "false");
     });
@@ -236,42 +283,66 @@
     return !!state.classFilters[cls];
   }
 
+  // chunked render guard prevents races when zone/filter changes mid-render
+  let currentUpdateId = 0;
+  const RENDER_CHUNK = 150;
+
   function drawResults(data) {
     clearMap();
+    currentUpdateId++;
+    const updateId = currentUpdateId;
     const ways = (data && data.all_ways) || [];
     const counts = { AB: 0, A: 0, B: 0, C: 0 };
-    let drawn = 0;
+    const drawList = [];
     for (let i = 0; i < ways.length; i++) {
       const w = ways[i];
       const cls = (w.defect_class || "C").toUpperCase();
       if (counts[cls] !== undefined) counts[cls]++;
       if (!w.geometry || w.geometry.length < 2) continue;
       if (!classFilterAllowsWay(w)) continue;
-      const poly = L.polyline(w.geometry, {
-        color: classColor(cls),
-        weight: classWeight(cls),
-        opacity: cls === "C" ? 0.55 : 0.9,
-      });
-      poly.on("click", () => showInspector(w));
-      poly.bindTooltip(
-        `<b>${esc(w.name_display || "Way " + w.id)}</b><br>${cls} · ${esc(w.highway || "?")}`,
-        { sticky: true }
-      );
-      const wayUrl = `https://www.openstreetmap.org/way/${encodeURIComponent(w.id || "")}`;
-      poly.bindPopup(
-        `<div class="map-popup">
-          <div class="mp-title">${esc(w.name_display || "Way " + w.id)}</div>
-          <div class="mp-meta">${cls} · ${esc(w.highway || "?")}${w.oneway ? " · oneway=" + esc(w.oneway) : ""}</div>
-          <div class="mp-actions">
-            <a href="${wayUrl}" target="_blank" rel="noopener">Open in OSM ↗</a>
-            <a href="http://127.0.0.1:8111/load_object?objects=w${encodeURIComponent(w.id || "")}" target="_blank" rel="noopener">JOSM</a>
-          </div>
-        </div>`,
-        { closeButton: true, autoPan: true }
-      );
-      wayLayer.addLayer(poly);
-      drawn++;
+      drawList.push(w);
     }
+
+    function drawChunk(start) {
+      if (updateId !== currentUpdateId) return; // superseded by newer call
+      const end = Math.min(start + RENDER_CHUNK, drawList.length);
+      for (let i = start; i < end; i++) {
+        const w = drawList[i];
+        const cls = (w.defect_class || "C").toUpperCase();
+        const poly = L.polyline(w.geometry, {
+          color: classColor(cls),
+          weight: classWeight(cls),
+          opacity: cls === "C" ? 0.55 : 0.9,
+        });
+        poly.on("click", () => showInspector(w));
+        poly.bindTooltip(
+          `<b>${esc(w.name_display || "Way " + w.id)}</b><br>${cls} · ${esc(w.highway || "?")}`,
+          { sticky: true }
+        );
+        const wayUrl = `https://www.openstreetmap.org/way/${encodeURIComponent(w.id || "")}`;
+        poly.bindPopup(
+          `<div class="map-popup">
+            <div class="mp-title">${esc(w.name_display || "Way " + w.id)}</div>
+            <div class="mp-meta">${cls} · ${esc(w.highway || "?")}${w.oneway ? " · oneway=" + esc(w.oneway) : ""}</div>
+            <div class="mp-actions">
+              <a href="${wayUrl}" target="_blank" rel="noopener">Open in OSM ↗</a>
+              <a href="http://127.0.0.1:8111/load_object?objects=w${encodeURIComponent(w.id || "")}" target="_blank" rel="noopener">JOSM</a>
+            </div>
+          </div>`,
+          { closeButton: true, autoPan: true }
+        );
+        wayLayer.addLayer(poly);
+      }
+      if (end < drawList.length) {
+        if (typeof window.requestAnimationFrame === "function") {
+          window.requestAnimationFrame(() => drawChunk(end));
+        } else {
+          setTimeout(() => drawChunk(end), 0);
+        }
+      }
+    }
+    if (drawList.length) drawChunk(0);
+    const drawn = drawList.length;
     const gaps = (data && data.gaps) || [];
     const gapColor = classColor("a");
     gaps.forEach((g) => {
@@ -449,6 +520,30 @@
     if (el) el.textContent = label;
   }
 
+  // Bug 5: surface stale-cache state to the UI when fetch fell back to disk.
+  function applyCacheBadge(stats) {
+    const el = $("#lastRun");
+    if (!el) return;
+    const prior = el.querySelector(".cache-badge");
+    if (prior) prior.remove();
+    if (!stats || !stats.cache_used) return;
+    const ageS = stats.cache_age_seconds;
+    let ageLabel = "";
+    if (typeof ageS === "number") {
+      ageLabel = ageS < 3600
+        ? ` (${Math.round(ageS / 60)}m old)`
+        : ageS < 86400
+          ? ` (${(ageS / 3600).toFixed(1)}h old)`
+          : ` (${(ageS / 86400).toFixed(1)}d old)`;
+    }
+    const badge = document.createElement("span");
+    badge.className = "cache-badge";
+    badge.textContent = `stale cache${ageLabel}`;
+    badge.style.cssText = "margin-left:.5rem;padding:.1rem .4rem;border-radius:4px;background:#f59e0b;color:#1a1a1a;font-size:.75em;font-weight:600;";
+    el.appendChild(badge);
+    toast(`Using stale cached data${ageLabel} — live Overpass query failed`, "warn");
+  }
+
   // --------------------------------------------------------------- scan
   async function tryLoadExistingResults() {
     if (!state.currentZone) return;
@@ -460,6 +555,7 @@
       renderStats(data.summary_stats || {});
       renderClasses(data.summary_stats || {});
       setLastRun(new Date().toLocaleString());
+      applyCacheBadge(data.summary_stats || {});
       setReportsEnabled(true);
       consoleLog("Loaded existing scan results", "ok");
       consoleShow(true);
@@ -499,13 +595,21 @@
     consoleLog(`Starting scan for ${state.zones[state.currentZone].name}`);
     consoleLog("Querying Overpass API…");
     startScanTimer();
-    const skip = $("#skipHistory")?.checked !== false;
+    const skip = $("#skipHistory")?.checked === true;
+    // staged progress messages mirror the legacy timing (0/5/15/30s)
+    const stageTimers = [];
+    stageTimers.push(setTimeout(() => consoleLog("Fetching way data…"), 5000));
+    stageTimers.push(setTimeout(() => consoleLog("Classifying defects…"), 15000));
+    if (!skip) {
+      stageTimers.push(setTimeout(() => consoleLog("Analyzing revision history…"), 30000));
+    }
+    const clearStageTimers = () => stageTimers.forEach(clearTimeout);
     try {
       const result = await api("/api/scan", {
         method: "POST",
         body: { zone: state.currentZone, skip_history: skip },
       });
-      consoleLog("Classifying defects…");
+      clearStageTimers();
       consoleLog(`Scan complete — ${(result.stats.total || 0).toLocaleString()} ways analyzed`, "ok");
       consoleStatus("audit · complete", "ok");
       // pull full results so we can draw the map
@@ -515,9 +619,12 @@
       renderStats(full.summary_stats || {});
       renderClasses(full.summary_stats || {});
       setLastRun(new Date().toLocaleString());
+      applyCacheBadge(full.summary_stats || {});
       setReportsEnabled(true);
       toast(`Scan finished — ${(result.stats.class_ab_count || 0)} compound, ${(result.stats.class_a_count || 0)} false 1-way`);
+      announceToScreenReader(`Scan complete. ${(result.stats.total || 0)} ways analyzed, ${(result.stats.class_ab_count || 0)} compound defects found.`);
     } catch (e) {
+      clearStageTimers();
       consoleLog("Scan failed: " + e.message, "error");
       consoleStatus("audit · error", "error");
       toast("Scan failed: " + e.message, "error");
@@ -730,6 +837,8 @@
   }
   function ledgerItem(e) {
     const ts = e.ts || e.timestamp || "";
+    const tsDisplay = formatTimeAgo(ts);
+    const tsTitle = ts ? new Date(ts).toLocaleString() : "";
     const action = e.action || "?";
     let detail = "";
     if (action === "scan") {
@@ -741,7 +850,7 @@
       detail = `${(e.fixes_applied || 0)} applied · ${(e.changeset_ids || []).length} changeset(s)`;
     }
     return `<li>
-      <div class="lg-time">${esc(ts)}</div>
+      <div class="lg-time" title="${esc(tsTitle)}">${esc(tsDisplay)}</div>
       <div class="lg-action">${esc(action)}</div>
       <div class="lg-zone">${esc(e.zone || "")}</div>
       <div class="lg-detail">${esc(detail)}</div>
@@ -847,7 +956,7 @@
     const txt = $("#authText");
     if (txt) txt.textContent = state.auth.authenticated ? "Signed in" : "Sign in";
     const chip = $("#authChip");
-    if (chip) chip.classList.toggle("ok", state.auth.authenticated);
+    if (chip) chip.classList.toggle("connected", state.auth.authenticated);
   }
 
   function renderAuthPanel() {
@@ -933,7 +1042,8 @@
     if (btn) btn.disabled = true;
     consoleLog("Generating reports…");
     try {
-      const data = await api("/api/reports", { method: "POST", body: { zone: state.currentZone } });
+      const format = $("#reportFormat")?.value || "xlsx+html";
+      const data = await api("/api/reports", { method: "POST", body: { zone: state.currentZone, format } });
       consoleLog(`Reports saved (${(data.files || []).length} file(s))`, "ok");
       toast("Reports generated");
       const open = $("#openDashBtn"); if (open) open.disabled = false;
@@ -942,6 +1052,38 @@
       toast("Reports failed: " + e.message, "error");
     } finally {
       if (btn) btn.disabled = false;
+    }
+  }
+
+  // --------------------------------------------------------------- share summary (copy to clipboard)
+  async function shareSummary() {
+    if (!state.currentZone) return toast("Pick a zone first", "warn");
+    const zoneName = (state.zones[state.currentZone] && state.zones[state.currentZone].name) || state.currentZone;
+    try {
+      const data = state.results || await api("/api/results/" + state.currentZone);
+      const stats = (data && data.summary_stats) || {};
+      const summary = [
+        `OSM TIGER Audit — ${zoneName}`,
+        `Date: ${new Date().toLocaleDateString()}`,
+        ``,
+        `Total ways: ${stats.total || 0}`,
+        `Class AB (compound): ${stats.class_ab_count || 0}`,
+        `Class A (false oneway): ${stats.class_a_count || 0}`,
+        `Class B (multi-segment): ${stats.class_b_way_count || 0}`,
+        `Gaps found: ${stats.gaps_found || 0}`,
+        ``,
+        `Generated by MetroNow TIGER Audit Pipeline`,
+      ].join("\n");
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(summary);
+        toast("Summary copied to clipboard");
+      } else {
+        const subject = encodeURIComponent(`OSM TIGER Audit — ${zoneName}`);
+        const body = encodeURIComponent(summary);
+        window.open(`mailto:?subject=${subject}&body=${body}`);
+      }
+    } catch (e) {
+      toast("Share failed: " + e.message, "error");
     }
   }
 
@@ -1006,6 +1148,7 @@
     // results
     $("#resCsv")?.addEventListener("click", () => window.open("/api/export/" + state.currentZone + "/csv", "_blank"));
     $("#resJson")?.addEventListener("click", () => window.open("/api/export/" + state.currentZone + "/json", "_blank"));
+    $("#resShare")?.addEventListener("click", shareSummary);
 
     // fix
     $("#loadFixesBtn")?.addEventListener("click", loadFixes);
@@ -1015,9 +1158,14 @@
     // history
     $("#histRefresh")?.addEventListener("click", renderHistoryPanel);
     $("#histClear")?.addEventListener("click", async () => {
-      if (!confirm("Clear all activity history?")) return;
-      // server has no clear endpoint — fall back to a local-only clear hint
-      toast("History is server-side; clear via the file system", "warn");
+      if (!confirm("Clear all activity history? This cannot be undone.")) return;
+      try {
+        await api("/api/history", { method: "DELETE" });
+        toast("History cleared");
+        renderHistoryPanel();
+      } catch (e) {
+        toast("Clear failed: " + e.message, "error");
+      }
     });
 
     // discuss

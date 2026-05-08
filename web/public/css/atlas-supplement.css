@@ -1,6 +1,40 @@
 /* MetroNow Atlas — supplemental styles for components added by atlas.js
    (zone cards, console lines, inspector, results/fix/history/discuss/auth/formality panels, ledger). */
 
+/* ---- accessibility: skip-nav + screen-reader-only ---- */
+.skip-nav {
+  position: absolute;
+  left: -10000px;
+  top: 8px;
+  width: auto;
+  height: auto;
+  padding: 8px 14px;
+  background: var(--brand, #d35400);
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 6px;
+  z-index: 9999;
+}
+.skip-nav:focus {
+  left: 12px;
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ---- zone cards (overrides .zone-card pattern from main HTML) ---- */
 .zone-card {
   display: flex;

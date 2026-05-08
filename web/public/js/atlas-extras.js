@@ -102,11 +102,15 @@
       tweaksPanel.classList.remove("open");
     });
 
+    // Theme button cycles through light → dark → auto so the segmented
+    // control's "Auto" state stays reachable from the header chip.
     const themeBtn = document.getElementById("themeBtn");
     if (themeBtn) {
       themeBtn.addEventListener("click", () => {
-        const cur = effectiveTheme(state.theme);
-        state.theme = cur === "dark" ? "light" : "dark";
+        const order = ["light", "dark", "auto"];
+        const cur = state.theme;
+        const next = order[(order.indexOf(cur) + 1) % order.length] || "light";
+        state.theme = next;
         save(state);
         applyTheme(state);
       });

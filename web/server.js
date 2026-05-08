@@ -195,7 +195,7 @@ app.post("/api/scan", async (req, res) => {
     return res.status(409).json({ error: "A scan is already in progress" });
   const zone = req.body.zone || "blue-ash-montgomery";
   if (!validateZone(zone, res)) return;
-  const skipHistory = req.body.skip_history !== false;
+  const skipHistory = req.body.skip_history === true;
   scanInProgress = true;
   try {
     const pyCode = [
@@ -263,6 +263,17 @@ app.get("/api/results/:zone", (req, res) => {
 app.post("/api/reports", async (req, res) => {
   const zone = req.body.zone || "blue-ash-montgomery";
   if (!validateZone(zone, res)) return;
+  const ALLOWED_FORMATS = new Set(["xlsx+html", "xlsx", "html", "docx", "pdf"]);
+  const format = ALLOWED_FORMATS.has(req.body.format) ? req.body.format : "xlsx+html";
+  const wantXlsx = format === "xlsx" || format === "xlsx+html";
+  const wantHtml = format === "html" || format === "xlsx+html";
+  // docx/pdf are not yet implemented in osm package; fall back to xlsx+html behaviour
+  // and surface a note in the response.
+  const formatNote = (format === "docx" || format === "pdf")
+    ? `Format '${format}' is not yet implemented; generated XLSX + HTML instead.`
+    : null;
+  const effectiveWantXlsx = wantXlsx || formatNote !== null;
+  const effectiveWantHtml = wantHtml || formatNote !== null;
   try {
     const pyCode = [
       "import json, sys, os, datetime as dt",
@@ -284,21 +295,27 @@ app.post("/api/reports", async (req, res) => {
       "audit_ts = dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')",
       "zn = z['name'].replace(' / ', '-').replace(' ', '-')",
       "query_text = overpass_query(z['bbox'])",
+      "want_xlsx = " + (effectiveWantXlsx ? "True" : "False"),
+      "want_html = " + (effectiveWantHtml ? "True" : "False"),
       "xlsx_path = out_dir / 'reports' / f'OSM-Audit-{zn}.xlsx'",
-      "write_xlsx(classified, zone_key, xlsx_path, query_text, audit_ts, output_root=proj)",
       "dash_path = out_dir / 'reports' / f'OSM-Audit-{zn}-Dashboard.html'",
-      "write_dashboard(classified, zone_key, z['name'], dash_path, audit_ts)",
+      "if want_xlsx:",
+      "    write_xlsx(classified, zone_key, xlsx_path, query_text, audit_ts, output_root=proj)",
+      "if want_html:",
+      "    write_dashboard(classified, zone_key, z['name'], dash_path, audit_ts)",
       "write_csvs(classified, out_dir / 'csv')",
       "files = []",
-      "if xlsx_path.exists(): files.append(str(xlsx_path))",
-      "if dash_path.exists(): files.append(str(dash_path))",
+      "if want_xlsx and xlsx_path.exists(): files.append(str(xlsx_path))",
+      "if want_html and dash_path.exists(): files.append(str(dash_path))",
       "sys.stdout = sys.__stdout__",
       "print(json.dumps({'success': True, 'files': files}))",
     ].join("\n");
     const out = await runPython(pyCode);
     const result = JSON.parse(out.trim());
+    if (formatNote) result.note = formatNote;
+    result.format = format;
     res.json(result);
-    try { appendHistory({ action: "report", zone, files: result.files }); } catch {}
+    try { appendHistory({ action: "report", zone, files: result.files, format }); } catch {}
   } catch (e) {
     res.status(500).json({ error: safeError(e) });
   }
@@ -389,6 +406,17 @@ app.post("/api/fix", async (req, res) => {
 
 app.get("/api/history", (_req, res) => {
   res.json(loadHistory());
+});
+
+app.delete("/api/history", (_req, res) => {
+  try {
+    if (fs.existsSync(HISTORY_PATH)) {
+      fs.writeFileSync(HISTORY_PATH, JSON.stringify([], null, 2));
+    }
+    res.json({ success: true, cleared: true });
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
 });
 
 // ---- export ----

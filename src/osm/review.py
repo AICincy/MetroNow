@@ -10,6 +10,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
+from .classify import is_oneway_truthy
 from .config import CLASS_ORDER
 
 console = Console()
@@ -44,15 +45,17 @@ def display_issue(way: dict, index: int, total: int) -> None:
 def proposed_fix(way: dict) -> dict | None:
     """Generate a proposed fix for a classified defect."""
     defect = way.get("defect_class")
-    if defect in ("A", "AB") and way.get("oneway") == "yes" and way.get("highway") == "residential":
-            return {
-                "action": "remove_tag",
-                "tag": "oneway",
-                "description": f"Remove false oneway=yes from way {way['id']} ({way.get('name_display', '?')})",
-                "element_type": "way",
-                "element_id": way["id"],
-                "changes": {"oneway": None},
-            }
+    # Bug 4: trust the classifier — don't re-narrow to highway=residential.
+    # Bug 7: accept any OSM-truthy oneway value (yes/true/1/-1).
+    if defect in ("A", "AB") and is_oneway_truthy(way.get("oneway")):
+        return {
+            "action": "remove_tag",
+            "tag": "oneway",
+            "description": f"Remove false oneway=yes from way {way['id']} ({way.get('name_display', '?')})",
+            "element_type": "way",
+            "element_id": way["id"],
+            "changes": {"oneway": None},
+        }
     return None
 
 

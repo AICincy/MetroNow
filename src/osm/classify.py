@@ -11,6 +11,23 @@ from .geo import norm_name, valid_latlon
 
 log = logging.getLogger(__name__)
 
+# Bug 3 / Bug 7: widen Class-A coverage beyond highway=residential, and accept
+# all of OSM's truthy oneway encodings (yes, true, 1, -1).
+CLASS_A_HIGHWAYS = frozenset({"residential", "unclassified", "tertiary", "service"})
+ONEWAY_TRUTHY = frozenset({"yes", "true", "1", "-1"})
+
+
+def is_oneway_truthy(value) -> bool:
+    """Return True if an OSM ``oneway`` tag value is truthy.
+
+    OSM treats ``yes``, ``true``, ``1``, and ``-1`` as oneway streets (``-1``
+    means oneway in the reverse direction). Bare exact-string ``"yes"`` checks
+    miss the alternate forms, especially ``-1`` on TIGER residuals.
+    """
+    if value is None:
+        return False
+    return str(value).strip().lower() in ONEWAY_TRUTHY
+
 
 def classify(raw: dict) -> dict:
     """Classify all way elements from an Overpass response into defect classes.
@@ -64,7 +81,7 @@ def classify(raw: dict) -> dict:
     class_b_norm_keys = {k for k, ways in by_norm.items() if len(ways) >= 2}
 
     for w in all_ways:
-        is_a = w["highway"] == "residential" and w["oneway"] == "yes"
+        is_a = w["highway"] in CLASS_A_HIGHWAYS and is_oneway_truthy(w["oneway"])
         is_b = w["name_key"] is not None and w["name_key"] in class_b_norm_keys
         if is_a and is_b:
             w["defect_class"] = CLASS_AB
@@ -97,7 +114,7 @@ def classify(raw: dict) -> dict:
         by_class[w["defect_class"]] += 1
 
     residential_count = sum(1 for w in all_ways if w["highway"] == "residential")
-    oneway_yes_total = sum(1 for w in all_ways if w["oneway"] == "yes")
+    oneway_yes_total = sum(1 for w in all_ways if is_oneway_truthy(w["oneway"]))
 
     gaps = detect_gaps(class_b_streets)
 
@@ -121,6 +138,8 @@ def classify(raw: dict) -> dict:
         "gaps_found": len(gaps),
         "ways_missing_geom": skipped_geom,
         "under_sanity_threshold": bool(raw.get("_under_threshold", False)),
+        "cache_used": bool(raw.get("_cache_used", False)),
+        "cache_age_seconds": raw.get("_cache_age_seconds"),
         "by_highway": dict(by_highway),
         "by_class": dict(by_class),
     }
