@@ -51,5 +51,5 @@ jobs:
       - name: Install dependencies
         run: cd web && npm install
 
-      - name: Lint app.js
-        run: cd web && npx eslint@8 public/js/app.js --no-eslintrc --env es2020 --env browser --rule '{"no-undef":"off","no-unused-vars":"warn"}'
+      - name: Lint frontend JS
+        run: cd web && npx eslint@8 public/js/atlas.js public/js/atlas-extras.js --no-eslintrc --env es2020 --env browser --rule '{"no-undef":"off","no-unused-vars":"warn"}'
