@@ -37,6 +37,7 @@ __all__ = [
     "min_dist_to_polyline",
     "point_segment_dist_m",
     "meters_to_degrees",
+    "polyline_length_m",
 ]
 
 
@@ -231,6 +232,22 @@ def hausdorff_meters(
 # Buffer width approximation — used to size the STRtree query window before
 # we run the proper Hausdorff filter.
 # ---------------------------------------------------------------------------
+
+def polyline_length_m(geom_latlon: list[list[float]]) -> float:
+    """Total length in metres of an OSM ``[[lat, lon], ...]`` polyline.
+
+    Used by Phase 2a diagnostics to flag short ways (< 50 m) where the
+    direction-alignment term has known noise.
+    """
+    if len(geom_latlon) < 2:
+        return 0.0
+    total = 0.0
+    for i in range(len(geom_latlon) - 1):
+        a_lat, a_lon = geom_latlon[i][0], geom_latlon[i][1]
+        b_lat, b_lon = geom_latlon[i + 1][0], geom_latlon[i + 1][1]
+        total += haversine_m(a_lat, a_lon, b_lat, b_lon)
+    return total
+
 
 def meters_to_degrees(meters: float) -> float:
     """Approximate buffer width in degrees.
