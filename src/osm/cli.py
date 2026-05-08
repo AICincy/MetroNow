@@ -939,6 +939,115 @@ def fix_impact(zone: str, profile: str, limit: int):
     click.echo(f"Updated {results_path}")
 
 
+# --- baseline-diff ---
+
+@main.command(name="baseline-diff")
+@click.option(
+    "--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE,
+    help="Zone whose baseline manifests to diff",
+)
+@click.option(
+    "--from",
+    "from_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help=(
+        "Path to the OLDER manifest. Defaults to the second-newest "
+        "cagis_baseline_*.json under osm-audit-{zone}/data/."
+    ),
+)
+@click.option(
+    "--to",
+    "to_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help=(
+        "Path to the NEWER manifest. Defaults to the newest "
+        "cagis_baseline_*.json under osm-audit-{zone}/data/."
+    ),
+)
+def baseline_diff_cmd(zone: str, from_path: str | None, to_path: str | None):
+    """Compare two CAGIS baseline manifests and surface bucket shifts.
+
+    Use this after a code change to the matcher OR after a quarterly
+    CAGIS data refresh to confirm the asymmetric promotion criterion
+    held: MATCHED_HIGH should rise from F3 reductions, not from
+    MATCHED_REVIEW contractions; total_ways should be stable across
+    runs.
+
+    Without --from / --to, defaults to the two newest manifests in
+    osm-audit-{zone}/data/.
+    """
+    from pathlib import Path as _Path
+
+    from .conflate import (
+        diff_baselines,
+        load_baseline_manifest,
+        newest_two_manifests,
+    )
+
+    if from_path and to_path:
+        a_path, b_path = _Path(from_path), _Path(to_path)
+    else:
+        pair = newest_two_manifests(_output_dir(zone) / "data")
+        if pair is None:
+            click.echo(
+                f"Need at least 2 cagis_baseline_*.json under "
+                f"osm-audit-{zone}/data/ — run 'osm conflate --zone {zone} "
+                "--baseline-manifest' twice (across separate code changes)."
+            )
+            raise SystemExit(1)
+        a_path, b_path = pair
+
+    a_doc = load_baseline_manifest(a_path)
+    b_doc = load_baseline_manifest(b_path)
+    diff = diff_baselines(a_doc, b_doc)
+
+    click.echo(f"Diff: {a_path.name}  →  {b_path.name}")
+    click.echo(f"Zone: {diff['zone_key']}")
+    click.echo(f"SHA:  {diff['git_sha_a']}  →  {diff['git_sha_b']}")
+    click.echo("")
+
+    # Headline
+    def _fmt(v):
+        if isinstance(v, float):
+            return f"{v:.2f}"
+        return str(v)
+
+    if diff["headline"]:
+        click.echo("Headline:")
+        for k, vals in diff["headline"].items():
+            a, b, d = vals.get("a"), vals.get("b"), vals.get("delta")
+            if isinstance(d, float):
+                d_str = f" ({d:+.2f})"
+            elif isinstance(d, int):
+                d_str = f" ({d:+d})"
+            else:
+                d_str = ""
+            click.echo(
+                f"  {k:30s} {_fmt(a):>10s} → {_fmt(b):>10s}{d_str}"
+            )
+        click.echo("")
+
+    # Buckets
+    click.echo("Buckets:")
+    for bucket, vals in diff["buckets"].items():
+        a, b, d, dp = vals["a"], vals["b"], vals["delta"], vals["delta_pct"]
+        sign = " " if d == 0 else ("+" if d > 0 else "−")
+        click.echo(
+            f"  {bucket:25s} {a:>6d} → {b:>6d}  "
+            f"{sign}{abs(d):>6d}  ({dp:+6.1f}%)"
+        )
+    click.echo("")
+
+    if diff["alerts"]:
+        click.echo("ALERTS:")
+        for a in diff["alerts"]:
+            click.echo(f"  ! {a}")
+    else:
+        click.echo("No promotion-criterion or scope alerts.")
+
+
 # --- maproulette ---
 
 @main.command(name="maproulette")

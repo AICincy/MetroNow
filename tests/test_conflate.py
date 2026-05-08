@@ -423,6 +423,101 @@ class TestPhase2aDiagnostics:
         assert polyline_length_m([[39.2, -84.4]]) == 0.0
         assert polyline_length_m([]) == 0.0
 
+    def test_diff_baselines_basic_bucket_shifts(self):
+        from osm.conflate import diff_baselines
+        a = {
+            "zone_key": "blue-ash-montgomery",
+            "git_sha": "old123",
+            "summary": {
+                "total_ways": 1000,
+                "match_rate_pct": 10.0,
+                "auto_submit_rate_pct": 8.0,
+                "buckets": {
+                    "MATCHED_HIGH": 80,
+                    "MATCHED_REVIEW": 20,
+                    "F3_GEOMETRY_FAIL": 700,
+                    "F1_NO_CANDIDATE": 200,
+                },
+            },
+        }
+        b = {
+            "zone_key": "blue-ash-montgomery",
+            "git_sha": "new456",
+            "summary": {
+                "total_ways": 1000,
+                "match_rate_pct": 12.0,
+                "auto_submit_rate_pct": 10.0,
+                "buckets": {
+                    "MATCHED_HIGH": 100,        # +20 (good)
+                    "MATCHED_REVIEW": 20,       # unchanged
+                    "F3_GEOMETRY_FAIL": 680,    # -20 (came from here)
+                    "F1_NO_CANDIDATE": 200,
+                },
+            },
+        }
+        d = diff_baselines(a, b)
+        assert d["git_sha_a"] == "old123"
+        assert d["git_sha_b"] == "new456"
+        assert d["buckets"]["MATCHED_HIGH"]["delta"] == 20
+        assert d["buckets"]["F3_GEOMETRY_FAIL"]["delta"] == -20
+        assert d["alerts"] == []   # clean — HIGH grew from F3, REVIEW stable
+
+    def test_diff_baselines_flags_fragile_graduation(self):
+        # MATCHED_REVIEW contracted to feed MATCHED_HIGH growth — the
+        # asymmetric promotion criterion violation.
+        from osm.conflate import diff_baselines
+        a = {"summary": {"buckets": {
+            "MATCHED_HIGH": 100, "MATCHED_REVIEW": 50, "F3_GEOMETRY_FAIL": 500,
+        }, "total_ways": 700}}
+        b = {"summary": {"buckets": {
+            "MATCHED_HIGH": 130, "MATCHED_REVIEW": 20, "F3_GEOMETRY_FAIL": 500,
+        }, "total_ways": 700}}
+        d = diff_baselines(a, b)
+        assert any("REGRESSION" in alert for alert in d["alerts"])
+
+    def test_diff_baselines_flags_total_ways_drift(self):
+        from osm.conflate import diff_baselines
+        a = {"summary": {"buckets": {"MATCHED_HIGH": 100}, "total_ways": 1000}}
+        b = {"summary": {"buckets": {"MATCHED_HIGH": 100}, "total_ways": 1500}}
+        d = diff_baselines(a, b)
+        assert any("total_ways" in alert for alert in d["alerts"])
+
+    def test_load_baseline_manifest_rejects_malformed(self, tmp_path):
+        import json as _json
+        from osm.conflate import load_baseline_manifest
+        # Missing summary.buckets
+        bad = tmp_path / "bad.json"
+        bad.write_text(_json.dumps({"summary": {}}))
+        try:
+            load_baseline_manifest(bad)
+        except ValueError as exc:
+            assert "summary.buckets" in str(exc)
+        else:
+            raise AssertionError("expected ValueError")
+
+    def test_newest_two_manifests_picks_by_mtime(self, tmp_path):
+        import time
+        from osm.conflate import newest_two_manifests
+        a = tmp_path / "cagis_baseline_aaa111.json"
+        b = tmp_path / "cagis_baseline_bbb222.json"
+        c = tmp_path / "cagis_baseline_ccc333.json"
+        a.write_text("{}")
+        time.sleep(0.01)
+        b.write_text("{}")
+        time.sleep(0.01)
+        c.write_text("{}")
+        pair = newest_two_manifests(tmp_path)
+        assert pair is not None
+        older, newer = pair
+        assert older.name == "cagis_baseline_bbb222.json"
+        assert newer.name == "cagis_baseline_ccc333.json"
+
+    def test_newest_two_manifests_returns_none_when_too_few(self, tmp_path):
+        from osm.conflate import newest_two_manifests
+        assert newest_two_manifests(tmp_path) is None
+        (tmp_path / "cagis_baseline_only_one.json").write_text("{}")
+        assert newest_two_manifests(tmp_path) is None
+
     def test_diagnose_does_not_mutate_match_output(self):
         # Phase 2a guarantee: running diagnose_way must NOT change what
         # match_way returns for the same input. This is the regression
