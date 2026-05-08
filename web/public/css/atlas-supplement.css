@@ -361,3 +361,44 @@
   color: var(--ink-mute);
   font-family: var(--sans);
 }
+
+/* CAGIS conflation visuals */
+.ins-section {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: 6px;
+  background: var(--bg-sunken, #f7f7f7);
+}
+.ins-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+.ins-attrib {
+  margin-top: 6px;
+  font-size: 10px;
+}
+.conf-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: #e7e7e7;
+  color: #333;
+}
+.conf-badge.conf-ok   { background: #d3f4dc; color: #0f5132; }
+.conf-badge.conf-warn { background: #fff3cd; color: #664d03; }
+.conf-badge.conf-err  { background: #f8d7da; color: #842029; }
+.fx-attrib {
+  margin-top: 8px;
+  font-size: 11px;
+  font-style: italic;
+}

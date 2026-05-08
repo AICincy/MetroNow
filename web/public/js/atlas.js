@@ -402,6 +402,38 @@
     const reason = w.review_reason
       ? `<div class="ins-row"><span class="ins-k">Reason</span><span class="ins-v">${esc(w.review_reason)}</span></div>`
       : "";
+
+    // CAGIS ground-truth section. The conflate step (osm conflate / scan
+    // --with-conflation) attaches w.cagis_match keyed off the authoritative
+    // Hamilton County street centerlines.
+    let cagisBlock = "";
+    if (w.cagis_match) {
+      const cm = w.cagis_match;
+      const conf = Number(cm.confidence ?? 0);
+      const pct = Math.round(conf * 100);
+      const tone = conf >= 0.85 ? "ok" : (conf >= 0.6 ? "warn" : "err");
+      const cagisUrl = "https://services.arcgis.com/JyZag7oO4NteHGiq/arcgis/rest/services/Open_Data/FeatureServer/26/" + encodeURIComponent(cm.cagis_id);
+      const onewayLabel = (cm.cagis_oneway === "yes" || cm.cagis_oneway === "-1")
+        ? `oneway (${esc(cm.cagis_oneway)})`
+        : "two-way";
+      const speed = cm.cagis_speed_limit ? (esc(cm.cagis_speed_limit) + " mph") : "—";
+      cagisBlock = `
+        <div class="ins-section">
+          <div class="ins-section-head">
+            Ground-truth (CAGIS)
+            <span class="conf-badge conf-${tone}">${pct}%</span>
+          </div>
+          <div class="ins-row"><span class="ins-k">CAGIS name</span><span class="ins-v">${esc(cm.cagis_name || "—")}</span></div>
+          <div class="ins-row"><span class="ins-k">Direction</span><span class="ins-v">${onewayLabel}</span></div>
+          <div class="ins-row"><span class="ins-k">Speed</span><span class="ins-v">${speed}</span></div>
+          <div class="ins-row"><span class="ins-k">Func. class</span><span class="ins-v">${esc(cm.cagis_functional_class || "—")}</span></div>
+          <div class="ins-row"><span class="ins-k">Hausdorff</span><span class="ins-v">${esc((cm.hausdorff_m ?? "—").toString())} m</span></div>
+          <div class="ins-row"><span class="ins-k">CAGIS ID</span><span class="ins-v"><a href="${cagisUrl}" target="_blank" rel="noopener">${esc(cm.cagis_id)} ↗</a></span></div>
+          <div class="ins-attrib muted">Source: CAGIS Open Data Hub</div>
+        </div>
+      `;
+    }
+
     r.innerHTML = `
       <div class="ins-head">
         <div class="ins-title">${esc(w.name_display || "Way " + wayId)}</div>
@@ -418,6 +450,7 @@
         <div class="ins-row"><span class="ins-k">Lanes</span><span class="ins-v">${esc(w.lanes || "—")}</span></div>
         <div class="ins-row"><span class="ins-k">Last edit</span><span class="ins-v">${esc(w.user || "—")} · v${esc(w.version || "?")}</span></div>
         ${review}${reason}
+        ${cagisBlock}
         <div class="ins-actions">
           <a class="btn btn-sm" href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank" rel="noopener">Open in OSM ↗</a>
           <a class="btn btn-sm" href="http://127.0.0.1:8111/load_object?objects=w${encodeURIComponent(wayId)}" target="_blank" rel="noopener">Edit in JOSM</a>
@@ -830,12 +863,24 @@
       const w = p.way || {};
       const f = p.fix || {};
       const wayId = w.id || "?";
+      const ev = f.source_evidence || null;
+      let evidenceCell = "—";
+      if (ev && ev.cagis_id != null) {
+        const cagisUrl = "https://services.arcgis.com/JyZag7oO4NteHGiq/arcgis/rest/services/Open_Data/FeatureServer/26/" + encodeURIComponent(ev.cagis_id);
+        const conf = Number(ev.confidence ?? 0);
+        const pct = Math.round(conf * 100);
+        const tone = conf >= 0.85 ? "ok" : (conf >= 0.6 ? "warn" : "err");
+        evidenceCell = `<a href="${cagisUrl}" target="_blank" rel="noopener" title="View CAGIS feature">CAGIS ${esc(ev.cagis_id)}</a> <span class="conf-badge conf-${tone}">${pct}%</span>`;
+      } else if (f.requires_human_review) {
+        evidenceCell = `<span class="muted">heuristic — review</span>`;
+      }
       return `<tr>
-        <td><input type="checkbox" class="fix-check" data-i="${i}" checked></td>
+        <td><input type="checkbox" class="fix-check" data-i="${i}" ${(ev && Number(ev.confidence ?? 0) >= 0.85) || !f.requires_human_review ? "checked" : ""}></td>
         <td><a href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank" rel="noopener">${esc(wayId)}</a></td>
         <td>${esc(w.name_display || "—")}</td>
         <td>${esc(w.defect_class || "?")}</td>
         <td>${esc(f.description || "")}</td>
+        <td>${evidenceCell}</td>
       </tr>`;
     }).join("");
     body.innerHTML = `
@@ -844,10 +889,11 @@
         <span class="muted" id="fxSelected">${state.pendingFixes.length.toLocaleString()} selected</span>
       </div>
       <table class="rs-table">
-        <thead><tr><th></th><th>Way ID</th><th>Street</th><th>Class</th><th>Proposed fix</th></tr></thead>
+        <thead><tr><th></th><th>Way ID</th><th>Street</th><th>Class</th><th>Proposed fix</th><th>Evidence</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       ${state.pendingFixes.length > 500 ? `<p class="muted">Showing 500 of ${state.pendingFixes.length.toLocaleString()}; all will be submitted when you click Submit.</p>` : ""}
+      <p class="muted fx-attrib">Fixes marked CAGIS-verified cite Hamilton County's authoritative street centerlines (Source: CAGIS Open Data Hub). Other proposed fixes are flagged from heuristics and require human review.</p>
       <div id="fxResult"></div>
     `;
     $("#fxSelectAll")?.addEventListener("change", (ev) => {

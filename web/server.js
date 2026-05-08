@@ -196,6 +196,7 @@ app.post("/api/scan", async (req, res) => {
   const zone = req.body.zone || "blue-ash-montgomery";
   if (!validateZone(zone, res)) return;
   const skipHistory = req.body.skip_history === true;
+  const withConflation = req.body.with_conflation === true;
   scanInProgress = true;
   try {
     const pyCode = [
@@ -213,6 +214,19 @@ app.post("/api/scan", async (req, res) => {
       "skip = " + (skipHistory ? "True" : "False"),
       "if not skip:",
       "    filter_by_history(classified['all_ways'], skip_history=False)",
+      "with_conflation = " + (withConflation ? "True" : "False"),
+      "if with_conflation:",
+      "    try:",
+      "        from osm.conflate import SHAPELY_AVAILABLE, build_index, conflate, load_cagis_for_zone",
+      "        if SHAPELY_AVAILABLE:",
+      "            cagis = load_cagis_for_zone(zone_key)",
+      "            idx = build_index(cagis)",
+      "            conflate(classified['all_ways'], idx)",
+      "            matched = sum(1 for w in classified['all_ways'] if w.get('cagis_match'))",
+      "            classified['summary_stats']['cagis_features'] = len(cagis)",
+      "            classified['summary_stats']['cagis_matched'] = matched",
+      "    except Exception as exc:",
+      "        classified['summary_stats']['cagis_error'] = str(exc)",
       "results_path = out_dir / 'scan-results.json'",
       "results_path.parent.mkdir(parents=True, exist_ok=True)",
       "ser = {",
@@ -233,11 +247,60 @@ app.post("/api/scan", async (req, res) => {
     const out = await runPython(pyCode);
     const stats = JSON.parse(out.trim());
     res.json({ success: true, stats });
-    try { appendHistory({ action: "scan", zone, stats }); } catch {}
+    try { appendHistory({ action: "scan", zone, stats, with_conflation: withConflation }); } catch {}
   } catch (e) {
     res.status(500).json({ error: safeError(e) });
   } finally {
     scanInProgress = false;
+  }
+});
+
+// ---- conflate ----
+
+app.post("/api/conflate/:zone", async (req, res) => {
+  const zone = req.params.zone;
+  if (!validateZone(zone, res)) return;
+  const resultsPath = path.join(
+    PROJECT_ROOT, "osm-audit-" + zone, "scan-results.json"
+  );
+  if (!fs.existsSync(resultsPath))
+    return res.status(404).json({ error: "No scan results for this zone. Run a scan first." });
+  const forceRefresh = req.body && req.body.force_refresh === true;
+  try {
+    const pyCode = [
+      "import json, sys, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "from pathlib import Path",
+      "sys.stdout = open(os.devnull, 'w')",
+      "from osm.conflate import SHAPELY_AVAILABLE, build_index, conflate, load_cagis_for_zone",
+      "if not SHAPELY_AVAILABLE:",
+      "    sys.stdout = sys.__stdout__",
+      "    print(json.dumps({'error': 'shapely is not installed; cannot run conflation.'}))",
+      "    sys.exit(0)",
+      "zone_key = " + JSON.stringify(zone),
+      "results_path = Path(" + JSON.stringify(resultsPath.replace(/\\/g, "/")) + ")",
+      "with results_path.open('r', encoding='utf-8') as fh:",
+      "    classified = json.load(fh)",
+      "force = " + (forceRefresh ? "True" : "False"),
+      "cagis = load_cagis_for_zone(zone_key, force_refresh=force)",
+      "idx = build_index(cagis)",
+      "conflate(classified['all_ways'], idx)",
+      "matched = sum(1 for w in classified['all_ways'] if w.get('cagis_match'))",
+      "classified.setdefault('summary_stats', {})",
+      "classified['summary_stats']['cagis_features'] = len(cagis)",
+      "classified['summary_stats']['cagis_matched'] = matched",
+      "with results_path.open('w', encoding='utf-8') as fh:",
+      "    json.dump(classified, fh, ensure_ascii=False)",
+      "sys.stdout = sys.__stdout__",
+      "print(json.dumps({'cagis_features': len(cagis), 'cagis_matched': matched, 'total_ways': len(classified['all_ways'])}))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    const result = JSON.parse(out.trim());
+    if (result.error) return res.status(500).json({ error: result.error });
+    res.json({ success: true, ...result });
+    try { appendHistory({ action: "conflate", zone, result }); } catch {}
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
   }
 });
 
@@ -349,14 +412,13 @@ app.get("/api/review/:zone", async (req, res) => {
     const pyCode = [
       "import json, sys",
       "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
-      "from osm.review import proposed_fix",
+      "from osm.review import proposed_fix, proposed_fixes_for_way",
       "with open(" + JSON.stringify(p.replace(/\\/g, "/")) + ") as fh:",
       "    data = json.load(fh)",
       "fixable = []",
       "for w in data['all_ways']:",
-      "    fix = proposed_fix(w)",
-      "    if fix:",
-      "        fixable.append({'way': w, 'fix': fix})",
+      "    for f in proposed_fixes_for_way(w):",
+      "        fixable.append({'way': w, 'fix': f})",
       "print(json.dumps({'count': len(fixable), 'fixes': fixable}))",
     ].join("\n");
     const out = await runPython(pyCode);

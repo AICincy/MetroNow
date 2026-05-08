@@ -31,6 +31,23 @@ CHANGESET_BATCH_SIZE = 500
 DEFAULT_SOURCE = "survey;CAGIS Open Data Hub;ODOT TIMS"
 DEFAULT_WIKI_URL = WIKI_URL
 
+# Attribution required by the CAGIS Open Data Hub license. We add this as a
+# changeset tag whenever any submitted fix carries CAGIS source_evidence so
+# the provenance is visible to OSM reviewers.
+CAGIS_ATTRIBUTION = (
+    "Source: CAGIS Open Data Hub (Hamilton County, Ohio) — used as-is per "
+    "license; quarterly-updated street centerlines."
+)
+
+
+def _has_cagis_evidence(fixes: list[dict]) -> bool:
+    """True if any fix in the batch carries CAGIS source evidence."""
+    for f in fixes:
+        ev = f.get("source_evidence")
+        if isinstance(ev, dict) and ev.get("cagis_id") is not None:
+            return True
+    return False
+
 
 def check_api_status() -> dict:
     """Query OSM API capabilities and rate limit status.
@@ -64,8 +81,14 @@ def create_changeset(
     source: str = DEFAULT_SOURCE,
     wiki_url: str = DEFAULT_WIKI_URL,
     mechanical: bool = True,
+    cagis_verified: bool = False,
 ) -> int:
-    """Open a new changeset on OSM. Returns the changeset ID."""
+    """Open a new changeset on OSM. Returns the changeset ID.
+
+    When ``cagis_verified`` is True, an extra ``cagis:attribution`` tag is
+    written into the changeset metadata to satisfy the CAGIS Open Data Hub
+    licensing terms.
+    """
     headers = _auth_headers()
     headers["Content-Type"] = "text/xml"
 
@@ -79,6 +102,10 @@ def create_changeset(
         tags.append('<tag k="bot" v="yes"/>')
     if wiki_url:
         tags.append(f'<tag k="description" v="{_xml_escape(wiki_url)}"/>')
+    if cagis_verified:
+        tags.append(
+            f'<tag k="cagis:attribution" v="{_xml_escape(CAGIS_ATTRIBUTION)}"/>'
+        )
 
     changeset_xml = "<osm><changeset>" + "".join(tags) + "</changeset></osm>"
 
@@ -275,7 +302,10 @@ def submit_fixes(
             batch_comment = f"{comment} (batch {batch_num}/{total_batches})"
 
         changeset_id = create_changeset(
-            batch_comment, source=source, wiki_url=wiki_url
+            batch_comment,
+            source=source,
+            wiki_url=wiki_url,
+            cagis_verified=_has_cagis_evidence(batch),
         )
         changeset_ids.append(changeset_id)
         log.info(

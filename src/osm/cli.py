@@ -70,7 +70,8 @@ def auth_status():
 @click.option("--from-cache", is_flag=True, help="Use cached Overpass data instead of live query")
 @click.option("--skip-history", is_flag=True, help="Skip revision history analysis (legacy tiger:reviewed=no mode)")
 @click.option("--import-only", is_flag=True, help="Only find ways still on original TIGER import version (smaller, high-confidence set)")
-def scan(zone: str, from_cache: bool, skip_history: bool, import_only: bool):
+@click.option("--with-conflation", is_flag=True, help="Cross-reference every OSM way against CAGIS street centerlines (Hamilton County)")
+def scan(zone: str, from_cache: bool, skip_history: bool, import_only: bool, with_conflation: bool):
     """Fetch OSM data, analyse history, classify defects, and generate reports."""
     from rich.progress import Progress
 
@@ -112,6 +113,36 @@ def scan(zone: str, from_cache: bool, skip_history: bool, import_only: bool):
                     progress.update(_task, completed=done)
 
                 filter_by_history(classified["all_ways"], skip_history=False, progress_callback=_progress)
+
+        # Phase 2c: CAGIS conflation (optional)
+        if with_conflation:
+            click.echo("\nPhase 2c: Conflating against CAGIS centerlines...")
+            try:
+                from .conflate import (
+                    SHAPELY_AVAILABLE,
+                    build_index,
+                    load_cagis_for_zone,
+                )
+                from .conflate import (
+                    conflate as conflate_fn,
+                )
+                if not SHAPELY_AVAILABLE:
+                    click.echo("  shapely unavailable; skipping conflation.")
+                else:
+                    cagis = load_cagis_for_zone(zk)
+                    click.echo(f"  CAGIS features fetched: {len(cagis):,}")
+                    idx = build_index(cagis)
+                    conflate_fn(classified["all_ways"], idx)
+                    matched = sum(
+                        1 for w in classified["all_ways"] if w.get("cagis_match")
+                    )
+                    classified["summary_stats"]["cagis_features"] = len(cagis)
+                    classified["summary_stats"]["cagis_matched"] = matched
+                    click.echo(
+                        f"  Matched {matched:,} of {len(classified['all_ways']):,} OSM ways"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                click.echo(f"  Conflation failed: {exc}")
 
         # Phase 3: Reports
         click.echo("\nPhase 3: Generating reports...")
@@ -186,6 +217,65 @@ def fix(zone: str, dry_run: bool):
         click.echo(f"https://www.openstreetmap.org/changeset/{result['changeset_id']}")
 
 
+# --- conflate ---
+
+@main.command()
+@click.option("--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE, help="Zone to conflate")
+@click.option("--force-refresh", is_flag=True, help="Re-fetch CAGIS data even if a fresh cache exists")
+def conflate(zone: str, force_refresh: bool):
+    """Conflate the most recent scan against CAGIS street centerlines.
+
+    Reads ``scan-results.json`` for ``--zone``, loads the CAGIS centerlines
+    for that zone (cached locally for 90 days), runs the spatial match,
+    and rewrites ``scan-results.json`` with ``cagis_match`` attached to
+    every way. The web UI picks the new fields up automatically.
+
+    Source: CAGIS Open Data Hub, Hamilton County, Ohio.
+    """
+    from .conflate import (
+        SHAPELY_AVAILABLE,
+        build_index,
+        load_cagis_for_zone,
+    )
+    from .conflate import conflate as conflate_fn
+
+    if not SHAPELY_AVAILABLE:
+        click.echo(
+            "shapely is not installed; conflation cannot run. "
+            "Install with: pip install 'shapely>=2.0'",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    results_path = _output_dir(zone) / "scan-results.json"
+    if not results_path.exists():
+        click.echo(
+            f"No scan results found for {zone}. Run 'osm scan --zone {zone}' first."
+        )
+        raise SystemExit(1)
+
+    classified = _load_scan_results(results_path)
+    click.echo(f"Loaded {len(classified.get('all_ways', [])):,} OSM ways from scan.")
+
+    cagis = load_cagis_for_zone(zone, force_refresh=force_refresh)
+    click.echo(f"CAGIS features fetched: {len(cagis):,}")
+
+    idx = build_index(cagis)
+    conflate_fn(classified["all_ways"], idx)
+    matched = sum(1 for w in classified["all_ways"] if w.get("cagis_match"))
+
+    classified.setdefault("summary_stats", {})
+    classified["summary_stats"]["cagis_features"] = len(cagis)
+    classified["summary_stats"]["cagis_matched"] = matched
+
+    _save_scan_results(classified, results_path)
+    click.echo(
+        f"Matched {matched:,} of {len(classified['all_ways']):,} OSM ways"
+        " against CAGIS centerlines."
+    )
+    click.echo(f"Updated {results_path}")
+
+
 # --- report ---
 
 @main.command()
@@ -231,6 +321,7 @@ def _save_scan_results(classified: dict, path: Path) -> None:
         "class_b_streets": {k: v for k, v in classified["class_b_streets"].items()},
         "gaps": classified["gaps"],
         "summary_stats": classified["summary_stats"],
+        "extra_findings": classified.get("extra_findings", []),
     }
     with path.open("w", encoding="utf-8") as fh:
         json.dump(serializable, fh, ensure_ascii=False)
