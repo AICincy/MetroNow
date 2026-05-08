@@ -257,6 +257,18 @@
         `<b>${esc(w.name_display || "Way " + w.id)}</b><br>${cls} · ${esc(w.highway || "?")}`,
         { sticky: true }
       );
+      const wayUrl = `https://www.openstreetmap.org/way/${encodeURIComponent(w.id || "")}`;
+      poly.bindPopup(
+        `<div class="map-popup">
+          <div class="mp-title">${esc(w.name_display || "Way " + w.id)}</div>
+          <div class="mp-meta">${cls} · ${esc(w.highway || "?")}${w.oneway ? " · oneway=" + esc(w.oneway) : ""}</div>
+          <div class="mp-actions">
+            <a href="${wayUrl}" target="_blank" rel="noopener">Open in OSM ↗</a>
+            <a href="http://127.0.0.1:8111/load_object?objects=w${encodeURIComponent(w.id || "")}" target="_blank" rel="noopener">JOSM</a>
+          </div>
+        </div>`,
+        { closeButton: true, autoPan: true }
+      );
       wayLayer.addLayer(poly);
       drawn++;
     }
@@ -273,7 +285,27 @@
         fillOpacity: 0.85,
         weight: 1.5,
       });
-      m.bindTooltip(`Gap · ${esc(g.distance_m ? g.distance_m.toFixed(1) + "m" : "")}`);
+      const wayIds = Array.isArray(g.way_ids) ? g.way_ids : [];
+      const distLabel = g.distance_m ? g.distance_m.toFixed(1) + "m" : "";
+      m.bindTooltip(`Gap${distLabel ? " · " + distLabel : ""}`);
+      const wayLinks = wayIds.length
+        ? wayIds.slice(0, 6).map((id) =>
+            `<a href="https://www.openstreetmap.org/way/${encodeURIComponent(id)}" target="_blank" rel="noopener">${esc(id)}</a>`
+          ).join(", ")
+        : "<span class=\"mp-meta\">no way ids</span>";
+      const osmNode = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=19/${lat}/${lon}`;
+      m.bindPopup(
+        `<div class="map-popup">
+          <div class="mp-title">Node disconnect</div>
+          <div class="mp-meta">${esc(distLabel || "")}${esc(g.street || "")}</div>
+          <div class="mp-meta"><strong>Ways:</strong> ${wayLinks}</div>
+          <div class="mp-actions">
+            <a href="${osmNode}" target="_blank" rel="noopener">Open at OSM ↗</a>
+            <a href="http://127.0.0.1:8111/load_and_zoom?left=${lon-0.001}&right=${lon+0.001}&top=${lat+0.001}&bottom=${lat-0.001}" target="_blank" rel="noopener">JOSM</a>
+          </div>
+        </div>`,
+        { closeButton: true, autoPan: true }
+      );
       gapLayer.addLayer(m);
     });
 

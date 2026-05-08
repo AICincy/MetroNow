@@ -270,6 +270,50 @@
 /* ---- toast supplements (severity colors already exist for .error/.ok) ---- */
 .toast.warn { background: #b25f00; color: #fff; }
 
+/* ---- leaflet popup with OSM links ---- */
+.leaflet-popup-content { margin: 10px 12px; font-family: var(--sans); }
+.map-popup .mp-title {
+  font-family: var(--serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.map-popup .mp-meta {
+  font-size: 11px;
+  color: var(--ink-mute);
+  margin-bottom: 4px;
+}
+.map-popup .mp-meta strong { color: var(--ink); font-weight: 600; }
+.map-popup .mp-meta a {
+  color: var(--brand);
+  text-decoration: underline;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.map-popup .mp-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.map-popup .mp-actions a {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand);
+  text-decoration: none;
+}
+.map-popup .mp-actions a:hover { text-decoration: underline; }
+
+/* ---- table link visibility (way IDs in results / fix tables) ---- */
+.rs-table a, .ins-v a {
+  text-decoration: underline;
+  text-decoration-color: rgba(0,0,0,0.18);
+  text-underline-offset: 2px;
+}
+.rs-table a:hover, .ins-v a:hover { text-decoration-color: var(--brand); }
+
 /* ---- badge inline pill ---- */
 .badge {
   display: inline-block;
