@@ -32,10 +32,16 @@ def overpass_query(
 ) -> str:
     """Build the Overpass QL query for TIGER-import ways with metadata.
 
-    Default mode selects ways carrying ``tiger:reviewed=no`` to identify
-    TIGER-origin roads.  The tag is an origin marker, not a review-status
-    indicator — the history_filter module analyses actual edit history to
-    determine whether each way has been meaningfully reviewed.
+    Default mode selects ways carrying ``tiger:cfcc`` (Census Feature Class
+    Code) — the canonical TIGER-origin marker, present on every TIGER
+    import and rarely removed by cleanup bots. ``tiger:reviewed=no`` is
+    insufficient as a selector because cleanup bots strip that tag without
+    reviewing geometry, leaving real defects invisible (e.g. residential
+    streets with a false ``oneway=yes`` carried over from TIGER).
+
+    The tag is an origin marker, not a review-status indicator — the
+    history_filter module analyses actual edit history to determine
+    whether each way has been meaningfully reviewed.
 
     Import-only mode (``import_only=True``) uses user/timestamp filters to
     find ways still on their original TIGER import version — a much smaller
@@ -58,10 +64,13 @@ def overpass_query(
             "out meta geom;\n"
         )
 
+    bbox_str = f"{s},{w},{n},{e}"
     return (
         "[out:json][timeout:180];\n"
-        'way["highway"]["tiger:reviewed"="no"]\n'
-        f"  ({s},{w},{n},{e});\n"
+        "(\n"
+        f'  way["highway"]["tiger:cfcc"]({bbox_str});\n'
+        f'  way["highway"="residential"]["oneway"="yes"]({bbox_str});\n'
+        ");\n"
         "out meta geom;\n"
     )
 
