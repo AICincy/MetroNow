@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
 
+# Default least-privilege token: read-only repo access. Both jobs only
+# read source, install deps from public registries, and run tests/lint;
+# none of them push commits, comment on PRs, or upload artifacts.
+permissions:
+  contents: read
+
 jobs:
   python:
     name: Python ${{ matrix.python-version }}
