@@ -83,6 +83,15 @@ BUFFER_M = 30.0
 HIGH_CONFIDENCE = 0.85
 REVIEW_CONFIDENCE = 0.6
 
+# Confidence-score weights. Single source of truth for the matcher AND the
+# Phase 2a diagnostic — adjusting these here keeps both in sync.
+W_NAME = 0.5
+W_GEOMETRY = 0.3
+W_DIRECTION = 0.2
+# Sum without the direction term; used by the F4 (direction-drag) attribution
+# to ask "would this match clear REVIEW_CONFIDENCE if direction were perfect?"
+W_NON_DIRECTION = W_NAME + W_GEOMETRY
+
 # Phase 2a diagnostic thresholds. These do NOT change scoring behaviour;
 # they only classify *why* a way landed in its current confidence bucket.
 DIAG_NAME_FAIL_THRESHOLD = 0.5      # name_similarity below this is "name fail"
@@ -465,9 +474,9 @@ class ConflationIndex:
             dir_align = _direction_alignment(osm_vec, cagis_vec)
             geom_overlap = max(0.0, min(1.0, 1.0 - haus / BUFFER_M))
             confidence = (
-                0.5 * name_sim
-                + 0.3 * geom_overlap
-                + 0.2 * dir_align
+                W_NAME * name_sim
+                + W_GEOMETRY * geom_overlap
+                + W_DIRECTION * dir_align
             )
             if best is None or confidence > best[0]:
                 best = (confidence, rec, name_sim, haus, dir_align)
@@ -575,7 +584,11 @@ class ConflationIndex:
             cagis_vec = _line_unit_vector_lonlat(rec.geometry_lonlat)
             dir_align = _direction_alignment(osm_vec, cagis_vec)
             geom_overlap = max(0.0, min(1.0, 1.0 - haus / BUFFER_M))
-            confidence = 0.5 * name_sim + 0.3 * geom_overlap + 0.2 * dir_align
+            confidence = (
+                W_NAME * name_sim
+                + W_GEOMETRY * geom_overlap
+                + W_DIRECTION * dir_align
+            )
             passed_haus = haus <= BUFFER_M
             scored.append(
                 (confidence, rec, name_sim, haus, dir_align, passed_haus)
@@ -618,13 +631,16 @@ class ConflationIndex:
 
         # Confidence below REVIEW_CONFIDENCE — attribute the dominant cause.
         # F4 first: a short way whose match would have cleared review except
-        # for a low direction term.
-        confidence_without_dir = 0.5 * name_sim + 0.3 * (
-            max(0.0, min(1.0, 1.0 - haus / BUFFER_M))
+        # for a low direction term. Rescale by W_NON_DIRECTION so the
+        # remaining (name + geometry) weights still sum to 1, and so this
+        # stays correct if W_NAME / W_GEOMETRY / W_DIRECTION are retuned.
+        confidence_without_dir = (
+            W_NAME * name_sim
+            + W_GEOMETRY * max(0.0, min(1.0, 1.0 - haus / BUFFER_M))
         )
-        # Rescaled so the remaining 0.5 + 0.3 = 0.8 weights still sum to 1.
         confidence_without_dir_rescaled = (
-            confidence_without_dir / 0.8 if confidence_without_dir else 0.0
+            confidence_without_dir / W_NON_DIRECTION
+            if W_NON_DIRECTION > 0 else 0.0
         )
         if (
             way_length_m < DIAG_SHORT_WAY_M
