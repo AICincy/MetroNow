@@ -35,6 +35,11 @@ markers survive.
    needed by the rider-impact detectors — `relation[type=restriction]`,
    `node[barrier]`, `node[highway=bus_stop]`, `node[entrance]`. Results are
    cached on disk under `osm-audit-{zone}/data/` with bbox-keyed pruning.
+   Post-fetch, `src/osm/polygons.py` clips elements to each zone's
+   authoritative MetroNow operational polygon (sourced from SORTA's
+   published web map, see `src/osm/zones/<zone-key>.geojson`); ways /
+   nodes whose centroid falls outside the polygon are dropped before
+   classify and conflate run.
 
 2. **Classify** — `src/osm/classify.py`. Original TIGER-fixup taxonomy:
 
@@ -167,35 +172,29 @@ osm auth login                                         # OSM OAuth 2.0 (PKCE)
 
 ## Verification (state of main as of last commit)
 
-- **216 passing tests** across `tests/test_{classify,gaps,geo,history_filter,review,detectors,conflate,notes,osmose,route_diff,tiger2024}.py`.
+- **230 passing tests** across `tests/test_{classify,gaps,geo,history_filter,review,detectors,conflate,notes,osmose,route_diff,tiger2024,polygons}.py`.
 - `ruff check src/` clean. `mypy src/osm/ --ignore-missing-imports` clean.
-- Four-zone harvest summary (Class A/AB heuristic, default flags):
+- Four-zone CAGIS conflation snapshot, post-Phase-4a stage 3 (real
+  MetroNow operational polygons sourced from SORTA's published web
+  map). Total ways count post-polygon-clip elements; auto-submit
+  counts ways at confidence ≥ 0.85; review counts in-buffer 0.6–0.85
+  plus fallback hits capped at 0.6:
 
-  | Zone | Total ways | Class AB | Class A | Class B | Gaps |
-  |------|-----------:|---------:|--------:|--------:|-----:|
-  | Blue Ash / Montgomery        | 2,920 | 44  | 639 | 1,361 | 341 |
-  | Springdale / Sharonville     | 2,858 | 172 | 879 | 1,371 | 304 |
-  | Northgate / Mt. Healthy      | 2,221 | 73  | 488 | 861   | 167 |
-  | Forest Park / Pleasant Run   | 2,950 | 125 | 707 | 1,400 | 311 |
-  | **Total**                    | **10,949** | **414** | **2,713** | **4,993** | **1,123** |
+  | Zone                        | Total ways | Auto-submit (HIGH) | Review queue | Match rate |
+  |-----------------------------|-----------:|-------------------:|-------------:|-----------:|
+  | Blue Ash / Montgomery       | 3,642      | 19.99% (728)       | 5.35% (195)  | **25.34%** |
+  | Springdale / Sharonville    | 4,235      | 15.04% (637)       | 7.72% (327)  | **22.76%** |
+  | Northgate / Mt. Healthy     | 1,409      | 21.22% (299)       | 5.18% (73)   | **26.40%** |
+  | Forest Park / Pleasant Run  | 1,898      | 19.97% (379)       | 3.37% (64)   | **23.34%** |
 
-- Four-zone CAGIS conflation snapshot (post-Phase-2b: directed Hausdorff
-  + nearest-neighbor fallback). Auto-submit row counts ways at confidence
-  ≥ 0.85; review row counts in-buffer 0.6–0.85 plus fallback hits capped
-  at 0.6:
-
-  | Zone                        | Auto-submit (HIGH) | Review queue | Match rate |
-  |-----------------------------|-------------------:|-------------:|-----------:|
-  | Blue Ash / Montgomery       |  17.73% (1,486)    | 5.02% (421)  | **22.75%** |
-  | Springdale / Sharonville    |  13.78% (1,208)    | 5.59% (490)  | **19.37%** |
-  | Northgate / Mt. Healthy     |  20.59% (1,159)    | 3.96% (223)  | **24.55%** |
-  | Forest Park / Pleasant Run  |  10.77% (898)      | 3.17% (264)  | **13.94%** |
-
-  Forest Park's lower auto-submit rate is structural — its bbox bleeds
-  into Butler County, which CAGIS does not cover (median F1 nearest
-  distance: 1.4 km). Fixing this requires Phase 4a (traced service
-  polygons), not matcher tuning. Per-way diagnostic manifests with bucket
-  attribution are written by `osm conflate --baseline-manifest`.
+  Match rate ≥ 22.76% in every zone; auto-submit rate ≥ 15% in every
+  zone. Stage 3 tightens audit scope to the actual operational service
+  polygons, so corrections target ways that affect MetroNow rider
+  experience instead of the broader bbox. Per-way diagnostic manifests
+  with bucket attribution (`MATCHED_HIGH` / `MATCHED_REVIEW` /
+  `MATCHED_FALLBACK_REVIEW` / `F1_NO_CANDIDATE` / `F2_NAME_FAIL` /
+  `F3_GEOMETRY_FAIL` / `F4_DIRECTION_DRAG` / `MIXED_LOW`) are written by
+  `osm conflate --baseline-manifest`.
 
 ## Compliance and provenance
 

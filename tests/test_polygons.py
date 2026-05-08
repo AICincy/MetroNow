@@ -138,13 +138,12 @@ class TestClipElements:
 
 
 class TestPerZonePolygons:
-    """Phase 4a stage 2: per-zone polygons are opt-in infrastructure;
-    the default clip stays the Hamilton County polygon (stage 1)."""
+    """Phase 4a stage 3: per-zone polygons are now the authoritative
+    default — sourced from SORTA's published MetroNow web map."""
 
-    def test_default_load_returns_county(self):
-        # Stage 1 invariant: load_zone_polygon without prefer_per_zone
-        # returns the Hamilton County polygon for every zone — the same
-        # clip that won the Forest Park 47% bleed reduction.
+    def test_default_load_returns_per_zone_polygon(self):
+        # Stage 3: load_zone_polygon defaults to the per-zone polygon
+        # for every known zone, and these are tighter than the county.
         from osm.polygons import (
             SHAPELY_AVAILABLE,
             load_hamilton_county_polygon,
@@ -159,13 +158,17 @@ class TestPerZonePolygons:
         ]:
             poly = load_zone_polygon(zk)
             assert poly is not None
-            assert poly.equals_exact(county, tolerance=1e-9), (
-                f"Default clip for {zk} must be the county polygon "
-                f"(stage 1 invariant)"
+            # Tighter than the county.
+            assert poly.area < county.area
+            # And ≥99% inside the county (the 200m buffer is clipped).
+            sym_area = poly.difference(county).area
+            assert sym_area / poly.area < 0.01, (
+                f"{zk} per-zone polygon must be ~entirely inside Hamilton "
+                f"County; outside fraction: {sym_area / poly.area:.4f}"
             )
 
-    def test_per_zone_opt_in_loads_when_available(self):
-        # prefer_per_zone=True returns the per-zone polygon when bundled.
+    def test_county_fallback_only_returns_county(self):
+        # Explicit opt-out path for callers that want the broad clip.
         from osm.polygons import (
             SHAPELY_AVAILABLE,
             load_hamilton_county_polygon,
@@ -178,20 +181,11 @@ class TestPerZonePolygons:
             "blue-ash-montgomery", "springdale-sharonville",
             "northgate-mt-healthy", "forest-park-pleasant-run",
         ]:
-            poly = load_zone_polygon(zk, prefer_per_zone=True)
-            assert poly is not None
-            # Per-zone polygons are tighter than the county (otherwise
-            # there's no point opting in).
-            assert poly.area < county.area
-            # And entirely inside the county after the buffer-clip.
-            sym_area = poly.difference(county).area
-            assert sym_area / poly.area < 0.01, (
-                f"{zk} per-zone polygon must be inside Hamilton County; "
-                f"outside fraction: {sym_area / poly.area:.4f}"
-            )
+            poly = load_zone_polygon(zk, county_fallback_only=True)
+            assert poly.equals_exact(county, tolerance=1e-9)
 
-    def test_per_zone_opt_in_falls_back_to_county_for_unknown(self):
-        # Opt-in for an unknown zone falls through to the county polygon.
+    def test_unknown_zone_falls_back_to_county(self):
+        # Defensive: missing GeoJSON → fall through to the county polygon.
         from osm.polygons import (
             SHAPELY_AVAILABLE,
             load_hamilton_county_polygon,
@@ -200,10 +194,10 @@ class TestPerZonePolygons:
         if not SHAPELY_AVAILABLE:
             pytest.skip("shapely unavailable")
         county = load_hamilton_county_polygon()
-        fb = load_zone_polygon("nonexistent-zone-xyz", prefer_per_zone=True)
+        fb = load_zone_polygon("nonexistent-zone-xyz")
         assert fb.equals_exact(county, tolerance=1e-9)
 
-    def test_per_zone_blue_ash_contains_blue_ash_proper(self):
+    def test_blue_ash_polygon_contains_blue_ash_proper(self):
         from osm.polygons import (
             SHAPELY_AVAILABLE,
             load_zone_polygon,
@@ -211,13 +205,14 @@ class TestPerZonePolygons:
         )
         if not SHAPELY_AVAILABLE:
             pytest.skip("shapely unavailable")
-        poly = load_zone_polygon("blue-ash-montgomery", prefer_per_zone=True)
+        poly = load_zone_polygon("blue-ash-montgomery")
+        # Centre of Blue Ash, OH — should always be inside.
         assert point_in_polygon(39.232, -84.378, poly) is True
 
-    def test_per_zone_blue_ash_excludes_northgate(self):
-        # Northgate sits at (39.253, -84.594). The Blue Ash per-zone
-        # polygon must not include it — the precision gain over the
-        # county clip.
+    def test_blue_ash_polygon_excludes_northgate(self):
+        # Northgate sits at (39.253, -84.594). The Blue Ash zone polygon
+        # must not include it — the precision gain of the real per-zone
+        # clip over the county clip.
         from osm.polygons import (
             SHAPELY_AVAILABLE,
             load_zone_polygon,
@@ -225,5 +220,5 @@ class TestPerZonePolygons:
         )
         if not SHAPELY_AVAILABLE:
             pytest.skip("shapely unavailable")
-        ba = load_zone_polygon("blue-ash-montgomery", prefer_per_zone=True)
+        ba = load_zone_polygon("blue-ash-montgomery")
         assert point_in_polygon(39.253, -84.594, ba) is False

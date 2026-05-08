@@ -82,7 +82,7 @@ API the frontend consumes. The previous (pre-redesign) UI is preserved under
 ## Testing
 
 ```bash
-pytest tests/ -v          # full test suite (216 tests at HEAD)
+pytest tests/ -v          # full test suite (230 tests at HEAD)
 ruff check src/           # lint Python sources
 mypy src/osm/ --ignore-missing-imports
 cd web && npx eslint@8 public/js/atlas.js public/js/atlas-extras.js \
@@ -108,6 +108,10 @@ src/osm/
   geo.py                Haversine, valid lat/lon, name normalization
   history.py            OSM API v0.6 way/node revision-history fetch with caching
   history_filter.py     Two-tier review-status determination (metadata + history)
+  polygons.py           Hamilton County polygon clip + per-zone polygon clip
+                        (real MetroNow operational polygons, sourced from
+                        SORTA's published web map). Drops elements outside
+                        the polygon centroid post-fetch.
   conflate.py           Shapely STRtree match against CAGIS Street Centerlines.
                         Directed Hausdorff (OSM→CAGIS) for the geometry term;
                         nearest-neighbor fallback inside FALLBACK_BUFFER_M caps

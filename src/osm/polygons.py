@@ -105,29 +105,26 @@ def load_hamilton_county_polygon() -> Any:
 
 
 def load_zone_polygon(
-    zone_key: str, *, prefer_per_zone: bool = False,
+    zone_key: str, *, county_fallback_only: bool = False,
 ) -> Any:
     """Return the clip polygon for ``zone_key``.
 
-    Default (Phase 4a stage 1): returns the Hamilton County polygon for
-    every zone. This is the data-justified clip — it removes Forest
-    Park's Butler County bleed and Springdale's northern overflow
-    without dropping any in-county auto-matchable ways.
+    Default (Phase 4a stage 3): returns the authoritative MetroNow
+    operational polygon for ``zone_key`` — sourced from SORTA's
+    published web map (ArcGIS Web Map item ba2063d68a3e41bd86d486d372991d65,
+    "MetroNow!" by metro_mlinder, linked from go-metro.com/riding-metro/metronow/),
+    200 m buffered for first-mile/last-mile walking edges, clipped at
+    the Hamilton County boundary. See the per-zone GeoJSON files'
+    properties for full provenance.
 
-    With ``prefer_per_zone=True`` (Phase 4a stage 2 opt-in): returns the
-    per-zone polygon (union of constituent municipalities + 500 m
-    buffer, intersected with the county) when available, else falls
-    back to the county polygon. Per-zone polygons trade recall for
-    precision; useful for narrowing audit scope when downstream code
-    knows the operational area is tighter than the bbox, but not a
-    universal win — Northgate/Springdale lose auto-matchable ways
-    that sit in unincorporated township territory between cities.
+    With ``county_fallback_only=True``: returns the Hamilton County
+    polygon directly. Use when downstream code needs the same broad
+    clip across all zones (e.g., a pre-zone-specific scan).
 
-    Phase 4a stage 3 (future) will replace these approximations with
-    the actual MetroNow operational polygons once SORTA / Via share
-    them or they're hand-traced from the published service map.
+    Falls back to the county polygon if the per-zone GeoJSON is missing
+    (defensive — should never happen on a clean checkout).
     """
-    if prefer_per_zone:
+    if not county_fallback_only:
         cache_key = f"zone:{zone_key}"
         cached = _POLYGON_CACHE.get(cache_key)
         if cached is not None:
