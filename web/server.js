@@ -65,6 +65,22 @@ function validateZone(zone, res) {
   return true;
 }
 
+// Construct a path under the per-zone audit directory and verify the
+// resolved result is contained inside PROJECT_ROOT — defence in depth
+// against path-injection. validateZone() already restricts ``zone`` to
+// /^[a-z0-9-]+$/, but this normalize-then-check guard satisfies CodeQL's
+// js/path-injection sink-based analysis at every call site.
+function zonePath(zone, ...subparts) {
+  const target = path.resolve(
+    PROJECT_ROOT, "osm-audit-" + zone, ...subparts,
+  );
+  const root = path.resolve(PROJECT_ROOT) + path.sep;
+  if (!target.startsWith(root)) {
+    throw new Error("Resolved zone path escapes the project root.");
+  }
+  return target;
+}
+
 function safeError(e) {
   const msg = (e && e.message) || "Unknown error";
   const lines = msg.split(/\r?\n/).filter((l) => l.trim());
@@ -282,9 +298,7 @@ app.post("/api/scan", async (req, res) => {
 app.post("/api/conflate/:zone", async (req, res) => {
   const zone = req.params.zone;
   if (!validateZone(zone, res)) return;
-  const resultsPath = path.join(
-    PROJECT_ROOT, "osm-audit-" + zone, "scan-results.json"
-  );
+  const resultsPath = zonePath(zone, "scan-results.json");
   if (!fs.existsSync(resultsPath))
     return res.status(404).json({ error: "No scan results for this zone. Run a scan first." });
   const forceRefresh = req.body && req.body.force_refresh === true;
@@ -427,7 +441,7 @@ app.get("/api/dashboard/:zone", (req, res) => {
 app.get("/api/review/:zone", async (req, res) => {
   const zone = req.params.zone;
   if (!validateZone(zone, res)) return;
-  const p = path.join(PROJECT_ROOT, "osm-audit-" + zone, "scan-results.json");
+  const p = zonePath(zone, "scan-results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results. Run a scan first." });
   try {
@@ -492,9 +506,7 @@ app.post("/api/fix", async (req, res) => {
 app.post("/api/route-diff/:zone", async (req, res) => {
   const zone = req.params.zone;
   if (!validateZone(zone, res)) return;
-  const resultsPath = path.join(
-    PROJECT_ROOT, "osm-audit-" + zone, "scan-results.json"
-  );
+  const resultsPath = zonePath(zone, "scan-results.json");
   if (!fs.existsSync(resultsPath))
     return res.status(404).json({ error: "No scan results for this zone. Run a scan first." });
   const ALLOWED_PROFILES = new Set(["car-fast", "car-vehicle"]);
@@ -642,7 +654,7 @@ app.delete("/api/history", (_req, res) => {
 
 app.get("/api/export/:zone/csv", (req, res) => {
   if (!validateZone(req.params.zone, res)) return;
-  const p = path.join(PROJECT_ROOT, "osm-audit-" + req.params.zone, "scan-results.json");
+  const p = zonePath(req.params.zone, "scan-results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results." });
   try {
@@ -669,7 +681,7 @@ app.get("/api/export/:zone/csv", (req, res) => {
 
 app.get("/api/export/:zone/json", (req, res) => {
   if (!validateZone(req.params.zone, res)) return;
-  const p = path.join(PROJECT_ROOT, "osm-audit-" + req.params.zone, "scan-results.json");
+  const p = zonePath(req.params.zone, "scan-results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results." });
   try {
@@ -680,6 +692,118 @@ app.get("/api/export/:zone/json", (req, res) => {
   } catch (e) {
     res.status(500).json({ error: safeError(e) });
   }
+});
+
+// ---- fix-impact ----
+
+// Run BRouter route-impact on the CAGIS-verified oneway fixes for a
+// zone — same shape as the CLI `osm fix-impact` subcommand. Used by
+// the Atlas Fix panel's "Routing impact" button to surface the value
+// story before submission.
+app.post("/api/fix-impact/:zone", async (req, res) => {
+  const zone = req.params.zone;
+  if (!validateZone(zone, res)) return;
+  const resultsPath = zonePath(zone, "scan-results.json");
+  if (!fs.existsSync(resultsPath))
+    return res.status(404).json({ error: "No scan results for this zone." });
+  try {
+    const pyCode = [
+      "import json, sys, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "from pathlib import Path",
+      "sys.stdout = open(os.devnull, 'w')",
+      "from osm.review import proposed_fixes_for_way",
+      "from osm.route_diff import (",
+      "    ONEWAY_FIX_KINDS, route_impact_for_fixes, summarize_route_impact,",
+      ")",
+      "results_path = Path(" + JSON.stringify(resultsPath.replace(/\\/g, "/")) + ")",
+      "with results_path.open('r', encoding='utf-8') as fh:",
+      "    classified = json.load(fh)",
+      "oneway_fixes = []",
+      "for w in classified.get('all_ways', []):",
+      "    for f in proposed_fixes_for_way(w):",
+      "        if f.get('kind') in ONEWAY_FIX_KINDS:",
+      "            oneway_fixes.append(f)",
+      "route_impact_for_fixes(oneway_fixes, classified.get('all_ways', []))",
+      "summary = summarize_route_impact(oneway_fixes)",
+      "classified.setdefault('summary_stats', {})['route_impact'] = summary",
+      "with results_path.open('w', encoding='utf-8') as fh:",
+      "    json.dump(classified, fh, ensure_ascii=False)",
+      "sys.stdout = sys.__stdout__",
+      "print(json.dumps(summary))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    res.json({ ok: true, zone, summary: JSON.parse(out.trim()) });
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
+// ---- maproulette ----
+
+// Generate (or regenerate) the MapRoulette challenge GeoJSON for a zone.
+// Returns the on-disk path, a task count, and the suggested challenge
+// metadata; the actual file is served by the GET endpoint below so the
+// browser can offer it as a download.
+app.post("/api/maproulette/:zone", async (req, res) => {
+  const zone = req.params.zone;
+  if (!validateZone(zone, res)) return;
+  const resultsPath = zonePath(zone, "scan-results.json");
+  if (!fs.existsSync(resultsPath))
+    return res.status(404).json({ error: "No scan results for this zone. Run a scan first." });
+  const outFile = zonePath(zone, "maproulette", zone + "-class-a-unverified.geojsonl");
+  try {
+    const pyCode = [
+      "import json, sys, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "from pathlib import Path",
+      "sys.stdout = open(os.devnull, 'w')",
+      "from osm.maproulette import (",
+      "    build_tasks, challenge_metadata, unverified_class_a_ways, write_geojsonl,",
+      ")",
+      "from osm.zones import ZONES",
+      "zone_key = " + JSON.stringify(zone),
+      "results_path = Path(" + JSON.stringify(resultsPath.replace(/\\/g, "/")) + ")",
+      "out_path = Path(" + JSON.stringify(outFile.replace(/\\/g, "/")) + ")",
+      "with results_path.open('r', encoding='utf-8') as fh:",
+      "    classified = json.load(fh)",
+      "ways = unverified_class_a_ways(classified)",
+      "tasks = build_tasks(ways)",
+      "n = write_geojsonl(tasks, out_path) if tasks else 0",
+      "meta = challenge_metadata(",
+      "    zone_name=ZONES[zone_key].get('name', zone_key),",
+      "    zone_key=zone_key, n_tasks=n,",
+      ")",
+      "sys.stdout = sys.__stdout__",
+      "print(json.dumps({'task_count': n, 'metadata': meta, 'file': str(out_path)}))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    const parsed = JSON.parse(out);
+    res.json({ ok: true, zone, ...parsed });
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
+// Stream the most recently generated MapRoulette challenge as a download.
+// 404 if the file doesn't exist yet — call POST first.
+app.get("/api/maproulette/:zone", (req, res) => {
+  if (!validateZone(req.params.zone, res)) return;
+  const outFile = zonePath(
+    req.params.zone, "maproulette",
+    req.params.zone + "-class-a-unverified.geojsonl",
+  );
+  if (!fs.existsSync(outFile)) {
+    return res.status(404).json({
+      error: "No MapRoulette challenge yet. POST /api/maproulette/:zone first.",
+    });
+  }
+  res.setHeader("Content-Type", "application/geo+json");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${req.params.zone}-class-a-unverified.geojsonl"`,
+  );
+  res.sendFile(outFile);
 });
 
 // ---- fallback ----

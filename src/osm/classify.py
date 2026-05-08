@@ -102,6 +102,8 @@ def classify(
     osm_notes: list[dict] | None = None,
     note_threshold_m: float = 50.0,
     include_unnamed_service: bool = False,
+    gtfs_stops: list | None = None,
+    bus_routes: list | None = None,
 ) -> dict:
     """Classify all way elements from an Overpass response into defect classes.
 
@@ -121,6 +123,19 @@ def classify(
     dispatch into anyway, so flagging them produces noise without rider
     benefit. Set ``True`` for an exhaustive audit; the resulting Class A
     set will roughly double in volume on Hamilton County zones.
+
+    ``gtfs_stops`` (Phase 4c) is a list of GTFS stop rows (typically
+    :class:`osm.gtfs.GtfsStop`) used to suppress false-positive
+    ``misplaced_bus_stops`` findings. An OSM ``highway=bus_stop`` whose
+    nearest SORTA-published stop is within 30 m is treated as a valid
+    off-curb shelter and not flagged. classify() never fetches the
+    feed itself — pass ``osm.gtfs.fetch_sorta_stops()`` from the caller.
+
+    ``bus_routes`` (Phase 4d follow-up) is a list of SORTA bus-route
+    polylines (typically :class:`osm.bus_routes.BusRoute`) used to
+    annotate ``oneway_conflict`` findings as ``transit_corridor=True``
+    when the way lies on a published bus corridor. Same pattern as
+    gtfs_stops — classify never fetches the feed itself.
     """
     elements_ways, elements_nodes, elements_relations = _split_elements(raw)
     elements = elements_ways
@@ -256,7 +271,12 @@ def classify(
         _safe_run("oneway_minus_one", _det.detect_oneway_minus_one, elements_ways)
     )
     extra_findings.extend(
-        _safe_run("oneway_conflicts", _det.detect_oneway_conflicts, elements_ways)
+        _safe_run(
+            "oneway_conflicts",
+            _det.detect_oneway_conflicts,
+            elements_ways,
+            bus_routes=bus_routes,
+        )
     )
     extra_findings.extend(
         _safe_run(
@@ -299,6 +319,7 @@ def classify(
             _det.detect_misplaced_bus_stops,
             bus_stops,
             elements_ways,
+            gtfs_stops=gtfs_stops,
         )
     )
 

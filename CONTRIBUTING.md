@@ -82,7 +82,7 @@ API the frontend consumes. The previous (pre-redesign) UI is preserved under
 ## Testing
 
 ```bash
-pytest tests/ -v          # full test suite (230 tests at HEAD)
+pytest tests/ -v          # full test suite (273 tests at HEAD)
 ruff check src/           # lint Python sources
 mypy src/osm/ --ignore-missing-imports
 cd web && npx eslint@8 public/js/atlas.js public/js/atlas-extras.js \
@@ -125,6 +125,9 @@ src/osm/
   notes.py / osmose.py  Read-only feeds — OSM Notes (community feedback) and
                         Osmose quality-issue badges shown in the inventory and
                         Investigations panels, never auto-submitted
+  gtfs.py               SORTA GTFS stops loader, used by misplaced_bus_stops to
+                        suppress off-curb-shelter false positives that match a
+                        published stop position
   route_diff.py         BRouter route-diff harness — graduates rider-impact
                         detector hits to "real / inconclusive / noisy" by
                         perturbing the routing graph and comparing routes

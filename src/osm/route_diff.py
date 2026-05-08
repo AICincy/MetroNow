@@ -900,6 +900,172 @@ def graduate_findings(
     return graduated, still_review
 
 
+# ---------------------------------------------------------------------------
+# Phase 4b: route-impact for CAGIS-verified mechanical fixes
+#
+# diff_route() above operates on rider-impact detector findings. The
+# mechanical-fix path (osm fix → review_defects → submit_fixes) emits
+# fix descriptors with kinds set_oneway_cagis / remove_oneway_cagis /
+# set_maxspeed_cagis / set_name_cagis. The first two perturb the
+# routing graph in exactly the same way oneway_minus_one /
+# oneway_conflict do, so we can reuse the BRouter perturbation by
+# mapping a fix descriptor to a synthetic finding.
+#
+# The other CAGIS fix kinds (maxspeed, name) don't change graph
+# topology — BRouter would not detect them — so we record those
+# explicitly with route_impact = None and a skip reason.
+# ---------------------------------------------------------------------------
+
+# Mechanical-fix kinds that map cleanly onto the oneway perturbation.
+ONEWAY_FIX_KINDS: frozenset[str] = frozenset({
+    "set_oneway_cagis",
+    "remove_oneway_cagis",
+})
+
+
+def _fix_to_synthetic_finding(fix: dict) -> dict | None:
+    """Project a CAGIS-verified oneway fix descriptor onto the
+    rider-impact-finding shape that :func:`diff_route` accepts.
+
+    Returns ``None`` for fix kinds that are not testable with BRouter
+    alone (maxspeed and name fixes don't change graph topology).
+    """
+    kind = fix.get("kind")
+    if kind not in ONEWAY_FIX_KINDS:
+        return None
+    way_id = fix.get("element_id") or fix.get("way_id")
+    if way_id is None:
+        return None
+    # Reuse the oneway_conflict perturbation — it tests "this way's
+    # oneway tag is suspect, what changes if we believe CAGIS instead?"
+    # which is exactly what the mechanical fix asserts.
+    return {
+        "kind": "oneway_conflict",
+        "id": way_id,
+        "fix_kind": kind,
+        "fix_changes": fix.get("changes"),
+    }
+
+
+def route_impact_for_fix(
+    fix: dict,
+    all_ways: list[dict],
+    *,
+    profile: str = "car-fast",
+) -> dict | None:
+    """Run BRouter route-diff for one CAGIS-verified mechanical fix.
+
+    Returns a dict matching :func:`diff_route`'s shape, with an extra
+    ``fix_kind`` field, or ``None`` when the fix kind is not testable.
+    """
+    synth = _fix_to_synthetic_finding(fix)
+    if synth is None:
+        return None
+    rd = diff_route(synth, all_ways, profile=profile)
+    if rd is not None:
+        rd["fix_kind"] = fix.get("kind")
+    return rd
+
+
+def route_impact_for_fixes(
+    fixes: list[dict],
+    all_ways: list[dict],
+    *,
+    profile: str = "car-fast",
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> list[dict]:
+    """Annotate every fix in ``fixes`` with a ``route_impact`` key.
+
+    Mutates and returns the list (chainable). Untestable fix kinds get
+    ``route_impact = None`` plus a ``route_impact_skipped`` reason.
+    Polite-rate-limit honoured per call; expect ~1 second per testable
+    fix at the public BRouter endpoint.
+    """
+    total = len(fixes)
+    for i, fix in enumerate(fixes, 1):
+        kind = fix.get("kind")
+        if kind not in ONEWAY_FIX_KINDS:
+            fix["route_impact"] = None
+            fix["route_impact_skipped"] = (
+                f"kind {kind!r} does not perturb the routing graph"
+            )
+            if progress_callback:
+                with contextlib.suppress(Exception):
+                    progress_callback(i, total)
+            continue
+        try:
+            fix["route_impact"] = route_impact_for_fix(
+                fix, all_ways, profile=profile,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "route_impact for %s/%s failed: %s",
+                kind, fix.get("element_id"), exc,
+            )
+            fix["route_impact"] = None
+            fix["route_impact_skipped"] = f"diff error: {exc}"
+        if progress_callback:
+            with contextlib.suppress(Exception):
+                progress_callback(i, total)
+    return fixes
+
+
+def summarize_route_impact(fixes: list[dict]) -> dict:
+    """Aggregate per-fix route_impact records into a summary report.
+
+    Used by the CLI fix-impact subcommand to print the value-story
+    payload: "this batch of N fixes will change M MetroNow-relevant
+    routes by avg X% (max Y%, min Z%)". The percentages are BRouter's
+    delta_pct between the live route and the perturbed route.
+    """
+    total = len(fixes)
+    tested = [
+        f for f in fixes
+        if isinstance(f.get("route_impact"), dict)
+    ]
+    real = [
+        f for f in tested
+        if (f.get("route_impact") or {}).get("decision") == "real"
+    ]
+    inconclusive = [
+        f for f in tested
+        if (f.get("route_impact") or {}).get("decision") == "inconclusive"
+    ]
+    noisy = [
+        f for f in tested
+        if (f.get("route_impact") or {}).get("decision") == "noisy"
+    ]
+    deltas = [
+        float((f.get("route_impact") or {}).get("delta_pct") or 0.0)
+        for f in real
+    ]
+    durations = [
+        float(((f.get("route_impact") or {}).get("after_predicted") or {}).get(
+            "duration_s") or 0.0)
+        - float(((f.get("route_impact") or {}).get("before") or {}).get(
+            "duration_s") or 0.0)
+        for f in real
+    ]
+    avg_delta = (
+        round(sum(deltas) / len(deltas), 2) if deltas else 0.0
+    )
+    max_delta = round(max(deltas), 2) if deltas else 0.0
+    avg_duration = (
+        round(sum(durations) / len(durations), 1) if durations else 0.0
+    )
+    return {
+        "fixes_total": total,
+        "fixes_tested": len(tested),
+        "fixes_skipped": total - len(tested),
+        "real": len(real),
+        "inconclusive": len(inconclusive),
+        "noisy": len(noisy),
+        "avg_delta_pct_real": avg_delta,
+        "max_delta_pct_real": max_delta,
+        "avg_duration_delta_s_real": avg_duration,
+    }
+
+
 def decision_histogram(findings: list[dict]) -> dict[str, int]:
     """Count findings by route_diff.decision (and 'untested')."""
     out: dict[str, int] = {
@@ -929,6 +1095,7 @@ __all__ = [
     "BROUTER_DELAY_SEC_DEFAULT",
     "DELTA_NOISY_PCT",
     "DELTA_REAL_PCT",
+    "ONEWAY_FIX_KINDS",
     "TESTABLE_KINDS",
     "cached_route",
     "decision_histogram",
@@ -936,5 +1103,8 @@ __all__ = [
     "diff_route",
     "fetch_route",
     "graduate_findings",
+    "route_impact_for_fix",
+    "route_impact_for_fixes",
+    "summarize_route_impact",
     "synth_endpoints_around",
 ]

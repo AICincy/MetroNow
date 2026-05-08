@@ -112,10 +112,32 @@ def auth_status():
         "enable for exhaustive audits where signal-to-noise is acceptable."
     ),
 )
+@click.option(
+    "--with-gtfs-cross-check/--no-gtfs-cross-check",
+    default=True,
+    help=(
+        "Cross-check the misplaced_bus_stops detector against SORTA's "
+        "published GTFS feed. An OSM bus_stop within 30 m of a GTFS stop "
+        "is treated as a valid off-curb shelter and suppressed. On by "
+        "default; pass --no-gtfs-cross-check to skip the GTFS fetch."
+    ),
+)
+@click.option(
+    "--with-bus-route-corroboration/--no-bus-route-corroboration",
+    default=True,
+    help=(
+        "Annotate oneway_conflict findings with transit_corridor=True "
+        "when the way lies on a SORTA-published bus-route corridor "
+        "(CAGIS Open Data Hub). On by default; --no-bus-route-corroboration "
+        "skips the fetch."
+    ),
+)
 def scan(
     zone: str, from_cache: bool, skip_history: bool, import_only: bool,
     with_conflation: bool, tiger_only: bool, with_route_diff: bool,
     route_diff_profile: str, include_unnamed_service: bool,
+    with_gtfs_cross_check: bool,
+    with_bus_route_corroboration: bool,
 ):
     """Fetch OSM data, analyse history, classify defects, and generate reports."""
     from rich.progress import Progress
@@ -147,7 +169,46 @@ def scan(
         click.echo("\nPhase 2: Classifying defects...")
         if include_unnamed_service:
             click.echo("  (unnamed service-oneway ways included in Class A)")
-        classified = classify(raw, include_unnamed_service=include_unnamed_service)
+
+        gtfs_stops_for_classify = None
+        if with_gtfs_cross_check:
+            try:
+                from .gtfs import fetch_sorta_stops
+                gtfs_stops_for_classify = fetch_sorta_stops()
+                click.echo(
+                    f"  SORTA GTFS: loaded {len(gtfs_stops_for_classify):,} "
+                    "stop position(s) for bus_stop cross-check"
+                )
+            except Exception as exc:  # noqa: BLE001
+                click.echo(
+                    f"  SORTA GTFS fetch failed ({exc}); "
+                    "bus_stop cross-check disabled for this scan",
+                    err=True,
+                )
+
+        bus_routes_for_classify = None
+        if with_bus_route_corroboration:
+            try:
+                from .bus_routes import fetch_bus_routes
+                bus_routes_for_classify = fetch_bus_routes()
+                click.echo(
+                    f"  SORTA bus routes: loaded "
+                    f"{len(bus_routes_for_classify):,} polyline(s) "
+                    "for oneway_conflict corroboration"
+                )
+            except Exception as exc:  # noqa: BLE001
+                click.echo(
+                    f"  SORTA bus-routes fetch failed ({exc}); "
+                    "transit-corridor corroboration disabled for this scan",
+                    err=True,
+                )
+
+        classified = classify(
+            raw,
+            include_unnamed_service=include_unnamed_service,
+            gtfs_stops=gtfs_stops_for_classify,
+            bus_routes=bus_routes_for_classify,
+        )
 
         if skip_history:
             click.echo("  History analysis: SKIPPED (legacy mode)")
@@ -360,7 +421,22 @@ def scan(
         "osmose_match descriptor."
     ),
 )
-def fix(zone: str, dry_run: bool, annotate_fixes: bool):
+@click.option(
+    "--with-route-impact",
+    is_flag=True,
+    default=False,
+    help=(
+        "On dry-run only: run BRouter route-impact for the accepted "
+        "set_oneway_cagis / remove_oneway_cagis fixes and print the "
+        "value-story summary inline (\"this batch will change N "
+        "MetroNow-relevant routes by avg X%\"). Adds ~1 sec per oneway "
+        "fix (polite-rate-limit). Skipped on non-dry-run runs because "
+        "the actual submission path doesn't need it."
+    ),
+)
+def fix(
+    zone: str, dry_run: bool, annotate_fixes: bool, with_route_impact: bool,
+):
     """Review and submit corrections to OSM."""
     from .changeset import submit_fixes
     from .review import review_defects
@@ -406,6 +482,66 @@ def fix(zone: str, dry_run: bool, annotate_fixes: bool):
 
     z = ZONES[zone]
     comment = f"Fix false oneway=yes on residential streets in {z['name']} (TIGER audit)"
+
+    # Phase 4b inline value-story payload — only for dry-run, only for
+    # oneway fixes (the kinds that perturb the routing graph). Maxspeed
+    # / name fixes don't move BRouter routes, so they're skipped with
+    # an explicit reason in the summary.
+    if with_route_impact and dry_run:
+        from rich.progress import Progress
+
+        from .route_diff import (
+            ONEWAY_FIX_KINDS,
+            route_impact_for_fixes,
+            summarize_route_impact,
+        )
+
+        oneway_fixes = [f for f in accepted if f.get("kind") in ONEWAY_FIX_KINDS]
+        if not oneway_fixes:
+            click.echo(
+                "[ROUTE-IMPACT] No oneway fixes in this batch — "
+                "set_maxspeed_cagis / set_name_cagis don't perturb routing."
+            )
+        else:
+            click.echo(
+                f"[ROUTE-IMPACT] Running BRouter route-diff on "
+                f"{len(oneway_fixes):,} oneway fix(es)..."
+            )
+            with Progress() as progress:
+                task = progress.add_task(
+                    "Route-impact", total=len(oneway_fixes),
+                )
+
+                def _progress(done, total, _task=task):
+                    progress.update(_task, completed=done)
+
+                route_impact_for_fixes(
+                    oneway_fixes,
+                    classified.get("all_ways", []),
+                    progress_callback=_progress,
+                )
+            summary = summarize_route_impact(oneway_fixes)
+            click.echo(
+                f"[ROUTE-IMPACT] real={summary['real']}, "
+                f"inconclusive={summary['inconclusive']}, "
+                f"noisy={summary['noisy']}, skipped={summary['fixes_skipped']}"
+            )
+            if summary["real"]:
+                click.echo(
+                    f"[ROUTE-IMPACT] Of the {summary['real']} fixes that "
+                    "change routing meaningfully: "
+                    f"avg delta {summary['avg_delta_pct_real']}% of route "
+                    f"cost, max {summary['max_delta_pct_real']}%, "
+                    f"avg duration shift {summary['avg_duration_delta_s_real']} s."
+                )
+    elif with_route_impact and not dry_run:
+        click.echo(
+            "--with-route-impact ignored on non-dry-run; the harness is "
+            "for previewing impact before submission, not for the "
+            "submission itself.",
+            err=True,
+        )
+
     result = submit_fixes(accepted, comment, dry_run=dry_run)
 
     if result.get("dry_run"):
@@ -687,6 +823,346 @@ def route_diff_cmd(zone: str, profile: str, limit: int):
         f"stay human-review: {len(human):,}."
     )
     click.echo(f"Updated {results_path}")
+
+
+# --- fix-impact ---
+
+@main.command(name="fix-impact")
+@click.option(
+    "--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE,
+    help="Zone whose CAGIS-verified oneway fixes to measure",
+)
+@click.option(
+    "--profile",
+    type=click.Choice(["car-fast", "car-vehicle"]),
+    default="car-fast",
+    help="BRouter profile to use.",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=0,
+    help=(
+        "Cap the number of fixes to measure (0 = no cap). BRouter is "
+        "rate-limited at ~1 sec/call; a full Blue Ash batch (~480 oneway "
+        "fixes) takes ~8 minutes. Use this to keep exploration batches short."
+    ),
+)
+def fix_impact(zone: str, profile: str, limit: int):
+    """Phase 4b — measure routing impact of CAGIS-verified oneway fixes.
+
+    Reads the most recent scan-results.json, finds every fix descriptor
+    with kind in ``ONEWAY_FIX_KINDS`` (set_oneway_cagis,
+    remove_oneway_cagis), runs BRouter route-diff for each one, and
+    prints the value-story summary that downstream stakeholders care
+    about — "this batch will change N MetroNow-relevant routes by avg
+    X%". Writes the augmented fix list (each fix gets a ``route_impact``
+    key) back to scan-results.json so the web UI can surface it.
+
+    Useful before submitting a batch of CAGIS-verified oneway fixes —
+    confirms the fixes actually move BRouter routes, not just OSM tags.
+    Decision threshold: a fix is "real" when its delta exceeds 15% of
+    the live route's cost; "noisy" below 3%; "inconclusive" between.
+    """
+    from rich.progress import Progress
+
+    from .review import proposed_fixes_for_way
+    from .route_diff import (
+        ONEWAY_FIX_KINDS,
+        route_impact_for_fixes,
+        summarize_route_impact,
+    )
+
+    results_path = _output_dir(zone) / "scan-results.json"
+    if not results_path.exists():
+        click.echo(
+            f"No scan results found for {zone}. Run 'osm scan --zone {zone}' first."
+        )
+        raise SystemExit(1)
+
+    classified = _load_scan_results(results_path)
+    # Non-interactive collection: walk every classified way and emit the
+    # CAGIS-verified oneway fixes directly. fix-impact must not block on
+    # user review — its purpose is to produce the summary that *informs*
+    # the review.
+    oneway_fixes: list[dict] = []
+    for w in classified.get("all_ways", []):
+        for f in proposed_fixes_for_way(w):
+            if f.get("kind") in ONEWAY_FIX_KINDS:
+                oneway_fixes.append(f)
+    if not oneway_fixes:
+        click.echo(
+            f"No CAGIS-verified oneway fixes for {zone}. "
+            "Run 'osm conflate --zone <key>' first."
+        )
+        return
+
+    if limit and limit > 0:
+        oneway_fixes = oneway_fixes[:limit]
+    click.echo(
+        f"Loaded {len(oneway_fixes):,} CAGIS-verified oneway fix(es); "
+        "running BRouter route-diff."
+    )
+
+    with Progress() as progress:
+        task = progress.add_task("Route-impact", total=len(oneway_fixes))
+
+        def _progress(done, total, _task=task):
+            progress.update(_task, completed=done)
+
+        route_impact_for_fixes(
+            oneway_fixes,
+            classified.get("all_ways", []),
+            profile=profile,
+            progress_callback=_progress,
+        )
+
+    summary = summarize_route_impact(oneway_fixes)
+    classified.setdefault("summary_stats", {})
+    classified["summary_stats"]["route_impact"] = summary
+    classified["summary_stats"]["route_impact_profile"] = profile
+
+    _save_scan_results(classified, results_path)
+
+    click.echo(
+        f"Routing impact: real={summary['real']}, "
+        f"inconclusive={summary['inconclusive']}, noisy={summary['noisy']}, "
+        f"skipped={summary['fixes_skipped']}"
+    )
+    if summary["real"]:
+        click.echo(
+            f"Of the {summary['real']} fixes that change routing meaningfully: "
+            f"avg delta {summary['avg_delta_pct_real']}% of route cost, "
+            f"max {summary['max_delta_pct_real']}%, "
+            f"avg duration shift {summary['avg_duration_delta_s_real']} s."
+        )
+    click.echo(f"Updated {results_path}")
+
+
+# --- baseline-diff ---
+
+@main.command(name="baseline-diff")
+@click.option(
+    "--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE,
+    help="Zone whose baseline manifests to diff",
+)
+@click.option(
+    "--from",
+    "from_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help=(
+        "Path to the OLDER manifest. Defaults to the second-newest "
+        "cagis_baseline_*.json under osm-audit-{zone}/data/."
+    ),
+)
+@click.option(
+    "--to",
+    "to_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help=(
+        "Path to the NEWER manifest. Defaults to the newest "
+        "cagis_baseline_*.json under osm-audit-{zone}/data/."
+    ),
+)
+def baseline_diff_cmd(zone: str, from_path: str | None, to_path: str | None):
+    """Compare two CAGIS baseline manifests and surface bucket shifts.
+
+    Use this after a code change to the matcher OR after a quarterly
+    CAGIS data refresh to confirm the asymmetric promotion criterion
+    held: MATCHED_HIGH should rise from F3 reductions, not from
+    MATCHED_REVIEW contractions; total_ways should be stable across
+    runs.
+
+    Without --from / --to, defaults to the two newest manifests in
+    osm-audit-{zone}/data/.
+    """
+    from pathlib import Path as _Path
+
+    from .conflate import (
+        diff_baselines,
+        load_baseline_manifest,
+        newest_two_manifests,
+    )
+
+    if from_path and to_path:
+        a_path, b_path = _Path(from_path), _Path(to_path)
+    else:
+        pair = newest_two_manifests(_output_dir(zone) / "data")
+        if pair is None:
+            click.echo(
+                f"Need at least 2 cagis_baseline_*.json under "
+                f"osm-audit-{zone}/data/ — run 'osm conflate --zone {zone} "
+                "--baseline-manifest' twice (across separate code changes)."
+            )
+            raise SystemExit(1)
+        a_path, b_path = pair
+
+    a_doc = load_baseline_manifest(a_path)
+    b_doc = load_baseline_manifest(b_path)
+    diff = diff_baselines(a_doc, b_doc)
+
+    click.echo(f"Diff: {a_path.name}  →  {b_path.name}")
+    click.echo(f"Zone: {diff['zone_key']}")
+    click.echo(f"SHA:  {diff['git_sha_a']}  →  {diff['git_sha_b']}")
+    click.echo("")
+
+    # Headline
+    def _fmt(v):
+        if isinstance(v, float):
+            return f"{v:.2f}"
+        return str(v)
+
+    if diff["headline"]:
+        click.echo("Headline:")
+        for k, vals in diff["headline"].items():
+            a, b, d = vals.get("a"), vals.get("b"), vals.get("delta")
+            if isinstance(d, float):
+                d_str = f" ({d:+.2f})"
+            elif isinstance(d, int):
+                d_str = f" ({d:+d})"
+            else:
+                d_str = ""
+            click.echo(
+                f"  {k:30s} {_fmt(a):>10s} → {_fmt(b):>10s}{d_str}"
+            )
+        click.echo("")
+
+    # Buckets
+    click.echo("Buckets:")
+    for bucket, vals in diff["buckets"].items():
+        a, b, d, dp = vals["a"], vals["b"], vals["delta"], vals["delta_pct"]
+        sign = " " if d == 0 else ("+" if d > 0 else "−")
+        click.echo(
+            f"  {bucket:25s} {a:>6d} → {b:>6d}  "
+            f"{sign}{abs(d):>6d}  ({dp:+6.1f}%)"
+        )
+    click.echo("")
+
+    if diff["alerts"]:
+        click.echo("ALERTS:")
+        for a in diff["alerts"]:
+            click.echo(f"  ! {a}")
+    else:
+        click.echo("No promotion-criterion or scope alerts.")
+
+
+# --- maproulette ---
+
+@main.command(name="maproulette")
+@click.option(
+    "--zone", type=click.Choice(ZONE_KEYS), default=DEFAULT_ZONE,
+    help="Zone whose unverified candidates to export",
+)
+@click.option(
+    "--kind",
+    type=click.Choice(["class-a", "gaps", "both"]),
+    default="class-a",
+    help=(
+        "Which challenge to generate. class-a = Class A/AB ways below "
+        "the CAGIS auto-submit threshold (default). gaps = node-disconnect "
+        "candidates. both = produce two separate .geojsonl files plus two "
+        "separate metadata payloads."
+    ),
+)
+@click.option(
+    "--out",
+    type=click.Path(dir_okay=False, writable=True),
+    default=None,
+    help=(
+        "Output path for a single-kind challenge file. Defaults to "
+        "osm-audit-{zone}/maproulette/{zone}-{kind}.geojsonl. Ignored "
+        "when --kind=both."
+    ),
+)
+def maproulette_cmd(zone: str, kind: str, out: str | None):
+    """Phase 3 — generate MapRoulette challenges for human-review queues.
+
+    Two challenge kinds:
+
+    \b
+    * class-a — Class A/AB ways that did NOT make the auto-submit pool
+      (no CAGIS match at HIGH_CONFIDENCE). Each task asks a mapper to
+      verify whether the way's `oneway=yes` tag is a TIGER artefact.
+    * gaps — same-named OSM ways within 30 m of each other but with no
+      shared node. Each task asks a mapper to confirm and join.
+
+    Use --kind=both to write both files in a single invocation.
+    """
+    from pathlib import Path as _Path
+
+    from .maproulette import (
+        build_gap_tasks,
+        build_tasks,
+        challenge_metadata,
+        gap_challenge_metadata,
+        unverified_class_a_ways,
+        unverified_gaps,
+        write_gap_geojsonl,
+        write_geojsonl,
+    )
+
+    results_path = _output_dir(zone) / "scan-results.json"
+    if not results_path.exists():
+        click.echo(
+            f"No scan results found for {zone}. Run 'osm scan --zone {zone}' first."
+        )
+        raise SystemExit(1)
+
+    classified = _load_scan_results(results_path)
+    zone_name = ZONES[zone].get("name", zone)
+
+    def _write_class_a():
+        ways = unverified_class_a_ways(classified)
+        tasks = build_tasks(ways)
+        if not tasks:
+            click.echo(
+                f"No Class A / AB unverified ways for {zone}. The auto-submit "
+                "pool may already cover the candidates, or the polygon clip is "
+                "too tight."
+            )
+            return
+        out_path = (
+            _Path(out) if (out and kind == "class-a")
+            else _output_dir(zone) / "maproulette"
+            / f"{zone}-class-a-unverified.geojsonl"
+        )
+        n = write_geojsonl(tasks, out_path)
+        meta = challenge_metadata(
+            zone_name=zone_name, zone_key=zone, n_tasks=n,
+        )
+        click.echo(f"Wrote {n:,} Class A/AB task(s) to {out_path}")
+        click.echo("")
+        click.echo("Suggested challenge metadata (paste into MapRoulette UI):")
+        click.echo(json.dumps(meta, indent=2, ensure_ascii=False))
+
+    def _write_gaps():
+        gaps = unverified_gaps(classified)
+        tasks = build_gap_tasks(gaps)
+        if not tasks:
+            click.echo(f"No node-disconnect gap candidates for {zone}.")
+            return
+        out_path = (
+            _Path(out) if (out and kind == "gaps")
+            else _output_dir(zone) / "maproulette"
+            / f"{zone}-gaps.geojsonl"
+        )
+        n = write_gap_geojsonl(tasks, out_path)
+        meta = gap_challenge_metadata(
+            zone_name=zone_name, zone_key=zone, n_tasks=n,
+        )
+        click.echo(f"Wrote {n:,} node-disconnect task(s) to {out_path}")
+        click.echo("")
+        click.echo("Suggested gap-challenge metadata (paste into MapRoulette UI):")
+        click.echo(json.dumps(meta, indent=2, ensure_ascii=False))
+
+    if kind in ("class-a", "both"):
+        _write_class_a()
+        if kind == "both":
+            click.echo("")
+    if kind in ("gaps", "both"):
+        _write_gaps()
 
 
 # --- report ---

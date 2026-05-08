@@ -1005,7 +1005,20 @@
     const visible = rows.slice(0, PAGE);
     const more = rows.length - visible.length;
 
+    // MapRoulette generator block — surfaces the Phase 3 task generator
+    // alongside the same population it operates on. The button kicks off
+    // the server-side regeneration; the result is downloadable as a
+    // line-delimited GeoJSON for upload via the MapRoulette UI.
     const lines = [
+      `<div class="mr-block" id="mrBlock" style="margin: 6px 0 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-elevated);">`,
+      `<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">`,
+      `<strong style="font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-mute);">MapRoulette</strong>`,
+      `<span style="font-size: 12.5px; color: var(--ink-soft);">Generate a community-review challenge for Class A/AB ways below the auto-submit threshold.</span>`,
+      `<button class="btn btn-sm" id="mrGenerateBtn" style="margin-left: auto;">Generate challenge</button>`,
+      `<a class="btn btn-sm" id="mrDownloadBtn" href="/api/maproulette/${encodeURIComponent(state.currentZone)}" download style="display: none;">Download .geojsonl</a>`,
+      `</div>`,
+      `<div id="mrStatus" style="margin-top: 8px; font-size: 12.5px; color: var(--ink-mute); font-family: var(--mono);"></div>`,
+      `</div>`,
       `<table class="rs-table"><thead><tr>`,
       `<th>Way</th><th>Class</th><th>Name</th><th>CAGIS conf.</th>`,
       `<th>Hausdorff (m)</th><th>Name sim.</th><th>Routing impact</th>`,
@@ -1037,6 +1050,39 @@
       lines.push(`<div class="rs-more"><span>${more} more way(s) hidden — refine the filter or use the inventory CSV export.</span></div>`);
     }
     body.innerHTML = lines.join("");
+
+    // Wire MapRoulette generate button — re-bind every render since
+    // innerHTML wipes event listeners.
+    const mrBtn = $("#mrGenerateBtn");
+    const mrStatus = $("#mrStatus");
+    const mrDownload = $("#mrDownloadBtn");
+    if (mrBtn) {
+      mrBtn.addEventListener("click", async () => {
+        if (!state.currentZone) return;
+        mrBtn.disabled = true;
+        if (mrStatus) mrStatus.textContent = "Generating…";
+        try {
+          const data = await api(
+            "/api/maproulette/" + encodeURIComponent(state.currentZone),
+            { method: "POST" },
+          );
+          if (mrStatus) {
+            const meta = data.metadata || {};
+            mrStatus.innerHTML =
+              `Wrote <strong>${data.task_count || 0}</strong> task(s). ` +
+              `Suggested challenge name: <em>${esc(meta.name || "")}</em>. ` +
+              `Tags: <code>${esc(meta.tags || "")}</code>`;
+          }
+          if (mrDownload && (data.task_count || 0) > 0) {
+            mrDownload.style.display = "inline-flex";
+          }
+        } catch (e) {
+          if (mrStatus) mrStatus.textContent = "Failed: " + (e && e.message || e);
+        } finally {
+          mrBtn.disabled = false;
+        }
+      });
+    }
   }
 
   // Rider-impact findings — top 50 across all extra_findings, sorted by
@@ -1218,6 +1264,12 @@
       state.pendingFixes = data.fixes || [];
       $("#dryRunBtn").disabled = state.pendingFixes.length === 0;
       $("#submitBtn").disabled = state.pendingFixes.length === 0;
+      // The route-impact harness only operates on oneway fixes; enable
+      // when at least one is in the pending queue.
+      const hasOnewayFix = state.pendingFixes.some(
+        (f) => f.kind === "set_oneway_cagis" || f.kind === "remove_oneway_cagis",
+      );
+      $("#routeImpactBtn").disabled = !hasOnewayFix;
       // Make sure Osmose data is in cache before we render so the badge
       // is visible on first paint.
       await ensureOsmoseLoaded();
@@ -1227,6 +1279,53 @@
       toast("Load failed: " + e.message, "error");
     } finally {
       if (btn) btn.disabled = false;
+    }
+  }
+
+  // Phase 4b: surface the BRouter route-impact value-story payload in
+  // the Fix panel — same data the CLI's `osm fix-impact` produces, just
+  // wired into the panel the maintainer is already looking at.
+  async function runRouteImpact() {
+    if (!state.currentZone) return;
+    const btn = $("#routeImpactBtn");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Running…";
+    }
+    try {
+      const data = await api(
+        "/api/fix-impact/" + encodeURIComponent(state.currentZone),
+        { method: "POST" },
+      );
+      const s = (data && data.summary) || {};
+      const lines = [
+        `${s.real || 0} fix(es) measurably change routing.`,
+      ];
+      if ((s.real || 0) > 0) {
+        lines.push(
+          `Avg delta: ${s.avg_delta_pct_real || 0}% of route cost; ` +
+          `max ${s.max_delta_pct_real || 0}%; ` +
+          `avg duration shift ${s.avg_duration_delta_s_real || 0} s.`,
+        );
+      }
+      if ((s.fixes_skipped || 0) > 0) {
+        lines.push(
+          `${s.fixes_skipped} fix(es) skipped (maxspeed/name don't perturb routing).`,
+        );
+      }
+      toast(lines.join(" "), "ok");
+      // Refresh the fix panel so per-fix route_impact badges (if any)
+      // pick up the new data.
+      const data2 = await api("/api/review/" + state.currentZone);
+      state.pendingFixes = data2.fixes || state.pendingFixes;
+      renderFixPanel();
+    } catch (e) {
+      toast("Route-impact failed: " + (e && e.message || e), "error");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Routing impact";
+      }
     }
   }
 
@@ -1291,8 +1390,6 @@
 
   function updateSelectedCount() {
     const checked = $$(".fix-check").filter((c) => c.checked).length;
-    const all = state.pendingFixes.length;
-    const showAll = all > 500 ? all : checked + (all - $$(".fix-check").length);
     const el = $("#fxSelected");
     if (el) el.textContent = `${checked.toLocaleString()} selected`;
   }
@@ -1823,6 +1920,7 @@
     // fix
     $("#loadFixesBtn")?.addEventListener("click", loadFixes);
     $("#dryRunBtn")?.addEventListener("click", () => submitFixes(true));
+    $("#routeImpactBtn")?.addEventListener("click", runRouteImpact);
     $("#submitBtn")?.addEventListener("click", () => submitFixes(false));
 
     // history

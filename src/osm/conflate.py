@@ -940,6 +940,132 @@ def write_baseline_manifest(
     return summary
 
 
+# ---------------------------------------------------------------------------
+# Baseline diff — compare two cagis_baseline manifests
+#
+# Used by the maintainer to catch regressions: a quarterly CAGIS update
+# can shift confidences mid-experiment, and a code change to the matcher
+# might silently move ways between buckets (the asymmetric promotion
+# criterion the plan calls out: HIGH must rise from F3, REVIEW must not
+# contract). diff_baselines() puts those shifts side-by-side and flags
+# anything that breaks the criterion.
+# ---------------------------------------------------------------------------
+
+def load_baseline_manifest(path: Path) -> dict:
+    """Read a baseline manifest JSON. Surfaces parse errors clearly."""
+    with path.open("r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    if "summary" not in data or "buckets" not in data["summary"]:
+        raise ValueError(
+            f"Manifest {path} is missing the summary.buckets field; "
+            "regenerate via 'osm conflate --baseline-manifest'."
+        )
+    return data
+
+
+def diff_baselines(baseline_a: dict, baseline_b: dict) -> dict:
+    """Compare two manifests; return per-bucket deltas plus alerts.
+
+    ``baseline_a`` is the older / reference run; ``baseline_b`` is the
+    newer / candidate run. The returned dict has::
+
+        {
+          "zone_key": str,
+          "git_sha_a": str, "git_sha_b": str,
+          "buckets": {<bucket>: {"a": int, "b": int, "delta": int, "delta_pct": float}},
+          "headline": {"match_rate_pct": ..., "auto_submit_rate_pct": ...},
+          "alerts": [str, ...],   # asymmetric-promotion violations
+        }
+    """
+    sa = baseline_a.get("summary") or {}
+    sb = baseline_b.get("summary") or {}
+    buckets_a = sa.get("buckets") or {}
+    buckets_b = sb.get("buckets") or {}
+    all_keys = sorted(set(buckets_a) | set(buckets_b))
+
+    bucket_diffs: dict[str, dict] = {}
+    for k in all_keys:
+        a = int(buckets_a.get(k, 0))
+        b = int(buckets_b.get(k, 0))
+        delta = b - a
+        delta_pct = (
+            round(100.0 * delta / a, 2) if a else (100.0 if b else 0.0)
+        )
+        bucket_diffs[k] = {"a": a, "b": b, "delta": delta, "delta_pct": delta_pct}
+
+    headline_keys = (
+        "match_rate_pct", "auto_submit_rate_pct",
+        "matched_high", "matched_review", "matched_fallback_review",
+        "review_queue_pct", "total_ways",
+    )
+    headline: dict[str, dict] = {}
+    for k in headline_keys:
+        raw_a = sa.get(k)
+        raw_b = sb.get(k)
+        if raw_a is None and raw_b is None:
+            continue
+        va: Any = raw_a if raw_a is not None else 0
+        vb: Any = raw_b if raw_b is not None else 0
+        if isinstance(vb, (int, float)) and isinstance(va, (int, float)):
+            delta_val: Any = vb - va
+        else:
+            delta_val = None
+        headline[k] = {"a": va, "b": vb, "delta": delta_val}
+
+    alerts: list[str] = []
+    # Asymmetric promotion criterion #1: MATCHED_HIGH growing should
+    # come from F3 reductions, not from MATCHED_REVIEW contracting.
+    high_d = bucket_diffs.get(BUCKET_MATCHED_HIGH, {}).get("delta", 0)
+    review_d = bucket_diffs.get(BUCKET_MATCHED_REVIEW, {}).get("delta", 0)
+    f3_d = bucket_diffs.get(BUCKET_F3_GEOMETRY_FAIL, {}).get("delta", 0)
+    if high_d > 0 and review_d < 0 and abs(review_d) > high_d * 0.5:
+        alerts.append(
+            f"REGRESSION: MATCHED_HIGH grew by {high_d} but MATCHED_REVIEW "
+            f"contracted by {abs(review_d)} — likely fragile-graduation "
+            "(asymmetric promotion criterion violated)."
+        )
+    if high_d > 0 and f3_d > 0:
+        alerts.append(
+            f"WARNING: MATCHED_HIGH grew by {high_d} AND F3_GEOMETRY_FAIL "
+            f"grew by {f3_d} — promotion source unclear; investigate."
+        )
+    # Total ways shouldn't shift much without a re-clip or quarterly update.
+    total_a = (sa or {}).get("total_ways") or 0
+    total_b = (sb or {}).get("total_ways") or 0
+    if total_a and abs(total_b - total_a) / total_a > 0.10:
+        alerts.append(
+            f"NOTICE: total_ways shifted from {total_a} to {total_b} "
+            f"({((total_b - total_a) / total_a * 100):+.1f}%) — likely "
+            "polygon clip or harvest change between runs."
+        )
+
+    return {
+        "zone_key": baseline_a.get("zone_key") or baseline_b.get("zone_key"),
+        "git_sha_a": baseline_a.get("git_sha"),
+        "git_sha_b": baseline_b.get("git_sha"),
+        "buckets": bucket_diffs,
+        "headline": headline,
+        "alerts": alerts,
+    }
+
+
+def newest_two_manifests(data_dir: Path) -> tuple[Path, Path] | None:
+    """Return the (older, newer) pair of newest cagis_baseline files.
+
+    None when the directory has fewer than two matching files. Sort key
+    is mtime (manifest filename embeds the git SHA, not a timestamp).
+    """
+    if not data_dir.exists():
+        return None
+    candidates = sorted(
+        data_dir.glob("cagis_baseline_*.json"),
+        key=lambda p: p.stat().st_mtime,
+    )
+    if len(candidates) < 2:
+        return None
+    return (candidates[-2], candidates[-1])
+
+
 def build_index(features: list[dict]) -> ConflationIndex:
     """Build a :class:`ConflationIndex` from CAGIS GeoJSON features."""
     records: list[_CagisRecord] = []

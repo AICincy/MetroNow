@@ -172,7 +172,7 @@ osm auth login                                         # OSM OAuth 2.0 (PKCE)
 
 ## Verification (state of main as of last commit)
 
-- **230 passing tests** across `tests/test_{classify,gaps,geo,history_filter,review,detectors,conflate,notes,osmose,route_diff,tiger2024,polygons}.py`.
+- **273 passing tests** across `tests/test_{classify,gaps,geo,history_filter,review,detectors,conflate,notes,osmose,route_diff,tiger2024,polygons,gtfs,maproulette,bus_routes}.py`.
 - `ruff check src/` clean. `mypy src/osm/ --ignore-missing-imports` clean.
 - Four-zone CAGIS conflation snapshot, post-Phase-4a stage 3 (real
   MetroNow operational polygons sourced from SORTA's published web
