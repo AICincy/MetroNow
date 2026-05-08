@@ -1,0 +1,1032 @@
+/* MetroNow Atlas — main app logic.
+   Wires the redesigned UI to the existing /api/* endpoints served by web/server.js. */
+(function () {
+  "use strict";
+
+  const $ = (s, root) => (root || document).querySelector(s);
+  const $$ = (s, root) => Array.from((root || document).querySelectorAll(s));
+
+  function esc(str) {
+    const d = document.createElement("div");
+    d.textContent = str == null ? "" : String(str);
+    return d.innerHTML;
+  }
+
+  // --------------------------------------------------------------- state
+  const state = {
+    zones: {},
+    zoneKeys: [],
+    currentZone: null,
+    results: null,           // last loaded scan-results.json for current zone
+    pendingFixes: [],        // [{way, fix}, ...]
+    classFilters: { AB: true, A: true, B: true, C: false, GAPS: true },
+    scanInProgress: false,
+    scanStartedAt: 0,
+    scanTimerId: null,
+    auth: { authenticated: false, scope: null },
+    authVerifier: null,
+    discussKey: () => `metronow.discuss.${state.currentZone || "_"}`,
+    formalityKey: "metronow.formality",
+  };
+
+  // --------------------------------------------------------------- API helper
+  async function api(url, opts) {
+    const o = opts || {};
+    const init = {
+      method: o.method || "GET",
+      headers: { "Content-Type": "application/json" },
+    };
+    if (o.body !== undefined) init.body = JSON.stringify(o.body);
+    const res = await fetch(url, init);
+    let data = null;
+    try { data = await res.json(); } catch { data = null; }
+    if (!res.ok) {
+      const msg = (data && data.error) || `HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  // --------------------------------------------------------------- toast
+  let toastTimer = null;
+  function toast(msg, kind) {
+    const t = $("#toast");
+    if (!t) return;
+    t.textContent = msg;
+    t.className = "toast show" + (kind ? " " + kind : "");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      t.className = "toast";
+    }, 3200);
+  }
+
+  // --------------------------------------------------------------- console (left rail)
+  function consoleLog(line, kind) {
+    const body = $("#consoleBody");
+    if (!body) return;
+    const div = document.createElement("div");
+    div.className = "console-line" + (kind ? " " + kind : "");
+    const ts = new Date().toLocaleTimeString();
+    div.textContent = `[${ts}] ${line}`;
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+  }
+  function consoleClear() {
+    const body = $("#consoleBody");
+    if (body) body.innerHTML = "";
+  }
+  function consoleStatus(label, dotClass) {
+    const lab = $("#ckLabel");
+    const dot = $("#ckDot");
+    if (lab) lab.textContent = label;
+    if (dot) {
+      dot.className = "ck-dot " + (dotClass || "idle");
+    }
+  }
+  function consoleShow(show) {
+    const p = $("#consolePanel");
+    if (p) p.style.display = show ? "" : "none";
+  }
+
+  // --------------------------------------------------------------- API health
+  async function pingApi() {
+    const dot = $("#apiDot");
+    const text = $("#apiText");
+    try {
+      await api("/api/zones");
+      if (dot) dot.classList.remove("offline");
+      if (text) text.textContent = "API connected";
+    } catch (e) {
+      if (dot) dot.classList.add("offline");
+      if (text) text.textContent = "API offline";
+    }
+  }
+
+  // --------------------------------------------------------------- zones
+  async function loadZones() {
+    const data = await api("/api/zones");
+    state.zones = data.zones || {};
+    state.zoneKeys = data.keys || Object.keys(state.zones);
+    const def = data.default || state.zoneKeys[0];
+    state.currentZone = def;
+    renderZoneList();
+    renderCrumb();
+    const meta = $("#zoneCount");
+    if (meta) meta.textContent = `${state.zoneKeys.length} zones`;
+  }
+
+  function renderZoneList() {
+    const list = $("#zoneList");
+    if (!list) return;
+    list.innerHTML = "";
+    state.zoneKeys.forEach((k) => {
+      const z = state.zones[k];
+      const btn = document.createElement("button");
+      btn.className = "zone-card";
+      btn.setAttribute("data-zone", k);
+      btn.setAttribute("aria-pressed", k === state.currentZone ? "true" : "false");
+      btn.innerHTML =
+        `<span class="zone-name">${esc(z.name)}</span>` +
+        `<span class="zone-desc">${esc(z.description || "")}</span>`;
+      btn.addEventListener("click", () => selectZone(k));
+      list.appendChild(btn);
+    });
+  }
+
+  function renderCrumb() {
+    const z = state.zones[state.currentZone];
+    const el = $("#crumbZone");
+    if (el) el.textContent = z ? z.name : "—";
+  }
+
+  async function selectZone(k) {
+    if (k === state.currentZone) return;
+    state.currentZone = k;
+    renderZoneList();
+    renderCrumb();
+    fitToZoneBounds();
+    state.results = null;
+    state.pendingFixes = [];
+    setReportsEnabled(false);
+    clearMap();
+    renderStats(null);
+    renderClasses(null);
+    setLastRun("—");
+    closeAllPanels();
+    await tryLoadExistingResults();
+  }
+
+  function fitToZoneBounds() {
+    const z = state.zones[state.currentZone];
+    if (!z || !z.bbox || !mapRef) return;
+    const [s, w, n, e] = z.bbox;
+    mapRef.fitBounds([[s, w], [n, e]], { padding: [40, 40] });
+  }
+
+  // --------------------------------------------------------------- map
+  let mapRef = null;
+  const baseLayers = {};
+  let currentBase = "positron";
+  const wayLayer = L.layerGroup();
+  const gapLayer = L.layerGroup();
+
+  function initMap() {
+    mapRef = L.map("map", { zoomControl: false, preferCanvas: true }).setView([39.20, -84.39], 11);
+
+    baseLayers.positron = L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+      { attribution: '&copy; OpenStreetMap, &copy; CARTO', maxZoom: 19 }
+    );
+    baseLayers.dark = L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      { attribution: '&copy; OpenStreetMap, &copy; CARTO', maxZoom: 19 }
+    );
+    baseLayers.voyager = L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+      { attribution: '&copy; OpenStreetMap, &copy; CARTO', maxZoom: 19 }
+    );
+    baseLayers.esri = L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      { attribution: 'Imagery &copy; Esri', maxZoom: 19 }
+    );
+
+    baseLayers[currentBase].addTo(mapRef);
+    wayLayer.addTo(mapRef);
+    gapLayer.addTo(mapRef);
+
+    $$(".bm-btn").forEach((btn) => {
+      btn.addEventListener("click", () => switchBase(btn.dataset.base));
+    });
+    $("#zoomIn")?.addEventListener("click", () => mapRef.zoomIn());
+    $("#zoomOut")?.addEventListener("click", () => mapRef.zoomOut());
+    $("#zoomFit")?.addEventListener("click", () => fitToZoneBounds());
+  }
+
+  function switchBase(name) {
+    if (!baseLayers[name] || name === currentBase) return;
+    mapRef.removeLayer(baseLayers[currentBase]);
+    baseLayers[name].addTo(mapRef);
+    currentBase = name;
+    $$(".bm-btn").forEach((b) => {
+      b.setAttribute("aria-pressed", b.dataset.base === name ? "true" : "false");
+    });
+  }
+
+  // class colors / weights — read from CSS custom properties so theme/tweaks update naturally
+  function classColor(cls) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(`--cls-${cls.toLowerCase()}`).trim();
+    return v || "#888";
+  }
+  function classWeight(cls) {
+    const w = (window.atlasWeight || "med");
+    const base = { thin: 2, med: 3, thick: 4 }[w] || 3;
+    if (cls === "AB") return base + 2;
+    if (cls === "A") return base + 1;
+    if (cls === "B") return base;
+    return Math.max(1, base - 1);
+  }
+
+  function clearMap() {
+    wayLayer.clearLayers();
+    gapLayer.clearLayers();
+  }
+
+  function classFilterAllowsWay(w) {
+    const cls = (w.defect_class || "C").toUpperCase();
+    return !!state.classFilters[cls];
+  }
+
+  function drawResults(data) {
+    clearMap();
+    const ways = (data && data.all_ways) || [];
+    const counts = { AB: 0, A: 0, B: 0, C: 0 };
+    let drawn = 0;
+    for (let i = 0; i < ways.length; i++) {
+      const w = ways[i];
+      const cls = (w.defect_class || "C").toUpperCase();
+      if (counts[cls] !== undefined) counts[cls]++;
+      if (!w.geometry || w.geometry.length < 2) continue;
+      if (!classFilterAllowsWay(w)) continue;
+      const poly = L.polyline(w.geometry, {
+        color: classColor(cls),
+        weight: classWeight(cls),
+        opacity: cls === "C" ? 0.55 : 0.9,
+      });
+      poly.on("click", () => showInspector(w));
+      poly.bindTooltip(
+        `<b>${esc(w.name_display || "Way " + w.id)}</b><br>${cls} · ${esc(w.highway || "?")}`,
+        { sticky: true }
+      );
+      wayLayer.addLayer(poly);
+      drawn++;
+    }
+    const gaps = (data && data.gaps) || [];
+    const gapColor = classColor("a");
+    gaps.forEach((g) => {
+      const lat = g.lat || (g.point && g.point[0]);
+      const lon = g.lon || (g.point && g.point[1]);
+      if (typeof lat !== "number" || typeof lon !== "number") return;
+      const m = L.circleMarker([lat, lon], {
+        radius: 5,
+        color: gapColor,
+        fillColor: gapColor,
+        fillOpacity: 0.85,
+        weight: 1.5,
+      });
+      m.bindTooltip(`Gap · ${esc(g.distance_m ? g.distance_m.toFixed(1) + "m" : "")}`);
+      gapLayer.addLayer(m);
+    });
+
+    // legend counters
+    $("#legAB") && ($("#legAB").textContent = counts.AB.toLocaleString());
+    $("#legA") && ($("#legA").textContent = counts.A.toLocaleString());
+    $("#legB") && ($("#legB").textContent = counts.B.toLocaleString());
+    $("#legC") && ($("#legC").textContent = counts.C.toLocaleString());
+    $("#legGaps") && ($("#legGaps").textContent = (gaps.length || 0).toLocaleString());
+    $("#legendTotal") && ($("#legendTotal").textContent = drawn ? `${drawn.toLocaleString()} drawn` : "");
+  }
+
+  // --------------------------------------------------------------- right rail (inspector)
+  function showInspector(w) {
+    const r = $("#rrail");
+    if (!r) return;
+    document.getElementById("app").setAttribute("data-rrail", "open");
+    const wayId = w.id || "?";
+    const cls = w.defect_class || "C";
+    const review = w.review_status
+      ? `<div class="ins-row"><span class="ins-k">Review</span><span class="ins-v">${esc(w.review_status)} (${(w.review_confidence ?? 0).toFixed(2)})</span></div>`
+      : "";
+    const reason = w.review_reason
+      ? `<div class="ins-row"><span class="ins-k">Reason</span><span class="ins-v">${esc(w.review_reason)}</span></div>`
+      : "";
+    r.innerHTML = `
+      <div class="ins-head">
+        <div class="ins-title">${esc(w.name_display || "Way " + wayId)}</div>
+        <button class="icon-btn" id="rrailClose" title="Close">
+          <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="ins-body">
+        <div class="ins-row"><span class="ins-k">Way ID</span><span class="ins-v"><a href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank" rel="noopener">${esc(wayId)}</a></span></div>
+        <div class="ins-row"><span class="ins-k">Class</span><span class="ins-v">${esc(cls)}</span></div>
+        <div class="ins-row"><span class="ins-k">Highway</span><span class="ins-v">${esc(w.highway || "—")}</span></div>
+        <div class="ins-row"><span class="ins-k">Oneway</span><span class="ins-v">${esc(w.oneway || "—")}</span></div>
+        <div class="ins-row"><span class="ins-k">Surface</span><span class="ins-v">${esc(w.surface || "—")}</span></div>
+        <div class="ins-row"><span class="ins-k">Lanes</span><span class="ins-v">${esc(w.lanes || "—")}</span></div>
+        <div class="ins-row"><span class="ins-k">Last edit</span><span class="ins-v">${esc(w.user || "—")} · v${esc(w.version || "?")}</span></div>
+        ${review}${reason}
+        <div class="ins-actions">
+          <a class="btn btn-sm" href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank" rel="noopener">Open in OSM ↗</a>
+          <a class="btn btn-sm" href="http://127.0.0.1:8111/load_object?objects=w${encodeURIComponent(wayId)}" target="_blank" rel="noopener">Edit in JOSM</a>
+        </div>
+      </div>
+    `;
+    $("#rrailClose")?.addEventListener("click", () => {
+      document.getElementById("app").setAttribute("data-rrail", "closed");
+    });
+  }
+
+  // --------------------------------------------------------------- stats & classes
+  function renderStats(stats) {
+    const grid = $("#statsGrid");
+    const section = $("#statsSection");
+    const empty = $("#emptySection");
+    if (!grid || !section) return;
+    if (!stats) {
+      grid.innerHTML = "";
+      section.style.display = "none";
+      if (empty) empty.style.display = "";
+      const d = $("#dockResults"); if (d) d.style.display = "none";
+      return;
+    }
+    if (empty) empty.style.display = "none";
+    section.style.display = "";
+    const items = [
+      { k: "Total ways", v: stats.total || 0 },
+      { k: "Residential", v: stats.residential || 0 },
+      { k: "AB compound", v: stats.class_ab_count || 0, kind: "ab" },
+      { k: "A false 1-way", v: stats.class_a_count || 0, kind: "a" },
+      { k: "B multi-seg", v: stats.class_b_way_count || 0, kind: "b" },
+      { k: "Node gaps", v: stats.gaps_found || 0, kind: "gaps" },
+    ];
+    grid.innerHTML = items.map((it) => `
+      <div class="stat ${it.kind || ""}">
+        <div class="stat-v">${Number(it.v).toLocaleString()}</div>
+        <div class="stat-l">${esc(it.k)}</div>
+      </div>
+    `).join("");
+    const dockFix = $("#dockFix");
+    const dockResults = $("#dockResults");
+    const fixable = (stats.class_a_count || 0); // class A + AB get oneway fix
+    if (dockResults) {
+      const total = (stats.class_ab_count || 0) + (stats.class_a_count || 0);
+      dockResults.style.display = total > 0 ? "" : "none";
+      dockResults.textContent = total.toLocaleString();
+    }
+    if (dockFix) {
+      dockFix.style.display = fixable > 0 ? "" : "none";
+      dockFix.textContent = fixable.toLocaleString();
+    }
+    const cs = $("#clearScanBtn"); if (cs) cs.style.display = "";
+  }
+
+  function renderClasses(stats) {
+    const list = $("#classList");
+    const section = $("#classSection");
+    if (!list || !section) return;
+    if (!stats) { list.innerHTML = ""; section.style.display = "none"; return; }
+    section.style.display = "";
+    const rows = [
+      { c: "AB", k: "Compound", v: stats.class_ab_count || 0 },
+      { c: "A",  k: "False 1-way", v: stats.class_a_count || 0 },
+      { c: "B",  k: "Multi-segment", v: stats.class_b_way_count || 0 },
+      { c: "C",  k: "Residual", v: (stats.total || 0) - (stats.class_ab_count || 0) - (stats.class_a_count || 0) - (stats.class_b_way_count || 0) },
+      { c: "GAPS", k: "Node gaps", v: stats.gaps_found || 0 },
+    ];
+    list.innerHTML = rows.map((r) => `
+      <button class="class-row${state.classFilters[r.c] ? " on" : ""}" data-class="${r.c}" aria-pressed="${state.classFilters[r.c]}">
+        <span class="class-swatch" style="background:${r.c === "GAPS" ? "var(--accent)" : "var(--cls-" + r.c.toLowerCase() + ")"};"></span>
+        <span class="class-label"><strong>${r.c}</strong> ${esc(r.k)}</span>
+        <span class="class-count">${Number(r.v).toLocaleString()}</span>
+      </button>
+    `).join("");
+    $$("#classList .class-row").forEach((btn) => {
+      btn.addEventListener("click", () => toggleClassFilter(btn.dataset.class));
+    });
+    // and wire legend
+    $$(".leg-item").forEach((el) => {
+      el.onclick = () => toggleClassFilter(el.dataset.class);
+    });
+  }
+
+  function toggleClassFilter(c) {
+    state.classFilters[c] = !state.classFilters[c];
+    // class-row and leg-item presses
+    $$(`.class-row[data-class="${c}"]`).forEach((b) => {
+      b.classList.toggle("on", state.classFilters[c]);
+      b.setAttribute("aria-pressed", state.classFilters[c]);
+    });
+    $$(`.leg-item[data-class="${c}"]`).forEach((b) => {
+      b.setAttribute("aria-pressed", state.classFilters[c]);
+    });
+    if (state.results) drawResults(state.results);
+  }
+
+  function setLastRun(label) {
+    const el = $("#lastRun");
+    if (el) el.textContent = label;
+  }
+
+  // --------------------------------------------------------------- scan
+  async function tryLoadExistingResults() {
+    if (!state.currentZone) return;
+    try {
+      const data = await api("/api/results/" + state.currentZone);
+      if (!data || !data.all_ways) return;
+      state.results = data;
+      drawResults(data);
+      renderStats(data.summary_stats || {});
+      renderClasses(data.summary_stats || {});
+      setLastRun(new Date().toLocaleString());
+      setReportsEnabled(true);
+      consoleLog("Loaded existing scan results", "ok");
+      consoleShow(true);
+      consoleStatus("audit · idle", "idle");
+    } catch (_) {
+      // 404 = no scan yet, silently leave empty
+    }
+  }
+
+  function setReportsEnabled(on) {
+    const a = $("#genReportsBtn"); if (a) a.disabled = !on;
+    const b = $("#openDashBtn"); if (b) b.disabled = !on;
+  }
+
+  function startScanTimer() {
+    state.scanStartedAt = Date.now();
+    if (state.scanTimerId) clearInterval(state.scanTimerId);
+    state.scanTimerId = setInterval(() => {
+      const s = (Date.now() - state.scanStartedAt) / 1000;
+      const el = $("#ckElapsed");
+      if (el) el.textContent = s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s/60)}m ${Math.floor(s%60)}s`;
+    }, 200);
+  }
+  function stopScanTimer() {
+    if (state.scanTimerId) { clearInterval(state.scanTimerId); state.scanTimerId = null; }
+  }
+
+  async function runScan() {
+    if (state.scanInProgress) return;
+    if (!state.currentZone) { toast("Pick a zone first", "warn"); return; }
+    state.scanInProgress = true;
+    const btn = $("#scanBtn");
+    if (btn) btn.disabled = true;
+    consoleShow(true);
+    consoleClear();
+    consoleStatus("audit · running", "live");
+    consoleLog(`Starting scan for ${state.zones[state.currentZone].name}`);
+    consoleLog("Querying Overpass API…");
+    startScanTimer();
+    const skip = $("#skipHistory")?.checked !== false;
+    try {
+      const result = await api("/api/scan", {
+        method: "POST",
+        body: { zone: state.currentZone, skip_history: skip },
+      });
+      consoleLog("Classifying defects…");
+      consoleLog(`Scan complete — ${(result.stats.total || 0).toLocaleString()} ways analyzed`, "ok");
+      consoleStatus("audit · complete", "ok");
+      // pull full results so we can draw the map
+      const full = await api("/api/results/" + state.currentZone);
+      state.results = full;
+      drawResults(full);
+      renderStats(full.summary_stats || {});
+      renderClasses(full.summary_stats || {});
+      setLastRun(new Date().toLocaleString());
+      setReportsEnabled(true);
+      toast(`Scan finished — ${(result.stats.class_ab_count || 0)} compound, ${(result.stats.class_a_count || 0)} false 1-way`);
+    } catch (e) {
+      consoleLog("Scan failed: " + e.message, "error");
+      consoleStatus("audit · error", "error");
+      toast("Scan failed: " + e.message, "error");
+    } finally {
+      stopScanTimer();
+      state.scanInProgress = false;
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // --------------------------------------------------------------- panels / dock
+  function openPanel(name) {
+    $$(".overlay-panel").forEach((p) => p.classList.add("hidden"));
+    const p = $("#panel-" + name);
+    if (p) p.classList.remove("hidden");
+    $$(".dock-btn").forEach((b) => {
+      b.setAttribute("aria-pressed", b.dataset.view === name ? "true" : "false");
+    });
+    if (name === "results") renderResultsPanel();
+    if (name === "history") renderHistoryPanel();
+    if (name === "discuss") renderDiscussPanel();
+    if (name === "formality") renderFormalityPanel();
+    if (name === "auth") renderAuthPanel();
+  }
+  function closeAllPanels() {
+    $$(".overlay-panel").forEach((p) => p.classList.add("hidden"));
+    $$(".dock-btn").forEach((b) => {
+      b.setAttribute("aria-pressed", b.dataset.view === "map" ? "true" : "false");
+    });
+  }
+
+  // --------------------------------------------------------------- results panel
+  function renderResultsPanel() {
+    const body = $("#resultsBody");
+    if (!body) return;
+    if (!state.results) {
+      body.innerHTML = `<div class="empty"><div class="em-title">No scan yet</div>Run a scan to see the defect inventory.</div>`;
+      return;
+    }
+    const ab = (state.results.class_ab || []);
+    const a = (state.results.class_a_only || []);
+    body.innerHTML =
+      sectionTable("Class AB — compound (highest risk)", ab, "ab") +
+      sectionTable("Class A — false oneway", a, "a");
+  }
+  function sectionTable(title, ways, kind) {
+    if (!ways.length) {
+      return `<div class="rs-section"><h3>${esc(title)}</h3><p class="muted">None found.</p></div>`;
+    }
+    const rows = ways.slice(0, 200).map((w) => {
+      const review = w.review_status ? `<span class="badge">${esc(w.review_status)}</span>` : "";
+      const wayId = w.id || "?";
+      return `<tr>
+        <td><a href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank" rel="noopener">${esc(wayId)}</a></td>
+        <td>${esc(w.name_display || "—")}</td>
+        <td>${esc(w.highway || "—")}</td>
+        <td>${esc(w.oneway || "—")}</td>
+        <td>${review}</td>
+      </tr>`;
+    }).join("");
+    return `
+      <div class="rs-section ${kind}">
+        <h3>${esc(title)} <span class="rs-count">${ways.length.toLocaleString()}</span></h3>
+        <table class="rs-table">
+          <thead><tr><th>Way ID</th><th>Street</th><th>Highway</th><th>Oneway</th><th>Review</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${ways.length > 200 ? `<p class="muted">Showing 200 of ${ways.length.toLocaleString()}.</p>` : ""}
+      </div>
+    `;
+  }
+
+  // --------------------------------------------------------------- fix panel
+  async function loadFixes() {
+    if (!state.currentZone) return;
+    const btn = $("#loadFixesBtn");
+    if (btn) btn.disabled = true;
+    try {
+      const data = await api("/api/review/" + state.currentZone);
+      state.pendingFixes = data.fixes || [];
+      $("#dryRunBtn").disabled = state.pendingFixes.length === 0;
+      $("#submitBtn").disabled = state.pendingFixes.length === 0;
+      renderFixPanel();
+      toast(`${data.count.toLocaleString()} fixable defect(s) loaded`);
+    } catch (e) {
+      toast("Load failed: " + e.message, "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function renderFixPanel() {
+    const body = $("#fixBody");
+    if (!body) return;
+    if (!state.pendingFixes.length) {
+      body.innerHTML = `<div class="empty"><div class="em-title">No proposals loaded</div>Click <strong>Load proposals</strong> to fetch automatically-fixable defects from the most recent scan.</div>`;
+      return;
+    }
+    const rows = state.pendingFixes.slice(0, 500).map((p, i) => {
+      const w = p.way || {};
+      const f = p.fix || {};
+      const wayId = w.id || "?";
+      return `<tr>
+        <td><input type="checkbox" class="fix-check" data-i="${i}" checked></td>
+        <td><a href="https://www.openstreetmap.org/way/${encodeURIComponent(wayId)}" target="_blank" rel="noopener">${esc(wayId)}</a></td>
+        <td>${esc(w.name_display || "—")}</td>
+        <td>${esc(w.defect_class || "?")}</td>
+        <td>${esc(f.description || "")}</td>
+      </tr>`;
+    }).join("");
+    body.innerHTML = `
+      <div class="fx-toolbar">
+        <label class="opt-row"><input type="checkbox" id="fxSelectAll" checked> <span>Select all</span></label>
+        <span class="muted" id="fxSelected">${state.pendingFixes.length.toLocaleString()} selected</span>
+      </div>
+      <table class="rs-table">
+        <thead><tr><th></th><th>Way ID</th><th>Street</th><th>Class</th><th>Proposed fix</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${state.pendingFixes.length > 500 ? `<p class="muted">Showing 500 of ${state.pendingFixes.length.toLocaleString()}; all will be submitted when you click Submit.</p>` : ""}
+      <div id="fxResult"></div>
+    `;
+    $("#fxSelectAll")?.addEventListener("change", (ev) => {
+      const on = ev.target.checked;
+      $$(".fix-check").forEach((cb) => (cb.checked = on));
+      updateSelectedCount();
+    });
+    $$(".fix-check").forEach((cb) => cb.addEventListener("change", updateSelectedCount));
+  }
+
+  function updateSelectedCount() {
+    const checked = $$(".fix-check").filter((c) => c.checked).length;
+    const all = state.pendingFixes.length;
+    const showAll = all > 500 ? all : checked + (all - $$(".fix-check").length);
+    const el = $("#fxSelected");
+    if (el) el.textContent = `${checked.toLocaleString()} selected`;
+  }
+
+  function getSelectedFixes() {
+    const checks = $$(".fix-check");
+    if (!checks.length) return state.pendingFixes.map((p) => p.fix); // nothing rendered yet → all
+    const set = new Set();
+    checks.forEach((cb) => { if (cb.checked) set.add(parseInt(cb.dataset.i, 10)); });
+    return state.pendingFixes
+      .map((p, i) => (set.has(i) ? p.fix : null))
+      .filter(Boolean)
+      // also include any > 500 not rendered, since "select all" implies all
+      .concat($("#fxSelectAll")?.checked && state.pendingFixes.length > 500
+        ? state.pendingFixes.slice(500).map((p) => p.fix)
+        : []);
+  }
+
+  async function submitFixes(dryRun) {
+    const fixes = getSelectedFixes();
+    if (!fixes.length) { toast("No fixes selected", "warn"); return; }
+    if (!dryRun && !state.auth.authenticated) {
+      toast("Sign in with OpenStreetMap first", "warn");
+      openPanel("auth");
+      return;
+    }
+    if (!dryRun && !confirm(`Submit ${fixes.length.toLocaleString()} correction(s) to OpenStreetMap?\n\nThis modifies live map data and cannot be undone.`)) {
+      return;
+    }
+    const btn = dryRun ? $("#dryRunBtn") : $("#submitBtn");
+    if (btn) btn.disabled = true;
+    try {
+      const result = await api("/api/fix", {
+        method: "POST",
+        body: { zone: state.currentZone, fixes, dry_run: !!dryRun },
+      });
+      const fr = $("#fxResult");
+      if (dryRun) {
+        if (fr) fr.innerHTML = `<div class="fx-result ok">[DRY RUN] Would submit <strong>${result.fixes_applied}</strong> fix(es). No changes made.</div>`;
+        toast("Dry run complete");
+      } else {
+        const ids = (result.changeset_ids || [])
+          .map((id) => `<a href="https://www.openstreetmap.org/changeset/${id}" target="_blank" rel="noopener">${id}</a>`)
+          .join(", ");
+        let html = `<div class="fx-result ok">Submitted <strong>${result.fixes_applied}</strong> fix(es).</div>`;
+        if (ids) html += `<div class="muted">Changeset(s): ${ids}</div>`;
+        if (result.errors && result.errors.length)
+          html += `<div class="fx-result err">${result.errors.length} error(s): ${esc(result.errors.join("; "))}</div>`;
+        if (fr) fr.innerHTML = html;
+        toast("Corrections submitted to OSM");
+      }
+    } catch (e) {
+      const fr = $("#fxResult");
+      if (fr) fr.innerHTML = `<div class="fx-result err">${esc(e.message)}</div>`;
+      toast((dryRun ? "Dry run failed: " : "Submit failed: ") + e.message, "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // --------------------------------------------------------------- history panel
+  async function renderHistoryPanel() {
+    const body = $("#historyBody");
+    if (!body) return;
+    body.innerHTML = `<p class="muted">Loading…</p>`;
+    try {
+      const entries = await api("/api/history");
+      if (!entries.length) {
+        body.innerHTML = `<div class="empty"><div class="em-title">No activity yet</div>Scans, dry runs, and submissions appear here.</div>`;
+        return;
+      }
+      body.innerHTML = `<ol class="ledger">${entries.slice().reverse().map(ledgerItem).join("")}</ol>`;
+    } catch (e) {
+      body.innerHTML = `<div class="fx-result err">${esc(e.message)}</div>`;
+    }
+  }
+  function ledgerItem(e) {
+    const ts = e.ts || e.timestamp || "";
+    const action = e.action || "?";
+    let detail = "";
+    if (action === "scan") {
+      const s = e.stats || {};
+      detail = `${(s.total || 0).toLocaleString()} ways · ${(s.class_ab_count || 0)} AB · ${(s.class_a_count || 0)} A`;
+    } else if (action === "dry_run") {
+      detail = `${(e.fixes_applied || 0)} would-submit`;
+    } else if (action === "submit") {
+      detail = `${(e.fixes_applied || 0)} applied · ${(e.changeset_ids || []).length} changeset(s)`;
+    }
+    return `<li>
+      <div class="lg-time">${esc(ts)}</div>
+      <div class="lg-action">${esc(action)}</div>
+      <div class="lg-zone">${esc(e.zone || "")}</div>
+      <div class="lg-detail">${esc(detail)}</div>
+    </li>`;
+  }
+
+  // --------------------------------------------------------------- discuss panel (localStorage-only)
+  function loadDiscuss() {
+    try { return JSON.parse(localStorage.getItem(state.discussKey()) || "[]"); } catch { return []; }
+  }
+  function saveDiscuss(items) { localStorage.setItem(state.discussKey(), JSON.stringify(items)); }
+
+  function renderDiscussPanel() {
+    const body = $("#discussBody");
+    if (!body) return;
+    const items = loadDiscuss();
+    body.innerHTML = items.length === 0
+      ? `<div class="empty"><div class="em-title">No threads yet</div>Use Discussion to track decisions about specific corrections — saved locally to this browser, scoped to the active zone.</div>`
+      : `<ol class="threads">${items.slice().reverse().map((it, idx) => `
+          <li class="thread">
+            <div class="th-head"><span class="th-author">${esc(it.author || "you")}</span><span class="th-time">${esc(it.ts || "")}</span></div>
+            <div class="th-title">${esc(it.title || "")}</div>
+            <div class="th-body">${esc(it.body || "")}</div>
+          </li>`).join("")}</ol>`;
+    const dock = $("#dockDiscuss");
+    if (dock) {
+      dock.style.display = items.length ? "" : "none";
+      dock.textContent = items.length;
+    }
+  }
+
+  function newThread() {
+    const title = prompt("Thread title");
+    if (!title) return;
+    const body = prompt("Notes / context");
+    const items = loadDiscuss();
+    items.push({ title, body: body || "", author: "you", ts: new Date().toLocaleString() });
+    saveDiscuss(items);
+    renderDiscussPanel();
+  }
+  function clearDiscuss() {
+    if (!confirm("Clear all discussion threads for this zone?")) return;
+    saveDiscuss([]);
+    renderDiscussPanel();
+  }
+
+  // --------------------------------------------------------------- formality panel
+  const FORMALITY_DEFAULTS = {
+    audience: "OSM community + SORTA stakeholders",
+    tone: "Neutral, evidence-led",
+    citations: true,
+    glossary: true,
+    cagis_credit: true,
+  };
+  function loadFormality() {
+    try {
+      const v = JSON.parse(localStorage.getItem(state.formalityKey) || "null");
+      return v || { ...FORMALITY_DEFAULTS };
+    } catch { return { ...FORMALITY_DEFAULTS }; }
+  }
+  function saveFormality(v) { localStorage.setItem(state.formalityKey, JSON.stringify(v)); }
+
+  function renderFormalityPanel() {
+    const body = $("#formalityBody");
+    if (!body) return;
+    const v = loadFormality();
+    body.innerHTML = `
+      <form class="formality-form" id="formalityForm">
+        <label class="opt-row col"><span>Audience</span><input class="input" id="fmAudience" value="${esc(v.audience)}"></label>
+        <label class="opt-row col"><span>Tone</span><input class="input" id="fmTone" value="${esc(v.tone)}"></label>
+        <label class="opt-row"><input type="checkbox" id="fmCit" ${v.citations ? "checked" : ""}> <span>Include numbered citations</span></label>
+        <label class="opt-row"><input type="checkbox" id="fmGlo" ${v.glossary ? "checked" : ""}> <span>Append glossary section</span></label>
+        <label class="opt-row"><input type="checkbox" id="fmCAG" ${v.cagis_credit ? "checked" : ""}> <span>Include CAGIS / ODOT TIMS data credit</span></label>
+      </form>
+    `;
+  }
+  function saveFormalityFromForm() {
+    const v = {
+      audience: $("#fmAudience")?.value || FORMALITY_DEFAULTS.audience,
+      tone: $("#fmTone")?.value || FORMALITY_DEFAULTS.tone,
+      citations: !!$("#fmCit")?.checked,
+      glossary: !!$("#fmGlo")?.checked,
+      cagis_credit: !!$("#fmCAG")?.checked,
+    };
+    saveFormality(v);
+    toast("Formality saved");
+  }
+  function resetFormality() {
+    saveFormality({ ...FORMALITY_DEFAULTS });
+    renderFormalityPanel();
+    toast("Formality reset to defaults");
+  }
+
+  // --------------------------------------------------------------- auth panel
+  async function refreshAuth() {
+    try {
+      const s = await api("/api/auth/status");
+      state.auth.authenticated = !!s.authenticated;
+      state.auth.scope = s.scope || null;
+    } catch {
+      state.auth.authenticated = false;
+    }
+    const txt = $("#authText");
+    if (txt) txt.textContent = state.auth.authenticated ? "Signed in" : "Sign in";
+    const chip = $("#authChip");
+    if (chip) chip.classList.toggle("ok", state.auth.authenticated);
+  }
+
+  function renderAuthPanel() {
+    const body = $("#authBody");
+    if (!body) return;
+    if (state.auth.authenticated) {
+      body.innerHTML = `
+        <div class="auth-block">
+          <div class="auth-status ok">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="9" fill="#dcfce7"/><path d="M5 9l3 3 5-6" stroke="#16a34a" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+            <span>Connected to OpenStreetMap. Ready to submit corrections.</span>
+          </div>
+          <p class="muted">Scope: <code>${esc(state.auth.scope || "?")}</code></p>
+          <button class="btn btn-sm btn-danger" id="logoutBtn">Log out</button>
+        </div>`;
+      $("#logoutBtn")?.addEventListener("click", logout);
+    } else {
+      body.innerHTML = `
+        <div class="auth-block">
+          <p>Sign in with OpenStreetMap to submit corrections via API v0.6 (OAuth 2.0).</p>
+          <ol class="auth-steps">
+            <li>
+              <strong>1. Authorize</strong> &middot; opens openstreetmap.org in a new tab.
+              <div><button class="btn btn-brand btn-sm" id="authStartBtn">Authorize with OSM</button></div>
+            </li>
+            <li>
+              <strong>2. Paste the code</strong> &middot; OSM will display a one-time code; paste it below.
+              <div class="code-row">
+                <input class="input" id="authCode" placeholder="Paste the authorization code" autocomplete="off">
+                <button class="btn btn-brand btn-sm" id="authSubmitBtn" disabled>Submit</button>
+              </div>
+            </li>
+          </ol>
+        </div>`;
+      $("#authStartBtn")?.addEventListener("click", startAuth);
+      const code = $("#authCode");
+      const sub = $("#authSubmitBtn");
+      code?.addEventListener("input", () => { if (sub) sub.disabled = !code.value.trim(); });
+      sub?.addEventListener("click", finishAuth);
+    }
+  }
+
+  async function startAuth() {
+    try {
+      const data = await api("/api/auth/url", { method: "POST" });
+      state.authVerifier = data.verifier;
+      window.open(data.url, "_blank", "noopener");
+      toast("OSM authorization opened");
+      const sub = $("#authSubmitBtn"); if (sub) sub.disabled = false;
+    } catch (e) {
+      toast("Auth start failed: " + e.message, "error");
+    }
+  }
+  async function finishAuth() {
+    const code = $("#authCode")?.value.trim();
+    if (!code) return;
+    if (!state.authVerifier) { toast("Click Authorize first", "warn"); return; }
+    try {
+      await api("/api/auth/exchange", { method: "POST", body: { code, verifier: state.authVerifier } });
+      toast("Signed in to OSM");
+      state.authVerifier = null;
+      await refreshAuth();
+      renderAuthPanel();
+    } catch (e) {
+      toast("Auth failed: " + e.message, "error");
+    }
+  }
+  async function logout() {
+    try {
+      await api("/api/auth/logout", { method: "POST" });
+      toast("Logged out");
+      await refreshAuth();
+      renderAuthPanel();
+    } catch (e) {
+      toast("Logout failed: " + e.message, "error");
+    }
+  }
+
+  // --------------------------------------------------------------- reports
+  async function generateReports() {
+    if (!state.currentZone) return;
+    const btn = $("#genReportsBtn");
+    if (btn) btn.disabled = true;
+    consoleLog("Generating reports…");
+    try {
+      const data = await api("/api/reports", { method: "POST", body: { zone: state.currentZone } });
+      consoleLog(`Reports saved (${(data.files || []).length} file(s))`, "ok");
+      toast("Reports generated");
+      const open = $("#openDashBtn"); if (open) open.disabled = false;
+    } catch (e) {
+      consoleLog("Reports failed: " + e.message, "error");
+      toast("Reports failed: " + e.message, "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // --------------------------------------------------------------- search (basic name + way-id filter)
+  function wireSearch() {
+    const input = $("#search");
+    if (!input) return;
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") doSearch(input.value.trim());
+      if (e.key === "Escape") { input.value = ""; doSearch(""); }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "/" && document.activeElement !== input) { e.preventDefault(); input.focus(); }
+    });
+  }
+
+  function doSearch(q) {
+    if (!state.results) return;
+    if (!q) { drawResults(state.results); return; }
+    q = q.toLowerCase();
+    const ways = state.results.all_ways.filter((w) => {
+      const id = String(w.id || "");
+      const name = (w.name_display || w.name || "").toLowerCase();
+      return id.includes(q) || name.includes(q);
+    });
+    drawResults({ all_ways: ways, gaps: [] });
+    if (ways.length) {
+      const first = ways.find((w) => w.geometry && w.geometry.length);
+      if (first) mapRef.fitBounds(first.geometry, { padding: [60, 60] });
+    } else {
+      toast("No matches", "warn");
+    }
+  }
+
+  // --------------------------------------------------------------- wire everything up
+  function wire() {
+    $("#scanBtn")?.addEventListener("click", runScan);
+    $("#exportCsvBtn")?.addEventListener("click", () => {
+      window.open("/api/export/" + state.currentZone + "/csv", "_blank");
+    });
+    $("#clearScanBtn")?.addEventListener("click", () => {
+      state.results = null; clearMap(); renderStats(null); renderClasses(null); setLastRun("—"); setReportsEnabled(false);
+      toast("Cleared current scan view");
+    });
+    $("#genReportsBtn")?.addEventListener("click", generateReports);
+    $("#openDashBtn")?.addEventListener("click", () => {
+      window.open("/api/dashboard/" + state.currentZone, "_blank");
+    });
+
+    // dock
+    $$(".dock-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const v = btn.dataset.view;
+        if (v === "map") closeAllPanels();
+        else openPanel(v);
+      });
+    });
+    $$(".overlay-panel [data-close-panel]").forEach((b) => {
+      b.addEventListener("click", () => closeAllPanels());
+    });
+
+    // results
+    $("#resCsv")?.addEventListener("click", () => window.open("/api/export/" + state.currentZone + "/csv", "_blank"));
+    $("#resJson")?.addEventListener("click", () => window.open("/api/export/" + state.currentZone + "/json", "_blank"));
+
+    // fix
+    $("#loadFixesBtn")?.addEventListener("click", loadFixes);
+    $("#dryRunBtn")?.addEventListener("click", () => submitFixes(true));
+    $("#submitBtn")?.addEventListener("click", () => submitFixes(false));
+
+    // history
+    $("#histRefresh")?.addEventListener("click", renderHistoryPanel);
+    $("#histClear")?.addEventListener("click", async () => {
+      if (!confirm("Clear all activity history?")) return;
+      // server has no clear endpoint — fall back to a local-only clear hint
+      toast("History is server-side; clear via the file system", "warn");
+    });
+
+    // discuss
+    $("#newThreadBtn")?.addEventListener("click", newThread);
+    $("#clearDiscussBtn")?.addEventListener("click", clearDiscuss);
+
+    // formality
+    $("#saveFormalityBtn")?.addEventListener("click", saveFormalityFromForm);
+    $("#resetFormalityBtn")?.addEventListener("click", resetFormality);
+    $("#openFormalityBtn")?.addEventListener("click", () => openPanel("formality"));
+
+    // auth chip
+    $("#authChip")?.addEventListener("click", () => openPanel("auth"));
+
+    wireSearch();
+  }
+
+  // --------------------------------------------------------------- boot
+  async function boot() {
+    initMap();
+    wire();
+    await pingApi();
+    try {
+      await loadZones();
+      fitToZoneBounds();
+      await refreshAuth();
+      await tryLoadExistingResults();
+    } catch (e) {
+      consoleShow(true);
+      consoleLog("Init failed: " + e.message, "error");
+      toast("Init failed: " + e.message, "error");
+    }
+  }
+
+  // expose for atlas-extras.js to trigger redraw on weight change
+  window.atlasRedraw = () => { if (state.results) drawResults(state.results); };
+  window.atlasState = state;
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})();

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OSM TIGER Audit</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <a href="#main-content" class="skip-nav">Skip to main content</a>
+
+  <header class="app-header">
+    <div class="header-left">
+      <h1>OSM <span>TIGER Audit</span></h1>
+    </div>
+    <div class="header-center">
+      <label for="zoneSelect" class="zone-label">Zone</label>
+      <select id="zoneSelect"></select>
+    </div>
+    <div class="header-right">
+      <span id="authBadge" class="badge badge-warn">Not connected</span>
+    </div>
+  </header>
+
+  <!-- ======== MAP ======== -->
+  <main id="main-content">
+  <div id="mapContainer" class="map-container" role="application" aria-label="Map showing TIGER audit defects">
+    <div id="map"></div>
+    <div id="mapLegend" class="map-legend">
+      <span class="legend-item" data-cls="ab"><i style="background:#dc2626"></i> AB Compound</span>
+      <span class="legend-item" data-cls="a"><i style="background:#ea580c"></i> A False Oneway</span>
+      <span class="legend-item" data-cls="b"><i style="background:#2563eb"></i> B Multi-segment</span>
+    </div>
+    <button id="mapToggle" class="map-toggle" title="Toggle map">Map</button>
+    <div id="mapEmpty" class="map-empty">
+      <p>Run a scan to see defects on the map</p>
+    </div>
+  </div>
+
+  <!-- ======== MAIN ======== -->
+  <div class="container">
+    <nav class="tab-bar" role="tablist" aria-label="Main sections">
+      <button id="tab-btn-scan" class="tab-btn active" data-tab="scan" role="tab" aria-selected="true" aria-controls="tab-scan" tabindex="0">Scan</button>
+      <button id="tab-btn-results" class="tab-btn" data-tab="results" role="tab" aria-selected="false" aria-controls="tab-results" tabindex="-1">Results</button>
+      <button id="tab-btn-fix" class="tab-btn" data-tab="fix" role="tab" aria-selected="false" aria-controls="tab-fix" tabindex="-1">Fix</button>
+      <button id="tab-btn-history" class="tab-btn" data-tab="history" role="tab" aria-selected="false" aria-controls="tab-history" tabindex="-1">History</button>
+      <button id="tab-btn-auth" class="tab-btn" data-tab="auth" role="tab" aria-selected="false" aria-controls="tab-auth" tabindex="-1">Auth</button>
+    </nav>
+
+    <!-- ======== SCAN TAB ======== -->
+    <div id="tab-scan" class="tab-panel active" role="tabpanel" aria-labelledby="tab-btn-scan">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Run Scan</h2>
+          </div>
+          <p id="zoneDescription" class="zone-desc"></p>
+          <div class="form-row">
+            <input type="checkbox" id="skipHistory" checked />
+            <label for="skipHistory">Skip history analysis (faster)</label>
+          </div>
+          <button id="scanBtn" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 2l10 6-10 6V2z" fill="currentColor"/></svg>
+            Run Scan
+          </button>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Actions</h2>
+          </div>
+          <div class="action-stack">
+            <button id="reportsBtn" class="btn" disabled>Generate Reports</button>
+            <button id="dashboardBtn" class="btn" disabled>Open Dashboard</button>
+            <button id="exportCSVBtn" class="btn" disabled>Download CSV</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scan progress -->
+      <div id="scanStatus" class="card scan-status hidden" aria-live="polite">
+        <div class="scan-status-row">
+          <div class="spinner" aria-hidden="true"></div>
+          <span id="scanStatusText">Starting scan...</span>
+          <span id="scanTimer" class="scan-timer">0s</span>
+        </div>
+        <div class="progress-bar" role="progressbar" id="scanProgressBar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Scan progress">
+          <div id="scanProgress" class="progress-fill indeterminate"></div>
+        </div>
+      </div>
+
+      <!-- Stats after scan -->
+      <div id="statsCard" class="card hidden">
+        <div class="card-header">
+          <h2 class="card-title">Scan Results</h2>
+          <span id="scanTimestamp" class="timestamp"></span>
+        </div>
+        <div id="statsGrid" class="stats-grid"></div>
+      </div>
+
+      <!-- Log -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Log</h2>
+          <button id="clearLogBtn" class="btn btn-xs">Clear</button>
+        </div>
+        <div id="logArea" class="log-area" aria-live="polite" aria-relevant="additions">Ready.
+</div>
+      </div>
+    </div>
+
+    <!-- ======== RESULTS TAB ======== -->
+    <div id="tab-results" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-results">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <h2 class="card-title" style="margin:0;">Defect Summary</h2>
+        </div>
+        <div class="toolbar-right">
+          <button id="resultExportCSV" class="btn btn-sm">CSV</button>
+          <button id="resultExportJSON" class="btn btn-sm">JSON</button>
+          <button id="resultShare" class="btn btn-sm">Share</button>
+        </div>
+      </div>
+      <div id="resultsStats" class="stats-grid" style="margin-bottom:20px;"></div>
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Class AB &mdash; Compound Defects</h2>
+          <span class="severity-badge critical">Highest Risk</span>
+        </div>
+        <div id="tableAB" class="table-wrap"></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Class A &mdash; False Oneway</h2>
+          <span class="severity-badge high">High Risk</span>
+        </div>
+        <div id="tableA" class="table-wrap"></div>
+      </div>
+    </div>
+
+    <!-- ======== FIX TAB ======== -->
+    <div id="tab-fix" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-fix">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Review Proposed Corrections</h2>
+        </div>
+        <p class="muted" style="margin-bottom:12px;">
+          Load fixable defects from scan results, review them, then submit corrections to OpenStreetMap.
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
+          <button id="loadFixesBtn" class="btn btn-primary btn-sm">Load Fixes</button>
+          <span id="fixCount" class="muted"></span>
+        </div>
+        <div id="fixTable" class="table-wrap"></div>
+      </div>
+      <div id="fixActions" class="card hidden">
+        <div class="card-header">
+          <h2 class="card-title">Submit</h2>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="dryRunBtn" class="btn btn-sm">Dry Run</button>
+          <button id="submitFixesBtn" class="btn btn-primary btn-sm">Submit to OSM</button>
+        </div>
+        <div id="fixResult" style="margin-top:12px;"></div>
+      </div>
+    </div>
+
+    <!-- ======== HISTORY TAB ======== -->
+    <div id="tab-history" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-history">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Edit History</h2>
+          <button id="refreshHistoryBtn" class="btn btn-xs">Refresh</button>
+        </div>
+        <p class="muted" style="margin-bottom:16px;">
+          Every scan, report, dry run, and OSM submission is recorded here.
+        </p>
+        <div id="historyList"></div>
+      </div>
+    </div>
+
+    <!-- ======== AUTH TAB ======== -->
+    <div id="tab-auth" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-auth">
+      <div class="card" style="max-width:540px;">
+        <div class="card-header">
+          <h2 class="card-title">OpenStreetMap Authentication</h2>
+        </div>
+
+        <div id="authLoggedIn" class="hidden" style="margin-bottom:16px;">
+          <div class="auth-ok">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="10" fill="#dcfce7"/><path d="M6 10l3 3 5-6" stroke="#16a34a" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+            <span>Authenticated. Ready to submit corrections.</span>
+          </div>
+          <button id="logoutBtn" class="btn btn-danger btn-sm" style="margin-top:12px;">Log out</button>
+        </div>
+
+        <div id="authFlow" class="auth-steps">
+          <div class="auth-step">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <p>Click below to open the OSM authorization page.</p>
+              <button id="authStartBtn" class="btn btn-primary btn-sm">Authorize with OSM</button>
+            </div>
+          </div>
+          <div class="auth-step">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <p>After authorizing, paste the code here:</p>
+              <div class="code-input-row">
+                <input id="authCode" type="text" placeholder="Paste authorization code" aria-label="Authorization code" />
+                <button id="authSubmitBtn" class="btn btn-primary btn-sm" disabled>Submit</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <footer class="app-footer">
+    <p>
+      Road data &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.
+      Supplementary data from <a href="https://data-cagis.opendata.arcgis.com/" target="_blank" rel="noopener">CAGIS Open Data Hub</a>
+      and <a href="https://gis.dot.state.oh.us/tims" target="_blank" rel="noopener">ODOT TIMS</a>.
+    </p>
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
