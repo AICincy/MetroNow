@@ -77,17 +77,34 @@ markers survive.
 
    ```
    confidence = 0.5 · name_similarity         (Ratcliff-Obershelp on normalized names)
-              + 0.3 · geometry_overlap        (1 − Hausdorff/30 m, point-to-segment, ENU-projected)
+              + 0.3 · geometry_overlap        (1 − directed-Hausdorff/30 m, OSM→CAGIS only)
               + 0.2 · direction_alignment     (|cos θ| between line direction vectors)
    ```
+
+   The geometry term uses **directed** Hausdorff (max-over-OSM-points of
+   min-distance-to-CAGIS-line). The symmetric form blew up on the common
+   topology where OSM has a long named street broken into shorter ways at
+   intersections — the reverse direction penalised CAGIS endpoints lying
+   outside the OSM segment even when OSM perfectly traced its part. Real
+   data: switching to directed Hausdorff lifted Blue Ash's auto-submit
+   rate from 6.3% to 17.7% (and 5.0% → 12.1% across all four zones).
 
    At confidence ≥ 0.85 the conflated way is treated as ground-truth: CAGIS
    `TRVL_DIR` overrides the OSM `oneway` heuristic, CAGIS `SPEEDLIMIT`
    supplies a missing `maxspeed`, CAGIS `STRLABEL` flags a name mismatch
    (always queued for human review — CAGIS uses postal abbreviations, OSM
    convention is spelled-out names). Confidence in [0.6, 0.85] surfaces the
-   way as a candidate but blocks auto-submission. Below 0.6 the way is
-   marked unconflated.
+   way as a candidate but blocks auto-submission.
+
+   When the STRtree query returns no candidates within 30 m, a
+   nearest-neighbor fallback queries the absolutely closest CAGIS feature
+   and, if within 100 m, scores it normally but **caps confidence at
+   `REVIEW_CONFIDENCE` (0.6)** — fallback hits surface in the human-review
+   queue but never auto-submit. The `osm conflate --baseline-manifest`
+   flag emits a per-zone diagnostic JSON attributing every way to one of
+   `MATCHED_HIGH` / `MATCHED_REVIEW` / `MATCHED_FALLBACK_REVIEW` /
+   `F1_NO_CANDIDATE` / `F2_NAME_FAIL` / `F3_GEOMETRY_FAIL` /
+   `F4_DIRECTION_DRAG` / `MIXED_LOW`, used for matcher tuning.
 
 5. **Review** — `src/osm/review.py`. `proposed_fixes_for_way` emits zero or
    more fix descriptors per way, each tagged with its evidence: pure
@@ -150,9 +167,9 @@ osm auth login                                         # OSM OAuth 2.0 (PKCE)
 
 ## Verification (state of main as of last commit)
 
-- **109 passing tests** across `tests/test_{classify,gaps,geo,history_filter,review,detectors,conflate}.py`.
+- **216 passing tests** across `tests/test_{classify,gaps,geo,history_filter,review,detectors,conflate,notes,osmose,route_diff,tiger2024}.py`.
 - `ruff check src/` clean. `mypy src/osm/ --ignore-missing-imports` clean.
-- Four-zone harvest summary (Class A/AB heuristic):
+- Four-zone harvest summary (Class A/AB heuristic, default flags):
 
   | Zone | Total ways | Class AB | Class A | Class B | Gaps |
   |------|-----------:|---------:|--------:|--------:|-----:|
@@ -162,11 +179,23 @@ osm auth login                                         # OSM OAuth 2.0 (PKCE)
   | Forest Park / Pleasant Run   | 2,950 | 125 | 707 | 1,400 | 311 |
   | **Total**                    | **10,949** | **414** | **2,713** | **4,993** | **1,123** |
 
-- Blue Ash CAGIS conflation snapshot: 3,140 CAGIS centerlines fetched; 729
-  OSM ways (8.7%) matched; 528 at confidence ≥ 0.85; 481 auto-submittable
-  CAGIS-verified fixes (473 `set_maxspeed_cagis`, 7 `set_oneway_cagis`, 1
-  `remove_oneway_cagis`). The 8.7% match rate is a known investigation item
-  — the matcher is conservative and likely under-counts.
+- Four-zone CAGIS conflation snapshot (post-Phase-2b: directed Hausdorff
+  + nearest-neighbor fallback). Auto-submit row counts ways at confidence
+  ≥ 0.85; review row counts in-buffer 0.6–0.85 plus fallback hits capped
+  at 0.6:
+
+  | Zone                        | Auto-submit (HIGH) | Review queue | Match rate |
+  |-----------------------------|-------------------:|-------------:|-----------:|
+  | Blue Ash / Montgomery       |  17.73% (1,486)    | 5.02% (421)  | **22.75%** |
+  | Springdale / Sharonville    |  13.78% (1,208)    | 5.59% (490)  | **19.37%** |
+  | Northgate / Mt. Healthy     |  20.59% (1,159)    | 3.96% (223)  | **24.55%** |
+  | Forest Park / Pleasant Run  |  10.77% (898)      | 3.17% (264)  | **13.94%** |
+
+  Forest Park's lower auto-submit rate is structural — its bbox bleeds
+  into Butler County, which CAGIS does not cover (median F1 nearest
+  distance: 1.4 km). Fixing this requires Phase 4a (traced service
+  polygons), not matcher tuning. Per-way diagnostic manifests with bucket
+  attribution are written by `osm conflate --baseline-manifest`.
 
 ## Compliance and provenance
 
