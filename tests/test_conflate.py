@@ -102,6 +102,33 @@ class TestConflate:
         # Hausdorff between perpendicular short crossings ≈ 55 m → no match.
         assert m is None
 
+    def test_directed_hausdorff_matches_osm_fragment_of_long_cagis(self):
+        # Phase 2b: this is the F3-fix regression test. CAGIS publishes
+        # the WHOLE named-street centerline; OSM has the same street
+        # broken into shorter ways at intersections. The symmetric
+        # Hausdorff used to reject these by penalising the CAGIS endpoints
+        # that fall outside the OSM segment. Directed Hausdorff (OSM→CAGIS
+        # only) keeps the match because every OSM point IS on the CAGIS line.
+        from osm.conflate import build_index, match_way
+        long_cagis = [[-84.42, 39.20], [-84.38, 39.20]]  # ~3.4 km
+        idx = build_index([_make_feat(long_cagis, label="OAK ST")])
+        # OSM way: short ~430 m fragment in the middle of OAK ST.
+        osm_way = {
+            "id": 9001,
+            "name": "Oak Street",
+            "geometry": [[39.2000, -84.4000], [39.2000, -84.3950]],
+        }
+        m = match_way(osm_way, idx)
+        assert m is not None, "OSM fragment of long CAGIS centerline must match"
+        assert m["confidence"] >= 0.85, (
+            f"Expected high confidence for OSM-fragment-of-CAGIS topology, "
+            f"got {m['confidence']}"
+        )
+        assert m["hausdorff_m"] < 1.0, (
+            f"Directed haus should be ~0 for an OSM way that lies on CAGIS, "
+            f"got {m['hausdorff_m']}"
+        )
+
     def test_opposite_direction_still_aligns(self):
         # Direction is undirected (we use abs(cos)) so reversing endpoints
         # should still produce a high-confidence match.

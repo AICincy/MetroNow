@@ -27,10 +27,10 @@ from typing import Any
 import requests
 
 from osm._geometry import (
-    direction_alignment as _direction_alignment,
+    directed_hausdorff_meters as _directed_hausdorff_meters,
 )
 from osm._geometry import (
-    hausdorff_meters as _hausdorff_meters,
+    direction_alignment as _direction_alignment,
 )
 from osm._geometry import (
     line_unit_vector as _line_unit_vector,
@@ -465,7 +465,7 @@ class ConflationIndex:
 
         best: tuple[float, _CagisRecord, float, float, float] | None = None
         for rec in candidates:
-            haus = _hausdorff_meters(osm_geometry, rec.geometry_lonlat)
+            haus = _directed_hausdorff_meters(osm_geometry, rec.geometry_lonlat)
             if haus is None or haus > BUFFER_M:
                 # Even with bbox proximity, geometry may be too far.
                 continue
@@ -577,7 +577,7 @@ class ConflationIndex:
             tuple[float, _CagisRecord, float, float, float, bool]
         ] = []
         for rec in candidates:
-            haus = _hausdorff_meters(osm_geometry, rec.geometry_lonlat)
+            haus = _directed_hausdorff_meters(osm_geometry, rec.geometry_lonlat)
             if haus is None:
                 continue
             name_sim = _name_similarity(osm_norm, rec.name_norm)

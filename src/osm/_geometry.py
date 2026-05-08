@@ -33,6 +33,7 @@ __all__ = [
     "line_unit_vector",
     "line_unit_vector_lonlat",
     "direction_alignment",
+    "directed_hausdorff_meters",
     "hausdorff_meters",
     "min_dist_to_polyline",
     "point_segment_dist_m",
@@ -210,11 +211,41 @@ def min_dist_to_polyline(
     return best
 
 
+def directed_hausdorff_meters(
+    osm_latlon: list[list[float]],
+    src_lonlat: list[tuple[float, float]],
+) -> float | None:
+    """One-sided Hausdorff in metres: OSM way → source polyline only.
+
+    Computes ``max-over-OSM-points of min-distance-to-source-line``. Unlike
+    the symmetric form, this rewards the common topology where the OSM way
+    is a *fragment* of a longer authoritative centerline (CAGIS street
+    spans the whole named street; OSM has it broken into several ways at
+    intersections). The symmetric metric blew up on the reverse direction
+    in that case — every CAGIS endpoint outside the OSM segment counted
+    against the score even though the OSM way perfectly traced its part.
+
+    Phase 2a baselines across all four MetroNow zones attributed 70.5%
+    of unmatched ways to F3 (symmetric Hausdorff > BUFFER_M); see commit
+    history for the bucket counts that justified this change.
+
+    OSM is ``[[lat, lon], ...]``; source is ``[(lon, lat), ...]``.
+    """
+    if not osm_latlon or not src_lonlat:
+        return None
+    src_pts = [(lat, lon) for lon, lat in src_lonlat]
+    return max(min_dist_to_polyline((p[0], p[1]), src_pts) for p in osm_latlon)
+
+
 def hausdorff_meters(
     osm_latlon: list[list[float]],
     src_lonlat: list[tuple[float, float]],
 ) -> float | None:
     """Symmetric Hausdorff distance in metres between OSM and source polylines.
+
+    Kept for tests and any caller that genuinely needs the symmetric metric.
+    The CAGIS conflation matcher uses :func:`directed_hausdorff_meters`
+    instead — see its docstring for the rationale.
 
     OSM is ``[[lat, lon], ...]``; source is ``[(lon, lat), ...]`` (the GeoJSON
     convention used by both CAGIS and TIGER).
