@@ -739,6 +739,51 @@ app.post("/api/fix-impact/:zone", async (req, res) => {
   }
 });
 
+// ---- baseline-diff ----
+
+// Compare the two newest cagis_baseline_*.json manifests for a zone and
+// return the per-bucket deltas + headline auto-submit-pool change. The
+// Investigations panel renders this so the maintainer can see matcher
+// tuning impact without dropping to the CLI.
+app.get("/api/baseline-diff/:zone", async (req, res) => {
+  const zone = req.params.zone;
+  if (!validateZone(zone, res)) return;
+  const dataDir = zonePath(zone, "data");
+  if (!fs.existsSync(dataDir)) {
+    return res.status(404).json({
+      error: "No data/ directory yet. Run 'osm conflate --zone " + zone +
+        " --baseline-manifest' twice to generate two manifests.",
+    });
+  }
+  try {
+    const pyCode = [
+      "import json, sys, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "from pathlib import Path",
+      "sys.stdout = open(os.devnull, 'w')",
+      "from osm.conflate import diff_baselines, newest_two_manifests",
+      "data_dir = Path(" + JSON.stringify(dataDir.replace(/\\/g, "/")) + ")",
+      "pair = newest_two_manifests(data_dir)",
+      "if pair is None:",
+      "    sys.stdout = sys.__stdout__",
+      "    print(json.dumps({'pair': None}))",
+      "else:",
+      "    older, newer = pair",
+      "    with older.open('r', encoding='utf-8') as fh: a = json.load(fh)",
+      "    with newer.open('r', encoding='utf-8') as fh: b = json.load(fh)",
+      "    diff = diff_baselines(a, b)",
+      "    diff['from_file'] = older.name",
+      "    diff['to_file'] = newer.name",
+      "    sys.stdout = sys.__stdout__",
+      "    print(json.dumps({'pair': diff}))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    res.json(JSON.parse(out));
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
 // ---- maproulette ----
 
 // Generate (or regenerate) the MapRoulette challenge GeoJSON for a zone.
