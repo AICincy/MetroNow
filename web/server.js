@@ -682,6 +682,53 @@ app.get("/api/export/:zone/json", (req, res) => {
   }
 });
 
+// ---- fix-impact ----
+
+// Run BRouter route-impact on the CAGIS-verified oneway fixes for a
+// zone — same shape as the CLI `osm fix-impact` subcommand. Used by
+// the Atlas Fix panel's "Routing impact" button to surface the value
+// story before submission.
+app.post("/api/fix-impact/:zone", async (req, res) => {
+  const zone = req.params.zone;
+  if (!validateZone(zone, res)) return;
+  const resultsPath = path.join(
+    PROJECT_ROOT, "osm-audit-" + zone, "scan-results.json"
+  );
+  if (!fs.existsSync(resultsPath))
+    return res.status(404).json({ error: "No scan results for this zone." });
+  try {
+    const pyCode = [
+      "import json, sys, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "from pathlib import Path",
+      "sys.stdout = open(os.devnull, 'w')",
+      "from osm.review import proposed_fixes_for_way",
+      "from osm.route_diff import (",
+      "    ONEWAY_FIX_KINDS, route_impact_for_fixes, summarize_route_impact,",
+      ")",
+      "results_path = Path(" + JSON.stringify(resultsPath.replace(/\\/g, "/")) + ")",
+      "with results_path.open('r', encoding='utf-8') as fh:",
+      "    classified = json.load(fh)",
+      "oneway_fixes = []",
+      "for w in classified.get('all_ways', []):",
+      "    for f in proposed_fixes_for_way(w):",
+      "        if f.get('kind') in ONEWAY_FIX_KINDS:",
+      "            oneway_fixes.append(f)",
+      "route_impact_for_fixes(oneway_fixes, classified.get('all_ways', []))",
+      "summary = summarize_route_impact(oneway_fixes)",
+      "classified.setdefault('summary_stats', {})['route_impact'] = summary",
+      "with results_path.open('w', encoding='utf-8') as fh:",
+      "    json.dump(classified, fh, ensure_ascii=False)",
+      "sys.stdout = sys.__stdout__",
+      "print(json.dumps(summary))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    res.json({ ok: true, zone, summary: JSON.parse(out.trim()) });
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
 // ---- maproulette ----
 
 // Generate (or regenerate) the MapRoulette challenge GeoJSON for a zone.

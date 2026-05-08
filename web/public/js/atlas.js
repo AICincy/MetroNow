@@ -1264,6 +1264,12 @@
       state.pendingFixes = data.fixes || [];
       $("#dryRunBtn").disabled = state.pendingFixes.length === 0;
       $("#submitBtn").disabled = state.pendingFixes.length === 0;
+      // The route-impact harness only operates on oneway fixes; enable
+      // when at least one is in the pending queue.
+      const hasOnewayFix = state.pendingFixes.some(
+        (f) => f.kind === "set_oneway_cagis" || f.kind === "remove_oneway_cagis",
+      );
+      $("#routeImpactBtn").disabled = !hasOnewayFix;
       // Make sure Osmose data is in cache before we render so the badge
       // is visible on first paint.
       await ensureOsmoseLoaded();
@@ -1273,6 +1279,53 @@
       toast("Load failed: " + e.message, "error");
     } finally {
       if (btn) btn.disabled = false;
+    }
+  }
+
+  // Phase 4b: surface the BRouter route-impact value-story payload in
+  // the Fix panel — same data the CLI's `osm fix-impact` produces, just
+  // wired into the panel the maintainer is already looking at.
+  async function runRouteImpact() {
+    if (!state.currentZone) return;
+    const btn = $("#routeImpactBtn");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Running…";
+    }
+    try {
+      const data = await api(
+        "/api/fix-impact/" + encodeURIComponent(state.currentZone),
+        { method: "POST" },
+      );
+      const s = (data && data.summary) || {};
+      const lines = [
+        `${s.real || 0} fix(es) measurably change routing.`,
+      ];
+      if ((s.real || 0) > 0) {
+        lines.push(
+          `Avg delta: ${s.avg_delta_pct_real || 0}% of route cost; ` +
+          `max ${s.max_delta_pct_real || 0}%; ` +
+          `avg duration shift ${s.avg_duration_delta_s_real || 0} s.`,
+        );
+      }
+      if ((s.fixes_skipped || 0) > 0) {
+        lines.push(
+          `${s.fixes_skipped} fix(es) skipped (maxspeed/name don't perturb routing).`,
+        );
+      }
+      toast(lines.join(" "), "ok");
+      // Refresh the fix panel so per-fix route_impact badges (if any)
+      // pick up the new data.
+      const data2 = await api("/api/review/" + state.currentZone);
+      state.pendingFixes = data2.fixes || state.pendingFixes;
+      renderFixPanel();
+    } catch (e) {
+      toast("Route-impact failed: " + (e && e.message || e), "error");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Routing impact";
+      }
     }
   }
 
@@ -1869,6 +1922,7 @@
     // fix
     $("#loadFixesBtn")?.addEventListener("click", loadFixes);
     $("#dryRunBtn")?.addEventListener("click", () => submitFixes(true));
+    $("#routeImpactBtn")?.addEventListener("click", runRouteImpact);
     $("#submitBtn")?.addEventListener("click", () => submitFixes(false));
 
     // history
