@@ -1005,7 +1005,20 @@
     const visible = rows.slice(0, PAGE);
     const more = rows.length - visible.length;
 
+    // MapRoulette generator block — surfaces the Phase 3 task generator
+    // alongside the same population it operates on. The button kicks off
+    // the server-side regeneration; the result is downloadable as a
+    // line-delimited GeoJSON for upload via the MapRoulette UI.
     const lines = [
+      `<div class="mr-block" id="mrBlock" style="margin: 6px 0 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-elevated);">`,
+      `<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">`,
+      `<strong style="font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-mute);">MapRoulette</strong>`,
+      `<span style="font-size: 12.5px; color: var(--ink-soft);">Generate a community-review challenge for Class A/AB ways below the auto-submit threshold.</span>`,
+      `<button class="btn btn-sm" id="mrGenerateBtn" style="margin-left: auto;">Generate challenge</button>`,
+      `<a class="btn btn-sm" id="mrDownloadBtn" href="/api/maproulette/${encodeURIComponent(state.currentZone)}" download style="display: none;">Download .geojsonl</a>`,
+      `</div>`,
+      `<div id="mrStatus" style="margin-top: 8px; font-size: 12.5px; color: var(--ink-mute); font-family: var(--mono);"></div>`,
+      `</div>`,
       `<table class="rs-table"><thead><tr>`,
       `<th>Way</th><th>Class</th><th>Name</th><th>CAGIS conf.</th>`,
       `<th>Hausdorff (m)</th><th>Name sim.</th><th>Routing impact</th>`,
@@ -1037,6 +1050,39 @@
       lines.push(`<div class="rs-more"><span>${more} more way(s) hidden — refine the filter or use the inventory CSV export.</span></div>`);
     }
     body.innerHTML = lines.join("");
+
+    // Wire MapRoulette generate button — re-bind every render since
+    // innerHTML wipes event listeners.
+    const mrBtn = $("#mrGenerateBtn");
+    const mrStatus = $("#mrStatus");
+    const mrDownload = $("#mrDownloadBtn");
+    if (mrBtn) {
+      mrBtn.addEventListener("click", async () => {
+        if (!state.currentZone) return;
+        mrBtn.disabled = true;
+        if (mrStatus) mrStatus.textContent = "Generating…";
+        try {
+          const data = await api(
+            "/api/maproulette/" + encodeURIComponent(state.currentZone),
+            { method: "POST" },
+          );
+          if (mrStatus) {
+            const meta = data.metadata || {};
+            mrStatus.innerHTML =
+              `Wrote <strong>${data.task_count || 0}</strong> task(s). ` +
+              `Suggested challenge name: <em>${esc(meta.name || "")}</em>. ` +
+              `Tags: <code>${esc(meta.tags || "")}</code>`;
+          }
+          if (mrDownload && (data.task_count || 0) > 0) {
+            mrDownload.style.display = "inline-flex";
+          }
+        } catch (e) {
+          if (mrStatus) mrStatus.textContent = "Failed: " + (e && e.message || e);
+        } finally {
+          mrBtn.disabled = false;
+        }
+      });
+    }
   }
 
   // Rider-impact findings — top 50 across all extra_findings, sorted by
