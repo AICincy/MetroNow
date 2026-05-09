@@ -3,7 +3,7 @@
 # (Ampere A1, 4 OCPU / 24 GB). Run as the default `ubuntu` user with sudo.
 #
 #   ssh ubuntu@<vm-public-ip>
-#   curl -fsSL https://raw.githubusercontent.com/aicincy/metronow/claude/setup-netlify-config-tT5fD/deploy/bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/aicincy/metronow/main/deploy/bootstrap.sh | bash
 #
 # Idempotent: safe to re-run.
 set -euo pipefail
@@ -28,7 +28,7 @@ log "Installing Docker Engine + Compose plugin"
 if ! command -v docker >/dev/null 2>&1; then
 	sudo install -m 0755 -d /etc/apt/keyrings
 	curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-		| sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+		| sudo gpg --yes --dearmor -o /etc/apt/keyrings/docker.gpg
 	sudo chmod a+r /etc/apt/keyrings/docker.gpg
 	echo \
 		"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \

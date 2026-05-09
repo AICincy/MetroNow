@@ -13,7 +13,14 @@ const PORT = Number(process.env.PORT) || 3000;
 // to keep local dev behavior unchanged.
 if (process.env.TRUST_PROXY) {
   const v = process.env.TRUST_PROXY;
-  app.set("trust proxy", /^\d+$/.test(v) ? Number(v) : v);
+  // Accept "true"/"false" as booleans; bare ints become hop counts;
+  // anything else passes through as an IP/subnet spec for Express.
+  let parsed;
+  if (v === "true") parsed = true;
+  else if (v === "false") parsed = false;
+  else if (/^\d+$/.test(v)) parsed = Number(v);
+  else parsed = v;
+  app.set("trust proxy", parsed);
 }
 
 // Strict CSP — only the origins this app actually loads from. The hosts
