@@ -100,6 +100,13 @@ function appendHistory(entry) {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+// Lightweight liveness probe — no subprocess, no disk I/O. Mounted before
+// the rate limiter at the top of the file applies (the limiter is global,
+// but this route is cheap enough that the limit doesn't matter).
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
 const SAFE_ZONE_RE = /^[a-z0-9-]+$/;
 function validateZone(zone, res) {
   if (!zone || !SAFE_ZONE_RE.test(zone)) {

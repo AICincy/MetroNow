@@ -117,10 +117,10 @@ CMD ["node", "web/server.js"]         # Correct (exec form)
 
 ## 5. Health Check
 
-**Warning:** Missing `HEALTHCHECK`. The Express server exposes `/api/zones` as a liveness signal:
+**Warning:** Missing `HEALTHCHECK`. The Express server exposes `/health` as a lightweight liveness signal (no subprocess, no disk I/O):
 ```dockerfile
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/api/zones',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
+  CMD node -e "require('http').get('http://localhost:3000/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
 ```
 
 ## 6. .dockerignore
