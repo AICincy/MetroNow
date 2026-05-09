@@ -69,6 +69,15 @@ app.use(helmet({
   },
 }));
 app.use(cors({ origin: process.env.ALLOWED_ORIGIN || "http://localhost:3000" }));
+
+// Mount /health BEFORE the rate limiter and static middleware. Healthcheck
+// probes shouldn't consume rate-limit budget, and we don't want them
+// triggering a disk stat through express.static. helmet's CSP still
+// applies (the `app.use(helmet(...))` above runs first).
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
 app.use(rateLimit({ windowMs: 60000, max: 100, standardHeaders: true }));
 
 const PYTHON = (() => {

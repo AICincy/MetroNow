@@ -9,7 +9,7 @@
   width: auto;
   height: auto;
   padding: 8px 14px;
-  background: var(--brand, #d35400);
+  background: var(--brand);
   color: #fff;
   font-family: var(--sans);
   font-size: 13px;
@@ -44,7 +44,7 @@
   width: 100%;
   text-align: left;
   padding: 10px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--bg-elevated);
   color: var(--ink);
@@ -74,17 +74,17 @@
   font-size: 11px;
   line-height: 1.55;
   padding: 1px 0;
-  color: #cfd2c8;
+  color: var(--console-fg);
   white-space: pre-wrap;
   word-break: break-word;
 }
-.console-line.ok { color: #88c897; }
-.console-line.error { color: #e89090; }
-.console-line.warn { color: #d8b870; }
+.console-line.ok { color: var(--console-line-ok); }
+.console-line.error { color: var(--console-line-err); }
+.console-line.warn { color: var(--console-line-warn); }
 
-.ck-dot.live { background: #6cb273; box-shadow: 0 0 0 2px rgba(108,178,115,0.18); animation: ckPulse 1.4s infinite; }
-.ck-dot.ok   { background: #6cb273; }
-.ck-dot.error { background: #d35858; box-shadow: 0 0 0 2px rgba(211,88,88,0.2); }
+.ck-dot.live { background: var(--console-tag-res); box-shadow: 0 0 0 2px rgba(108,178,115,0.18); animation: ckPulse 1.4s infinite; }
+.ck-dot.ok   { background: var(--console-tag-res); }
+.ck-dot.error { background: var(--console-dot-err); box-shadow: 0 0 0 2px rgba(211,88,88,0.2); }
 @keyframes ckPulse {
   0%,100% { box-shadow: 0 0 0 2px rgba(108,178,115,0.2); }
   50% { box-shadow: 0 0 0 4px rgba(108,178,115,0.0); }
@@ -93,7 +93,7 @@
 /* ---- inspector (right rail) ---- */
 .r-rail {
   background: var(--bg-elevated);
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--line);
   overflow-y: auto;
 }
 .app[data-rrail="closed"] .r-rail { display: none; }
@@ -102,7 +102,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
 }
 .ins-title {
   font-family: var(--serif);
@@ -116,7 +116,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 6px 0;
-  border-bottom: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--line);
   font-size: 12px;
 }
 .ins-row:last-of-type { border-bottom: none; }
@@ -159,7 +159,7 @@
 .rs-table th, .rs-table td {
   padding: 7px 10px;
   text-align: left;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
 .rs-table th {
@@ -188,12 +188,12 @@
   gap: 8px;
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px dashed var(--border);
+  border-top: 1px dashed var(--line);
   font-size: 12px;
 }
 .rs-more-btn {
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   color: var(--ink);
   font: 600 11px/1 var(--sans);
   letter-spacing: 0.04em;
@@ -226,10 +226,8 @@
   font-size: 13px;
   font-family: var(--sans);
 }
-.fx-result.ok  { background: rgba(34,140,72,0.10); color: #197a3c; border: 1px solid rgba(34,140,72,0.25); }
-.fx-result.err { background: rgba(190,40,40,0.10); color: #b8251f; border: 1px solid rgba(190,40,40,0.25); }
-[data-theme="dark"] .fx-result.ok  { color: #7ed4a3; }
-[data-theme="dark"] .fx-result.err { color: #ff8b85; }
+.fx-result.ok  { background: var(--ok-bg);  color: var(--ok);  border: 1px solid var(--ok); }
+.fx-result.err { background: var(--err-bg); color: var(--err); border: 1px solid var(--err); }
 
 /* ---- ledger ---- */
 .ledger {
@@ -243,7 +241,7 @@
   grid-template-columns: 160px 80px 200px 1fr;
   gap: 10px;
   padding: 10px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
   font-size: 12px;
   align-items: baseline;
 }
@@ -267,7 +265,7 @@
 .threads { list-style: none; margin: 0; padding: 0; }
 .thread {
   padding: 12px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
 }
 .th-head {
   display: flex;
@@ -331,7 +329,7 @@
   right: -360px;
   width: 320px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0,0,0,0.18);
   z-index: 5000;
@@ -340,7 +338,7 @@
 .tweaks.open { right: 12px; }
 
 /* ---- toast supplements (severity colors already exist for .error/.ok) ---- */
-.toast.warn { background: #b25f00; color: #fff; }
+.toast.warn { background: var(--warn); color: #fff; }
 
 /* ---- leaflet popup with OSM links ---- */
 .leaflet-popup-content { margin: 10px 12px; font-family: var(--sans); }
@@ -368,7 +366,7 @@
   gap: 8px;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
 }
 .map-popup .mp-actions a {
   font-size: 12px;
@@ -404,9 +402,9 @@
 .ins-section {
   margin-top: 12px;
   padding: 8px 10px;
-  border: 1px solid var(--border, #d8d8d8);
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--bg-sunken, #f7f7f7);
+  background: var(--bg-sunken);
 }
 .ins-section-head {
   display: flex;
@@ -473,7 +471,7 @@
 .discuss-tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
   margin-bottom: 12px;
 }
 .discuss-tab {
@@ -517,8 +515,8 @@
   font-size: 12px;
   padding: 4px 10px;
   border-radius: 4px;
-  border: 1px solid var(--brand, #2b6cb0);
-  background: var(--brand, #2b6cb0);
+  border: 1px solid var(--brand);
+  background: var(--brand);
   color: #fff;
   cursor: pointer;
 }

@@ -7,9 +7,16 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" /><link rel="stylesheet" href="/css/atlas-supplement.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H"
+      crossorigin="anonymous" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+      integrity="sha384-pmjIAcz2bAn0xukfxADbZIb3t8oRT9Sv0rvO+BR5Csr6Dhqq+nZs59P0pPKQJkEV"
+      crossorigin="anonymous" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+      integrity="sha384-wgw+aLYNQ7dlhK47ZPK7FRACiq7ROZwgFNg0m04avm4CaXS+Z9Y7nMu8yNjBKYC+"
+      crossorigin="anonymous" />
+<link rel="stylesheet" href="/css/atlas-supplement.css" />
 <style>
 /* ==========================================================
    MetroNow Atlas — design tokens
@@ -70,6 +77,26 @@
   --rail-r: 380px;
   --header-h: 52px;
   --dock-h: 56px;
+
+  /* console — terminal aesthetic, dark in both themes by design */
+  --console-bg: #0d0f12;
+  --console-bg-head: #15181c;
+  --console-line: #23272e;
+  --console-fg: #cfd2c8;
+  --console-fg-strong: #ffffff;
+  --console-fg-mute: #8a857a;
+  --console-fg-faint: #6b6356;
+  --console-tag-req: #6b9bd1;
+  --console-tag-res: #6cb273;
+  --console-tag-err: #e76055;
+  --console-tag-warn: #d4a64a;
+  --console-tag-file: #c995d6;
+  --console-tag-osm: #e07a3f;
+  /* line-level tints (lighter than tag pills for body-text readability) */
+  --console-line-ok: #88c897;
+  --console-line-err: #e89090;
+  --console-line-warn: #d8b870;
+  --console-dot-err: #d35858;
 }
 
 [data-theme="dark"] {
@@ -171,6 +198,7 @@ a { color: inherit; text-decoration: none; }
   height: 100%;
 }
 .brand-mark {
+  margin: 0;
   font-family: var(--serif);
   font-size: 22px;
   font-weight: 400;
@@ -229,12 +257,17 @@ a { color: inherit; text-decoration: none; }
 }
 
 .crumb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 12px;
   color: var(--ink-mute);
   letter-spacing: 0.04em;
+}
+.crumb ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .crumb-current {
   color: var(--ink);
@@ -468,8 +501,8 @@ a { color: inherit; text-decoration: none; }
 .console-panel {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: #0d0f12;
-  color: #cfd2c8;
+  background: var(--console-bg);
+  color: var(--console-fg);
   font-family: var(--mono);
   font-size: 11px;
   line-height: 1.55;
@@ -482,38 +515,38 @@ a { color: inherit; text-decoration: none; }
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: #15181c;
-  border-bottom: 1px solid #23272e;
+  background: var(--console-bg-head);
+  border-bottom: 1px solid var(--console-line);
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #8a857a;
+  color: var(--console-fg-mute);
 }
-.console-head .ck-dot { width: 7px; height: 7px; border-radius: 50%; background: #6cb273; box-shadow: 0 0 0 2px rgba(108,178,115,0.18); }
-.console-head .ck-dot.idle { background: #8a857a; box-shadow: none; }
-.console-head .ck-elapsed { margin-left: auto; color: #cfd2c8; font-feature-settings: "tnum"; }
+.console-head .ck-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--console-tag-res); box-shadow: 0 0 0 2px rgba(108,178,115,0.18); }
+.console-head .ck-dot.idle { background: var(--console-fg-mute); box-shadow: none; }
+.console-head .ck-elapsed { margin-left: auto; color: var(--console-fg); font-feature-settings: "tnum"; }
 .console-body {
   max-height: 220px;
   overflow-y: auto;
   padding: 8px 10px;
   scrollbar-width: thin;
-  scrollbar-color: #2c3038 transparent;
+  scrollbar-color: var(--console-line) transparent;
 }
 .console-body::-webkit-scrollbar { width: 6px; }
-.console-body::-webkit-scrollbar-thumb { background: #2c3038; border-radius: 3px; }
+.console-body::-webkit-scrollbar-thumb { background: var(--console-line); border-radius: 3px; }
 .cl-row { display: grid; grid-template-columns: 64px 52px 1fr; gap: 8px; padding: 1px 0; }
-.cl-time { color: #6b6356; font-feature-settings: "tnum"; }
+.cl-time { color: var(--console-fg-faint); font-feature-settings: "tnum"; }
 .cl-tag { font-weight: 600; }
-.cl-tag.req  { color: #6b9bd1; }
-.cl-tag.res  { color: #6cb273; }
-.cl-tag.err  { color: #e76055; }
-.cl-tag.warn { color: #d4a64a; }
-.cl-tag.file { color: #c995d6; }
-.cl-tag.osm  { color: #e07a3f; }
-.cl-tag.note { color: #8a857a; }
-.cl-msg { color: #cfd2c8; word-break: break-word; }
-.cl-msg .em { color: #fff; font-weight: 500; }
-.cl-msg a { color: #6b9bd1; text-decoration: underline; }
+.cl-tag.req  { color: var(--console-tag-req); }
+.cl-tag.res  { color: var(--console-tag-res); }
+.cl-tag.err  { color: var(--console-tag-err); }
+.cl-tag.warn { color: var(--console-tag-warn); }
+.cl-tag.file { color: var(--console-tag-file); }
+.cl-tag.osm  { color: var(--console-tag-osm); }
+.cl-tag.note { color: var(--console-fg-mute); }
+.cl-msg { color: var(--console-fg); word-break: break-word; }
+.cl-msg .em { color: var(--console-fg-strong); font-weight: 500; }
+.cl-msg a { color: var(--console-tag-req); text-decoration: underline; }
 
 /* defect classes */
 .classes {
@@ -1395,7 +1428,7 @@ table.t a:hover { text-decoration: underline; }
   <!-- ============================ Header ============================ -->
   <header class="app-header">
     <div class="brand">
-      <span class="brand-mark">MetroNow<em>!</em> Atlas</span>
+      <h1 class="brand-mark">MetroNow<em>!</em> Atlas</h1>
       <span class="brand-sub">Hamilton Co · TIGER Audit</span>
     </div>
     <div class="header-center">
@@ -1403,11 +1436,13 @@ table.t a:hover { text-decoration: underline; }
         <span class="status-dot" id="apiDot"></span>
         <span id="apiText">Connecting…</span>
       </span>
-      <span class="crumb" id="crumb">
-        <span>Zone</span>
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3.5 2l3 3-3 3" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>
-        <span class="crumb-current" id="crumbZone">—</span>
-      </span>
+      <nav class="crumb" id="crumb" aria-label="Breadcrumb">
+        <ol>
+          <li>Zone</li>
+          <li aria-hidden="true"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3.5 2l3 3-3 3" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg></li>
+          <li class="crumb-current" id="crumbZone" aria-current="page">—</li>
+        </ol>
+      </nav>
     </div>
     <div class="header-right">
       <button class="auth-chip" id="authChip" title="OpenStreetMap account">
@@ -1517,13 +1552,13 @@ table.t a:hover { text-decoration: underline; }
 
   <!-- ============================ Map ============================ -->
   <main class="map-area" id="main-content">
-    <div id="map"></div>
+    <div id="map" role="application" aria-label="Hamilton County zone map with TIGER defect overlay"></div>
 
     <!-- top-left: search -->
     <div class="map-overlay tl">
       <div class="float-card search-float">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.2" stroke="currentColor" stroke-width="1.4"/><path d="M9.2 9.2l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        <input id="search" type="text" placeholder="Search streets, way IDs…" autocomplete="off" />
+        <input id="search" type="search" aria-label="Search streets and way IDs" placeholder="Search streets, way IDs…" autocomplete="off" />
         <span class="kbd">/</span>
       </div>
     </div>
@@ -1543,7 +1578,7 @@ table.t a:hover { text-decoration: underline; }
 
     <!-- bottom-left: legend -->
     <div class="map-overlay bl">
-      <div class="float-card legend-float">
+      <div class="float-card legend-float" aria-live="polite" aria-atomic="false">
         <div class="legend-head">
           <span>Defect classes</span>
           <span id="legendTotal" style="font-family: var(--mono); text-transform: none; letter-spacing: 0;"></span>
@@ -1592,9 +1627,9 @@ table.t a:hover { text-decoration: underline; }
     </div>
 
     <!-- ============================ Overlay panels ============================ -->
-    <div class="overlay-panel hidden" id="panel-results">
+    <div class="overlay-panel hidden" id="panel-results" role="dialog" aria-modal="true" aria-labelledby="panel-results-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">Defect inventory</h2>
+        <h2 class="overlay-title" id="panel-results-title">Defect inventory</h2>
         <div class="overlay-actions">
           <button class="btn btn-sm" id="resCsv">Export CSV</button>
           <button class="btn btn-sm" id="resJson">Export JSON</button>
@@ -1607,9 +1642,9 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="resultsBody"></div>
     </div>
 
-    <div class="overlay-panel hidden" id="panel-fix">
+    <div class="overlay-panel hidden" id="panel-fix" role="dialog" aria-modal="true" aria-labelledby="panel-fix-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">Correction queue</h2>
+        <h2 class="overlay-title" id="panel-fix-title">Correction queue</h2>
         <div class="overlay-actions">
           <button class="btn btn-sm" id="loadFixesBtn">Load proposals</button>
           <button class="btn btn-sm" id="dryRunBtn" disabled>Dry run</button>
@@ -1623,9 +1658,9 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="fixBody"></div>
     </div>
 
-    <div class="overlay-panel hidden" id="panel-investigations">
+    <div class="overlay-panel hidden" id="panel-investigations" role="dialog" aria-modal="true" aria-labelledby="panel-investigations-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">Investigations <span style="font-family: var(--mono); font-size: 11px; color: var(--ink-mute); text-transform: none; letter-spacing: 0; margin-left: 8px;" id="investCount"></span></h2>
+        <h2 class="overlay-title" id="panel-investigations-title">Investigations <span style="font-family: var(--mono); font-size: 11px; color: var(--ink-mute); text-transform: none; letter-spacing: 0; margin-left: 8px;" id="investCount"></span></h2>
         <div class="overlay-actions">
           <div class="seg" id="investFilterSeg" data-tweak="invest" style="margin-right: 6px;">
             <button class="seg-btn" data-v="review" aria-pressed="true">Review band</button>
@@ -1640,9 +1675,9 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="investigationsBody"></div>
     </div>
 
-    <div class="overlay-panel hidden" id="panel-history">
+    <div class="overlay-panel hidden" id="panel-history" role="dialog" aria-modal="true" aria-labelledby="panel-history-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">Audit ledger</h2>
+        <h2 class="overlay-title" id="panel-history-title">Audit ledger</h2>
         <div class="overlay-actions">
           <button class="btn btn-sm" id="histRefresh">Refresh</button>
           <button class="btn btn-sm" id="histClear">Clear history & logs</button>
@@ -1654,9 +1689,9 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="historyBody"></div>
     </div>
 
-    <div class="overlay-panel hidden" id="panel-discuss">
+    <div class="overlay-panel hidden" id="panel-discuss" role="dialog" aria-modal="true" aria-labelledby="panel-discuss-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">Discussion board</h2>
+        <h2 class="overlay-title" id="panel-discuss-title">Discussion board</h2>
         <div class="overlay-actions">
           <button class="btn btn-brand btn-sm" id="newThreadBtn">New thread</button>
           <button class="btn btn-sm" id="clearDiscussBtn">Clear board</button>
@@ -1668,9 +1703,9 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="discussBody"></div>
     </div>
 
-    <div class="overlay-panel hidden" id="panel-formality">
+    <div class="overlay-panel hidden" id="panel-formality" role="dialog" aria-modal="true" aria-labelledby="panel-formality-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">Report formality guidelines</h2>
+        <h2 class="overlay-title" id="panel-formality-title">Report formality guidelines</h2>
         <div class="overlay-actions">
           <button class="btn btn-sm" id="resetFormalityBtn">Reset defaults</button>
           <button class="btn btn-brand btn-sm" id="saveFormalityBtn">Save</button>
@@ -1682,9 +1717,9 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="formalityBody"></div>
     </div>
 
-    <div class="overlay-panel hidden" id="panel-auth">
+    <div class="overlay-panel hidden" id="panel-auth" role="dialog" aria-modal="true" aria-labelledby="panel-auth-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">OpenStreetMap account</h2>
+        <h2 class="overlay-title" id="panel-auth-title">OpenStreetMap account</h2>
         <div class="overlay-actions">
           <button class="icon-btn" data-close-panel="auth" aria-label="Close">
             <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -1696,7 +1731,7 @@ table.t a:hover { text-decoration: underline; }
 
     <!-- dock -->
     <nav class="dock" role="tablist" aria-label="Dashboard views">
-      <button class="dock-btn" data-view="map" aria-pressed="true">
+      <button class="dock-btn" data-view="map" aria-pressed="true" aria-current="page">
         <svg viewBox="0 0 16 16" fill="none"><path d="M2 4l4-2 4 2 4-2v10l-4 2-4-2-4 2V4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6 2v10M10 4v10" stroke="currentColor" stroke-width="1.3"/></svg>
         Map
       </button>
@@ -1788,7 +1823,7 @@ table.t a:hover { text-decoration: underline; }
      - © OpenStreetMap contributors per ODbL §4.3 -->
 <div class="data-attribution" id="dataAttribution" style="
   position: fixed; bottom: 6px; right: 8px; z-index: 600;
-  font-size: 10.5px; color: var(--ink-mute, #6a6a6a);
+  font-size: 10.5px; color: var(--ink-mute);
   background: rgba(255,255,255,0.78); padding: 3px 8px; border-radius: 4px;
   font-family: var(--mono, ui-monospace, monospace); pointer-events: auto;">
   <a href="https://transitapp.com/" target="_blank" rel="noopener"
@@ -1806,9 +1841,15 @@ table.t a:hover { text-decoration: underline; }
   "weight": "med"
 }/*EDITMODE-END*/</script>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-<script src="https://unpkg.com/esri-leaflet@3.0.14/dist/esri-leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH"
+        crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"
+        integrity="sha384-eXVCORTRlv4FUUgS/xmOyr66XBVraen8ATNLMESp92FKXLAMiKkerixTiBvXriZr"
+        crossorigin="anonymous"></script>
+<script src="https://unpkg.com/esri-leaflet@3.0.14/dist/esri-leaflet.js"
+        integrity="sha384-Lm29z+brYIz3vevy21cGCkFIoyyO9sVj7QBYlIPhhWZM9SlgXJ13rYSTS8uO6/iD"
+        crossorigin="anonymous"></script>
 <script src="/js/atlas.js"></script>
 <script src="/js/atlas-extras.js"></script>
 </body>

@@ -8,6 +8,18 @@ dist/
 build/
 *.whl
 
+# Tool caches (mirror the tools used in .github/workflows/ci.yml)
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Coverage outputs (pytest --cov-report=xml/json)
+.coverage
+.coverage.*
+coverage.xml
+coverage.json
+htmlcov/
+
 # Virtual environments
 .venv/
 venv/
