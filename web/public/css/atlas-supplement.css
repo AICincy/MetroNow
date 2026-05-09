@@ -74,17 +74,17 @@
   font-size: 11px;
   line-height: 1.55;
   padding: 1px 0;
-  color: #cfd2c8;
+  color: var(--console-fg);
   white-space: pre-wrap;
   word-break: break-word;
 }
-.console-line.ok { color: #88c897; }
-.console-line.error { color: #e89090; }
-.console-line.warn { color: #d8b870; }
+.console-line.ok { color: var(--console-line-ok); }
+.console-line.error { color: var(--console-line-err); }
+.console-line.warn { color: var(--console-line-warn); }
 
-.ck-dot.live { background: #6cb273; box-shadow: 0 0 0 2px rgba(108,178,115,0.18); animation: ckPulse 1.4s infinite; }
-.ck-dot.ok   { background: #6cb273; }
-.ck-dot.error { background: #d35858; box-shadow: 0 0 0 2px rgba(211,88,88,0.2); }
+.ck-dot.live { background: var(--console-tag-res); box-shadow: 0 0 0 2px rgba(108,178,115,0.18); animation: ckPulse 1.4s infinite; }
+.ck-dot.ok   { background: var(--console-tag-res); }
+.ck-dot.error { background: var(--console-dot-err); box-shadow: 0 0 0 2px rgba(211,88,88,0.2); }
 @keyframes ckPulse {
   0%,100% { box-shadow: 0 0 0 2px rgba(108,178,115,0.2); }
   50% { box-shadow: 0 0 0 4px rgba(108,178,115,0.0); }
