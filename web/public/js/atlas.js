@@ -851,7 +851,12 @@
   document.addEventListener("keydown", onTrapKeydown);
 
   function openPanel(name) {
-    focusReturnTarget = document.activeElement;
+    // Only capture the return target on the *first* open. Panel-switching
+    // (e.g. submitFixes() opening "auth" while the Fix panel is already
+    // up) would otherwise overwrite the target with an element inside the
+    // panel that is about to be hidden, leaving closeAllPanels with a
+    // detached / unfocusable target.
+    if (!trappedPanel) focusReturnTarget = document.activeElement;
     $$(".overlay-panel").forEach((p) => p.classList.add("hidden"));
     const p = $("#panel-" + name);
     if (p) p.classList.remove("hidden");
@@ -878,8 +883,13 @@
       else b.removeAttribute("aria-current");
     });
     trappedPanel = null;
-    if (focusReturnTarget && typeof focusReturnTarget.focus === "function") {
+    // Restore focus only if the original opener is still in the DOM and
+    // focusable. document.body is a safe fallback if the opener is gone.
+    if (focusReturnTarget && focusReturnTarget.isConnected
+        && typeof focusReturnTarget.focus === "function") {
       focusReturnTarget.focus();
+    } else if (document.body && typeof document.body.focus === "function") {
+      document.body.focus();
     }
     focusReturnTarget = null;
   }

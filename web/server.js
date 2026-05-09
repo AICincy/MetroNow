@@ -55,6 +55,15 @@ app.use(helmet({
   },
 }));
 app.use(cors({ origin: "http://localhost:3000" }));
+
+// Mount /health BEFORE the rate limiter and static middleware. Healthcheck
+// probes shouldn't consume rate-limit budget, and we don't want them
+// triggering a disk stat through express.static. helmet's CSP still
+// applies (the `app.use(helmet(...))` above runs first).
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
 app.use(rateLimit({ windowMs: 60000, max: 100, standardHeaders: true }));
 
 const PYTHON = (() => {
@@ -99,13 +108,6 @@ function appendHistory(entry) {
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
-
-// Lightweight liveness probe — no subprocess, no disk I/O. Mounted before
-// the rate limiter at the top of the file applies (the limiter is global,
-// but this route is cheap enough that the limit doesn't matter).
-app.get("/health", (_req, res) => {
-  res.json({ ok: true });
-});
 
 const SAFE_ZONE_RE = /^[a-z0-9-]+$/;
 function validateZone(zone, res) {
