@@ -138,7 +138,7 @@ cd /opt/metronow/deploy && docker compose logs -f
 docker compose restart app
 
 # inspect the persisted config volume
-docker run --rm -v metronow_osm_config:/c alpine ls -la /c
+docker run --rm -v deploy_osm_config:/c alpine ls -la /c
 ```
 
 ## Out-of-band OAuth bootstrap
