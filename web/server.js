@@ -9,7 +9,51 @@ const rateLimit = require("express-rate-limit");
 const app = express();
 const PORT = 3000;
 
-app.use(helmet({ contentSecurityPolicy: false }));
+// Strict CSP — only the origins this app actually loads from. The hosts
+// match what's referenced in web/public/index.html (CDN scripts/styles +
+// tile/feature servers used by Leaflet and esri-leaflet) and the OAuth
+// authorization endpoint we link to from the Account panel.
+//   - 'self'                  : our own JS/CSS/HTML/JSON
+//   - unpkg.com               : Leaflet / leaflet.markercluster / esri-leaflet
+//   - fonts.googleapis.com    : font CSS
+//   - fonts.gstatic.com       : font binaries
+//   - basemaps.cartocdn.com   : CARTO tile basemap
+//   - server.arcgisonline.com / services.arcgis.com / *.arcgis.com :
+//                                Esri imagery + CAGIS feature service
+//   - openstreetmap.org / *.tile.openstreetmap.org : OSM tiles + OAuth
+// 'unsafe-inline' is allowed for style-src because Leaflet injects inline
+// styles for control overlays; it is *not* allowed for script-src.
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      "default-src": ["'self'"],
+      "script-src": ["'self'", "https://unpkg.com"],
+      "style-src": [
+        "'self'", "'unsafe-inline'",
+        "https://unpkg.com",
+        "https://fonts.googleapis.com",
+      ],
+      "font-src": ["'self'", "https://fonts.gstatic.com", "data:"],
+      "img-src": [
+        "'self'", "data:", "blob:",
+        "https://*.basemaps.cartocdn.com",
+        "https://server.arcgisonline.com",
+        "https://services.arcgis.com",
+        "https://*.tile.openstreetmap.org",
+      ],
+      "connect-src": [
+        "'self'",
+        "https://services.arcgis.com",
+        "https://nominatim.openstreetmap.org",
+      ],
+      "frame-ancestors": ["'none'"],
+      "object-src": ["'none'"],
+      "base-uri": ["'self'"],
+      "form-action": ["'self'"],
+    },
+  },
+}));
 app.use(cors({ origin: "http://localhost:3000" }));
 app.use(rateLimit({ windowMs: 60000, max: 100, standardHeaders: true }));
 
@@ -344,11 +388,7 @@ app.post("/api/conflate/:zone", async (req, res) => {
 
 app.get("/api/results/:zone", (req, res) => {
   if (!validateZone(req.params.zone, res)) return;
-  const p = path.join(
-    PROJECT_ROOT,
-    "osm-audit-" + req.params.zone,
-    "scan-results.json"
-  );
+  const p = zonePath(req.params.zone, "scan-results.json");
   if (!fs.existsSync(p))
     return res.status(404).json({ error: "No scan results. Run a scan first." });
   try {
@@ -423,17 +463,16 @@ app.post("/api/reports", async (req, res) => {
 
 app.get("/api/dashboard/:zone", (req, res) => {
   if (!validateZone(req.params.zone, res)) return;
-  const dir = path.join(
-    PROJECT_ROOT,
-    "osm-audit-" + req.params.zone,
-    "reports"
-  );
+  const dir = zonePath(req.params.zone, "reports");
   if (!fs.existsSync(dir))
     return res.status(404).json({ error: "No reports found." });
   const files = fs.readdirSync(dir).filter((f) => f.endsWith("-Dashboard.html"));
   if (files.length === 0)
     return res.status(404).json({ error: "No dashboard found." });
-  res.sendFile(path.join(dir, files[0]));
+  // files[0] is filtered to ".endsWith('-Dashboard.html')" and read directly
+  // from the validated zone dir; build the served path through zonePath() so
+  // the resolved-prefix containment guard runs again for CodeQL.
+  res.sendFile(zonePath(req.params.zone, "reports", files[0]));
 });
 
 // ---- review + fix ----

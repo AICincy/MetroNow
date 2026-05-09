@@ -153,14 +153,22 @@ document.getElementById('basemap').addEventListener('change',function(){
   currentBase=basemaps[this.value];
   currentBase.addTo(map);
 });
-// Search
+// Search — build rows with DOM APIs, never via innerHTML, so a street
+// name containing HTML metacharacters can't escape into the document.
 var searchInput=document.getElementById('search');
 searchInput.addEventListener('input',function(){
   var q=this.value.toLowerCase().trim();
+  var res=document.getElementById('search-results');
+  while(res.firstChild)res.removeChild(res.firstChild);
   if(!q){clearHighlight();return}
   var matches=Object.keys(streetIndex).filter(function(k){return k.indexOf(q)>=0}).slice(0,10);
-  var res=document.getElementById('search-results');
-  res.innerHTML=matches.map(function(m){return'<div style="padding:4px;cursor:pointer;font-size:12px" onclick="highlightStreet(\''+m.replace(/'/g,"\\'")+'\')">'+(streetIndex[m][0]._wayData.n||m)+'</div>'}).join('');
+  matches.forEach(function(m){
+    var row=document.createElement('div');
+    row.style.cssText='padding:4px;cursor:pointer;font-size:12px';
+    row.textContent=streetIndex[m][0]._wayData.n||m;
+    row.addEventListener('click',function(){highlightStreet(m)});
+    res.appendChild(row);
+  });
 });
 // Highlight
 var highlighted=[];
