@@ -618,7 +618,7 @@
     });
     // and wire legend
     $$(".leg-item").forEach((el) => {
-      el.onclick = () => toggleClassFilter(el.dataset.class);
+      el.addEventListener("click", () => toggleClassFilter(el.dataset.class));
     });
   }
 
@@ -816,12 +816,46 @@
   }
 
   // --------------------------------------------------------------- panels / dock
+  // Focus trap state: the element that had focus before a panel opened, so we
+  // can restore it on close. Only the active panel is treated as a dialog.
+  let focusReturnTarget = null;
+  let trappedPanel = null;
+
+  function focusableWithin(root) {
+    if (!root) return [];
+    const sel = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    return Array.from(root.querySelectorAll(sel)).filter((el) => el.offsetParent !== null);
+  }
+
+  function trapFocus(panel) {
+    trappedPanel = panel;
+    const items = focusableWithin(panel);
+    if (items.length) items[0].focus();
+  }
+
+  function onTrapKeydown(e) {
+    if (!trappedPanel) return;
+    if (e.key === "Escape") { closeAllPanels(); return; }
+    if (e.key !== "Tab") return;
+    const items = focusableWithin(trappedPanel);
+    if (!items.length) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+  document.addEventListener("keydown", onTrapKeydown);
+
   function openPanel(name) {
+    focusReturnTarget = document.activeElement;
     $$(".overlay-panel").forEach((p) => p.classList.add("hidden"));
     const p = $("#panel-" + name);
     if (p) p.classList.remove("hidden");
     $$(".dock-btn").forEach((b) => {
-      b.setAttribute("aria-pressed", b.dataset.view === name ? "true" : "false");
+      const active = b.dataset.view === name;
+      b.setAttribute("aria-pressed", active ? "true" : "false");
+      if (active) b.setAttribute("aria-current", "page");
+      else b.removeAttribute("aria-current");
     });
     if (name === "results") renderResultsPanel();
     if (name === "investigations") renderInvestigationsPanel();
@@ -829,12 +863,21 @@
     if (name === "discuss") renderDiscussPanel();
     if (name === "formality") renderFormalityPanel();
     if (name === "auth") renderAuthPanel();
+    if (p) trapFocus(p);
   }
   function closeAllPanels() {
     $$(".overlay-panel").forEach((p) => p.classList.add("hidden"));
     $$(".dock-btn").forEach((b) => {
-      b.setAttribute("aria-pressed", b.dataset.view === "map" ? "true" : "false");
+      const active = b.dataset.view === "map";
+      b.setAttribute("aria-pressed", active ? "true" : "false");
+      if (active) b.setAttribute("aria-current", "page");
+      else b.removeAttribute("aria-current");
     });
+    trappedPanel = null;
+    if (focusReturnTarget && typeof focusReturnTarget.focus === "function") {
+      focusReturnTarget.focus();
+    }
+    focusReturnTarget = null;
   }
 
   // --------------------------------------------------------------- Osmose overlay
@@ -1518,13 +1561,13 @@
       });
       const fr = $("#fxResult");
       if (dryRun) {
-        if (fr) fr.innerHTML = `<div class="fx-result ok">[DRY RUN] Would submit <strong>${result.fixes_applied}</strong> fix(es). No changes made.</div>`;
+        if (fr) fr.innerHTML = `<div class="fx-result ok">[DRY RUN] Would submit <strong>${esc(result.fixes_applied)}</strong> fix(es). No changes made.</div>`;
         toast("Dry run complete");
       } else {
         const ids = (result.changeset_ids || [])
-          .map((id) => `<a href="https://www.openstreetmap.org/changeset/${id}" target="_blank" rel="noopener">${id}</a>`)
+          .map((id) => `<a href="https://www.openstreetmap.org/changeset/${encodeURIComponent(id)}" target="_blank" rel="noopener">${esc(id)}</a>`)
           .join(", ");
-        let html = `<div class="fx-result ok">Submitted <strong>${result.fixes_applied}</strong> fix(es).</div>`;
+        let html = `<div class="fx-result ok">Submitted <strong>${esc(result.fixes_applied)}</strong> fix(es).</div>`;
         if (ids) html += `<div class="muted">Changeset(s): ${ids}</div>`;
         if (result.errors && result.errors.length)
           html += `<div class="fx-result err">${result.errors.length} error(s): ${esc(result.errors.join("; "))}</div>`;

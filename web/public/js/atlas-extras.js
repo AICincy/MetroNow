@@ -26,7 +26,9 @@
     return def;
   }
 
-  function save(t) { localStorage.setItem(KEY, JSON.stringify(t)); }
+  function save(t) {
+    try { localStorage.setItem(KEY, JSON.stringify(t)); } catch {}
+  }
 
   function effectiveTheme(theme) {
     if (theme !== "auto") return theme;
