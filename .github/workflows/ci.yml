@@ -42,6 +42,35 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v --tb=short
 
+      # Verify the wheel bundles all runtime data files. Without this
+      # check, missing tool.setuptools.package-data entries pass tests
+      # (which run from the editable checkout) but produce a broken
+      # installed package — confirmed regression 2026-05-09.
+      - name: Build wheel
+        run: pip install build && python -m build --wheel
+      - name: Wheel includes templates and zones
+        run: |
+          python - <<'PY'
+          import zipfile, glob, sys
+          wheels = glob.glob("dist/*.whl")
+          assert wheels, "no wheel built"
+          with zipfile.ZipFile(wheels[0]) as z:
+              names = z.namelist()
+          required = [
+              "osm/templates/dashboard.html",
+              "osm/zones/blue-ash-montgomery.geojson",
+              "osm/zones/forest-park-pleasant-run.geojson",
+              "osm/zones/northgate-mt-healthy.geojson",
+              "osm/zones/springdale-sharonville.geojson",
+              "osm/zones/hamilton-county.geojson",
+          ]
+          missing = [r for r in required if r not in names]
+          if missing:
+              print(f"Wheel is missing required data files: {missing}", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK: all {len(required)} runtime data files present in wheel")
+          PY
+
   node:
     name: Node lint
     runs-on: ubuntu-latest

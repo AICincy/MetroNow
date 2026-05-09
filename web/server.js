@@ -180,6 +180,21 @@ app.get("/api/auth/status", (_req, res) => {
   }
 });
 
+// Server-side OAuth-flow registry. The PKCE code_verifier is a secret —
+// exposing it to the browser defeats the protection PKCE provides
+// against an attacker who intercepts the authorization code (RFC 7636 §1).
+// We hold the verifier here, hand the browser only an opaque flow_id,
+// and consume the flow on exchange. Flows expire after FLOW_TTL_MS so a
+// stalled login can't be replayed indefinitely.
+const FLOW_TTL_MS = 10 * 60 * 1000;
+const oauthFlows = new Map();
+function purgeExpiredFlows() {
+  const now = Date.now();
+  for (const [id, flow] of oauthFlows) {
+    if (flow.expiresAt <= now) oauthFlows.delete(id);
+  }
+}
+
 app.post("/api/auth/url", async (_req, res) => {
   try {
     const pyCode = [
@@ -190,16 +205,42 @@ app.post("/api/auth/url", async (_req, res) => {
       'print(json.dumps({"url": url, "verifier": verifier, "state": state}))',
     ].join("\n");
     const out = await runPython(pyCode);
-    res.json(JSON.parse(out.trim()));
+    const data = JSON.parse(out.trim());
+    purgeExpiredFlows();
+    const flowId = require("crypto").randomUUID();
+    oauthFlows.set(flowId, {
+      verifier: data.verifier,
+      state: data.state,
+      expiresAt: Date.now() + FLOW_TTL_MS,
+    });
+    // Browser sees only url + flow_id; never the verifier.
+    res.json({ url: data.url, flow_id: flowId });
   } catch (e) {
     res.status(500).json({ error: safeError(e) });
   }
 });
 
 app.post("/api/auth/exchange", async (req, res) => {
-  const { code, verifier } = req.body;
-  if (!code || !verifier)
-    return res.status(400).json({ error: "Missing code or verifier" });
+  const { code, flow_id: flowId, verifier: legacyVerifier } = req.body;
+  if (!code) return res.status(400).json({ error: "Missing code" });
+
+  // Resolve verifier: prefer server-side flow, fall back to legacy
+  // {verifier} body for one release cycle so an in-flight UI can finish
+  // its login. Legacy fallback is logged so we can drop it later.
+  let verifier;
+  if (flowId) {
+    purgeExpiredFlows();
+    const flow = oauthFlows.get(flowId);
+    if (!flow) return res.status(400).json({ error: "Unknown or expired flow" });
+    oauthFlows.delete(flowId);  // single-use
+    verifier = flow.verifier;
+  } else if (legacyVerifier) {
+    console.warn("auth/exchange: legacy verifier path used; client should send flow_id");
+    verifier = legacyVerifier;
+  } else {
+    return res.status(400).json({ error: "Missing flow_id (or legacy verifier)" });
+  }
+
   try {
     const pyCode = [
       "import json, sys",
