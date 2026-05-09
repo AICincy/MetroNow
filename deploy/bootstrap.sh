@@ -3,12 +3,12 @@
 # (Ampere A1, 4 OCPU / 24 GB). Run as the default `ubuntu` user with sudo.
 #
 #   ssh ubuntu@<vm-public-ip>
-#   curl -fsSL https://raw.githubusercontent.com/aicincy/metronow/main/deploy/bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/AICincy/MetroNow/main/deploy/bootstrap.sh | bash
 #
 # Idempotent: safe to re-run.
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/aicincy/metronow.git}"
+REPO_URL="${REPO_URL:-https://github.com/AICincy/MetroNow.git}"
 BRANCH="${BRANCH:-main}"
 APP_DIR="${APP_DIR:-/opt/metronow}"
 
