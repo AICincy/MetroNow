@@ -1,0 +1,23 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Long-running scans: Overpass + BRouter + MOTIS calls can take
+	# 30-90s. Default Caddy proxy timeouts (no read timeout, but the
+	# stream can stall) are fine, but be explicit so a future tweak
+	# doesn't surprise us.
+	reverse_proxy app:3000 {
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
