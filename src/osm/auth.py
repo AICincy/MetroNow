@@ -68,7 +68,23 @@ def get_access_token() -> str | None:
 
 
 def build_auth_url() -> tuple[str, str, str]:
-    """Build the OAuth authorization URL. Returns (url, verifier, state)."""
+    """Build the OAuth authorization URL. Returns (url, verifier, state).
+
+    The ``state`` value is generated per RFC 6749 §10.12 conventions but
+    is **not** validated as a request/callback binding in this codebase.
+    Reason: this client uses the out-of-band redirect URI
+    ``urn:ietf:wg:oauth:2.0:oob``, where the user manually pastes the
+    authorization code from the provider's response page. There is no
+    redirect for the server to inspect, so there is nothing to compare
+    the issued ``state`` against. The CSRF protection that ``state``
+    provides for redirect-based flows therefore does not apply here;
+    the actual protection is PKCE (RFC 7636), which binds the code
+    exchange to a verifier never exposed to the browser.
+
+    A future migration to a localhost callback redirect URI would let
+    the server validate ``state`` properly. Until then, ``state`` is
+    generated for protocol completeness, not enforcement.
+    """
     creds = load_credentials()
     verifier, challenge = _generate_pkce()
     state = secrets.token_urlsafe(32)

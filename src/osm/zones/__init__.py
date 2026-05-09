@@ -1,4 +1,10 @@
-"""Hamilton County MetroNow service zone definitions."""
+"""Hamilton County MetroNow service zone definitions.
+
+This package also bundles the GeoJSON polygons for each zone plus the
+Hamilton County envelope. Polygons are loaded by ``osm.polygons`` via
+:mod:`importlib.resources` keyed on this package name (``osm.zones``)
+so the resolution works for non-filesystem package backends.
+"""
 
 from __future__ import annotations
 

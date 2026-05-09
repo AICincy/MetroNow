@@ -203,6 +203,18 @@ def _cache_fresh(path: Path) -> bool:
 # Fetch
 # ---------------------------------------------------------------------------
 
+class IncompleteCagisFetch(RuntimeError):
+    """A CAGIS pagination failed mid-stream.
+
+    Raised by :func:`fetch_cagis_centerlines` when any non-first page
+    fails. The caller should treat this as "ground truth unavailable"
+    and either fall back to an existing complete cache or surface the
+    failure — never cache the partial result, since a truncated
+    centerline set would silently under-match valid OSM ways and
+    corrupt mechanical-fix decisions on the next run.
+    """
+
+
 def fetch_cagis_centerlines(
     bbox: tuple[float, float, float, float],
     *,
@@ -256,8 +268,16 @@ def fetch_cagis_centerlines(
             resp.raise_for_status()
             data = resp.json()
         except (requests.RequestException, ValueError) as exc:
-            log.error("CAGIS fetch failed on page %d: %s", page, exc)
-            break
+            # All-or-nothing pagination: if any page fails after the
+            # first, we'd otherwise cache a partial centerline set and
+            # under-match valid OSM ways the next time conflation runs.
+            # That can corrupt mechanical-fix decisions, so propagate
+            # instead of silently truncating.
+            raise IncompleteCagisFetch(
+                f"CAGIS fetch failed on page {page} (offset={offset}): {exc}. "
+                f"{len(features)} feature(s) collected before failure; "
+                "refusing to cache partial result."
+            ) from exc
 
         page_features = data.get("features") or []
         features.extend(page_features)

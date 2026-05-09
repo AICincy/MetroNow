@@ -229,10 +229,16 @@ def fetch_route(
             url, params=params, headers=MOTIS_HEADERS, timeout=timeout,
         )
     except requests.RequestException as exc:
+        from . import feed_errors
+        reason = "timeout" if "timed out" in str(exc).lower() else "network"
+        feed_errors.record("motis", reason, detail=str(exc))
         log.info("MOTIS request failed (%s); falling back. URL=%s", exc, url)
         return None
 
     if resp.status_code >= 400:
+        from . import feed_errors
+        feed_errors.record("motis", "http_error",
+                           detail=f"HTTP {resp.status_code}")
         log.info(
             "MOTIS HTTP %d for %s -> %s: %s",
             resp.status_code, origin, destination,

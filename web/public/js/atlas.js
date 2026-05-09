@@ -56,7 +56,7 @@
     scanStartedAt: 0,
     scanTimerId: null,
     auth: { authenticated: false, scope: null },
-    authVerifier: null,
+    authFlowId: null,
     discussKey: () => `metronow.discuss.${state.currentZone || "_"}`,
     formalityKey: "metronow.formality",
   };
@@ -1842,7 +1842,9 @@
   async function startAuth() {
     try {
       const data = await api("/api/auth/url", { method: "POST" });
-      state.authVerifier = data.verifier;
+      // Server now returns flow_id only; the PKCE verifier stays
+      // server-side per RFC 7636 §1.
+      state.authFlowId = data.flow_id;
       window.open(data.url, "_blank", "noopener");
       toast("OSM authorization opened");
       const sub = $("#authSubmitBtn"); if (sub) sub.disabled = false;
@@ -1853,11 +1855,11 @@
   async function finishAuth() {
     const code = $("#authCode")?.value.trim();
     if (!code) return;
-    if (!state.authVerifier) { toast("Click Authorize first", "warn"); return; }
+    if (!state.authFlowId) { toast("Click Authorize first", "warn"); return; }
     try {
-      await api("/api/auth/exchange", { method: "POST", body: { code, verifier: state.authVerifier } });
+      await api("/api/auth/exchange", { method: "POST", body: { code, flow_id: state.authFlowId } });
       toast("Signed in to OSM");
-      state.authVerifier = null;
+      state.authFlowId = null;
       await refreshAuth();
       renderAuthPanel();
     } catch (e) {

@@ -80,7 +80,12 @@ def write_dashboard(
     safe_gaps = gaps_json.replace("</", "<\\/")
     safe_stats = stats_json.replace("</", "<\\/")
 
-    template = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    # Route the read through importlib.resources so the template loads
+    # correctly from non-filesystem package backends (zipapp, frozen).
+    # The _TEMPLATE_PATH module-level constant is preserved for callers
+    # that want a Path for error reporting / mtime inspection.
+    from .resources import read_text_resource
+    template = read_text_resource("osm.templates", "dashboard.html")
     out_html = template.replace("{{ZONE_NAME}}", safe_zone_name)
     out_html = out_html.replace("{{ZONE_KEY}}", safe_zone_key)
     out_html = out_html.replace("{{AUDIT_TS}}", safe_audit_ts)
