@@ -106,7 +106,7 @@ resolve.
 
 ```sh
 ssh ubuntu@<vm-public-ip>
-curl -fsSL https://raw.githubusercontent.com/aicincy/metronow/main/deploy/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/AICincy/MetroNow/main/deploy/bootstrap.sh | bash
 exit            # log out so docker group membership applies
 ssh ubuntu@<vm-public-ip>
 ```
