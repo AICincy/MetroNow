@@ -7,7 +7,21 @@ const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
+// Behind Caddy / any reverse proxy, set TRUST_PROXY=1 (or a hop count) so
+// express-rate-limit and req.ip read X-Forwarded-For correctly. Default off
+// to keep local dev behavior unchanged.
+if (process.env.TRUST_PROXY) {
+  const v = process.env.TRUST_PROXY;
+  // Accept "true"/"false" as booleans; bare ints become hop counts;
+  // anything else passes through as an IP/subnet spec for Express.
+  let parsed;
+  if (v === "true") parsed = true;
+  else if (v === "false") parsed = false;
+  else if (/^\d+$/.test(v)) parsed = Number(v);
+  else parsed = v;
+  app.set("trust proxy", parsed);
+}
 
 // Strict CSP — only the origins this app actually loads from. The hosts
 // match what's referenced in web/public/index.html (CDN scripts/styles +
@@ -54,7 +68,7 @@ app.use(helmet({
     },
   },
 }));
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(cors({ origin: process.env.ALLOWED_ORIGIN || "http://localhost:3000" }));
 app.use(rateLimit({ windowMs: 60000, max: 100, standardHeaders: true }));
 
 const PYTHON = (() => {
