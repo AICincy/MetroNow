@@ -1,27 +1,46 @@
-# This workflow warns and then closes issues and PRs that have had no activity for a specified amount of time.
-#
-# You can adjust the behavior by modifying this file.
-# For more information, see:
-# https://github.com/actions/stale
+# Mark stale issues and PRs after a long inactivity window. Tunings:
+#  - 90 days to mark stale (avoids noise on slow-moving design discussions)
+#  - 14 days from stale to close (gives the author a chance to revive)
+#  - Pinned issues and PRs are exempt; the `keep-open` label also exempts.
+
 name: Mark stale issues and pull requests
 
 on:
   schedule:
-  - cron: '42 5 * * *'
+    - cron: '42 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
 
 jobs:
   stale:
-
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      pull-requests: write
-
     steps:
-    - uses: actions/stale@v5
-      with:
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
-        stale-issue-message: 'Stale issue message'
-        stale-pr-message: 'Stale pull request message'
-        stale-issue-label: 'no-issue-activity'
-        stale-pr-label: 'no-pr-activity'
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          days-before-issue-stale: 90
+          days-before-issue-close: 14
+          days-before-pr-stale: 90
+          days-before-pr-close: 14
+          stale-issue-message: >
+            This issue has been automatically marked stale because there has
+            been no activity for 90 days. It will close in 14 days unless an
+            update or comment is posted, or the `keep-open` label is added.
+          close-issue-message: >
+            Closing automatically after 14 days of staleness. Please reopen
+            with new context if this is still relevant.
+          stale-pr-message: >
+            This pull request has been automatically marked stale because
+            there has been no activity for 90 days. It will close in 14 days
+            unless an update is pushed, or the `keep-open` label is added.
+          close-pr-message: >
+            Closing automatically after 14 days of staleness. Please reopen
+            and rebase if you want to revive this work.
+          stale-issue-label: stale
+          stale-pr-label: stale
+          exempt-issue-labels: keep-open,security
+          exempt-pr-labels: keep-open
+          exempt-all-milestones: true
