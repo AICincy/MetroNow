@@ -3,8 +3,8 @@
 ## Summary
 
 The report audits frontend, Python packaging, API, caching, conflation, and
-testing. Verified against the tree at `9836bb9`, **12 of 18 recommendations
-stand as written, 3 are rejected on false premises, and 3 need rewriting
+testing. Verified against the tree at `9836bb9`, **13 of 18 recommendations
+stand as written, 2 are rejected on false premises, and 3 need rewriting
 because the underlying defect is real but the cited evidence is wrong**.
 Sections 1, 3, 4, and 6 are largely accurate. Section 2 (Python packaging)
 is mostly false: it claims missing files that already exist. Section 5
@@ -144,11 +144,19 @@ Priority-ordered, no effort estimates (the report's were unsupported):
 
 ## Notes for the Report Author
 
-Three claims in the original report are contradicted by files that exist
-in the tree (R2.1: `pyproject.toml`; R2.2: the `fcntl` fallback in
-`transit.py`; R5.2: documentation around `REVIEW_CONFIDENCE`). When a
-report fabricates absent files, every other claim becomes suspect and a
-reader has to re-verify the entire document — which is what happened
-here. Future revisions should generate citations directly from the live
-tree (`grep -n` output is fine) and include the file path *and* line
-number for every concrete claim.
+Two recommendations are rejected outright because their premises are
+contradicted by files that exist in the tree (R2.1: `pyproject.toml`
+exists; R2.2: the `fcntl` fallback in `transit.py:209–232` is already
+implemented). A third (R5.2) has its same kind of evidence problem —
+`REVIEW_CONFIDENCE` is documented at `conflate.py:82–96` and the
+`_T_REV` alias is declared inline at `web/server.js:294` — but is
+graded REWRITE rather than REJECT because R5.3 (composite confidence
+helper) names a real follow-on gap, and the recommendation is more
+useful merged with R5.3 than discarded. The accept/reject/rewrite
+verdicts are: 13 / 2 / 3.
+
+When a report fabricates absent files, every other claim becomes
+suspect and a reader has to re-verify the entire document — which
+is what happened here. Future revisions should generate citations
+directly from the live tree (`grep -n` output is fine) and include
+the file path *and* line number for every concrete claim.
