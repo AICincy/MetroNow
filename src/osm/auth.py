@@ -133,7 +133,14 @@ def login() -> dict:
 
     url, verifier, state = build_auth_url()
     print("Opening browser for OSM authorization...")
-    print(f"  If the browser doesn't open, visit:\n  {url}")
+    # CodeQL flags the next line as `py/clear-text-logging-sensitive-data`
+    # because `url` flows from `build_auth_url()`. Per RFC 6749 §4.1.1 the
+    # OAuth 2.0 authorization URL contains no secrets — only the public
+    # client_id, redirect_uri, scope, response_type, the SHA-256
+    # `code_challenge` (a one-way hash of the secret PKCE verifier), and
+    # the CSRF `state` token. The PKCE verifier itself never leaves this
+    # process. Suppressing the alert at source so it stops re-triggering.
+    print(f"  If the browser doesn't open, visit:\n  {url}")  # lgtm[py/clear-text-logging-sensitive-data]
     webbrowser.open(url)
 
     code = input("\nPaste the authorization code here: ").strip()

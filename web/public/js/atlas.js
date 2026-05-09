@@ -617,8 +617,12 @@
       btn.addEventListener("click", () => toggleClassFilter(btn.dataset.class));
     });
     // and wire legend
+    // Idempotent assignment — `renderClasses` re-runs on every stats update.
+    // Using addEventListener here would accumulate one extra listener per
+    // render; `onclick =` cleanly replaces the previous handler. Keep this
+    // pattern even though the rest of the file uses addEventListener.
     $$(".leg-item").forEach((el) => {
-      el.addEventListener("click", () => toggleClassFilter(el.dataset.class));
+      el.onclick = () => toggleClassFilter(el.dataset.class);
     });
   }
 

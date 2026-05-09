@@ -40,7 +40,12 @@ COPY --from=node-deps --chown=metronow:metronow /app/web/node_modules web/node_m
 COPY --chown=metronow:metronow pyproject.toml .
 COPY --chown=metronow:metronow web/ web/
 
-RUN mkdir -p /home/metronow/.config/osm \
+# /app itself must be writable by the metronow user — the Express server
+# creates `osm-audit-<zone>/` directories during scans and writes
+# `edit-history.json` at PROJECT_ROOT (= /app inside the container).
+# Without this chown, those writes would fail with EACCES under USER metronow.
+RUN chown metronow:metronow /app \
+    && mkdir -p /home/metronow/.config/osm \
     && chown -R metronow:metronow /home/metronow/.config
 
 USER metronow
