@@ -108,10 +108,42 @@ def read_json_cache(path: Path) -> Any | None:
 
 
 def write_json_cache(path: Path, payload: Any) -> None:
-    """Write a JSON payload to the cache atomically (best-effort)."""
+    """Write a JSON payload to the cache file atomically.
+
+    Implementation: write to a sibling tempfile in the same directory,
+    fsync, then ``os.replace`` over the target. This guarantees that
+    readers either see the previous complete file or the new complete
+    file, never a truncated mid-write state. Same-directory tempfile
+    is required so ``os.replace`` is atomic (it falls back to a
+    cross-device copy otherwise).
+    """
+    import os
+    import tempfile
+
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as fh:
-            json.dump(payload, fh, ensure_ascii=False)
     except OSError as exc:
-        log.warning("Could not write cache %s: %s", path, exc)
+        log.warning("Could not create cache dir for %s: %s", path, exc)
+        return
+
+    tmp_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as fh:
+            tmp_name = fh.name
+            json.dump(payload, fh, ensure_ascii=False)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, path)
+    except OSError as exc:
+        log.warning("Could not write cache %s atomically: %s", path, exc)
+        if tmp_name:
+            import contextlib
+            with contextlib.suppress(OSError):
+                Path(tmp_name).unlink()
