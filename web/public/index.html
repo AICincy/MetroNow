@@ -7,9 +7,16 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" /><link rel="stylesheet" href="/css/atlas-supplement.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H"
+      crossorigin="anonymous" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+      integrity="sha384-pmjIAcz2bAn0xukfxADbZIb3t8oRT9Sv0rvO+BR5Csr6Dhqq+nZs59P0pPKQJkEV"
+      crossorigin="anonymous" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+      integrity="sha384-wgw+aLYNQ7dlhK47ZPK7FRACiq7ROZwgFNg0m04avm4CaXS+Z9Y7nMu8yNjBKYC+"
+      crossorigin="anonymous" />
+<link rel="stylesheet" href="/css/atlas-supplement.css" />
 <style>
 /* ==========================================================
    MetroNow Atlas — design tokens
@@ -191,6 +198,7 @@ a { color: inherit; text-decoration: none; }
   height: 100%;
 }
 .brand-mark {
+  margin: 0;
   font-family: var(--serif);
   font-size: 22px;
   font-weight: 400;
@@ -249,12 +257,17 @@ a { color: inherit; text-decoration: none; }
 }
 
 .crumb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 12px;
   color: var(--ink-mute);
   letter-spacing: 0.04em;
+}
+.crumb ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .crumb-current {
   color: var(--ink);
@@ -1415,7 +1428,7 @@ table.t a:hover { text-decoration: underline; }
   <!-- ============================ Header ============================ -->
   <header class="app-header">
     <div class="brand">
-      <span class="brand-mark">MetroNow<em>!</em> Atlas</span>
+      <h1 class="brand-mark">MetroNow<em>!</em> Atlas</h1>
       <span class="brand-sub">Hamilton Co · TIGER Audit</span>
     </div>
     <div class="header-center">
@@ -1423,11 +1436,13 @@ table.t a:hover { text-decoration: underline; }
         <span class="status-dot" id="apiDot"></span>
         <span id="apiText">Connecting…</span>
       </span>
-      <span class="crumb" id="crumb">
-        <span>Zone</span>
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3.5 2l3 3-3 3" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>
-        <span class="crumb-current" id="crumbZone">—</span>
-      </span>
+      <nav class="crumb" id="crumb" aria-label="Breadcrumb">
+        <ol>
+          <li>Zone</li>
+          <li aria-hidden="true"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3.5 2l3 3-3 3" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg></li>
+          <li class="crumb-current" id="crumbZone" aria-current="page">—</li>
+        </ol>
+      </nav>
     </div>
     <div class="header-right">
       <button class="auth-chip" id="authChip" title="OpenStreetMap account">
@@ -1537,13 +1552,13 @@ table.t a:hover { text-decoration: underline; }
 
   <!-- ============================ Map ============================ -->
   <main class="map-area" id="main-content">
-    <div id="map"></div>
+    <div id="map" role="application" aria-label="Hamilton County zone map with TIGER defect overlay"></div>
 
     <!-- top-left: search -->
     <div class="map-overlay tl">
       <div class="float-card search-float">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.2" stroke="currentColor" stroke-width="1.4"/><path d="M9.2 9.2l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        <input id="search" type="text" placeholder="Search streets, way IDs…" autocomplete="off" />
+        <input id="search" type="search" aria-label="Search streets and way IDs" placeholder="Search streets, way IDs…" autocomplete="off" />
         <span class="kbd">/</span>
       </div>
     </div>
@@ -1563,7 +1578,7 @@ table.t a:hover { text-decoration: underline; }
 
     <!-- bottom-left: legend -->
     <div class="map-overlay bl">
-      <div class="float-card legend-float">
+      <div class="float-card legend-float" aria-live="polite" aria-atomic="false">
         <div class="legend-head">
           <span>Defect classes</span>
           <span id="legendTotal" style="font-family: var(--mono); text-transform: none; letter-spacing: 0;"></span>
@@ -1612,9 +1627,9 @@ table.t a:hover { text-decoration: underline; }
     </div>
 
     <!-- ============================ Overlay panels ============================ -->
-    <div class="overlay-panel hidden" id="panel-results">
+    <div class="overlay-panel hidden" id="panel-results" role="dialog" aria-modal="true" aria-labelledby="panel-results-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">Defect inventory</h2>
+        <h2 class="overlay-title" id="panel-results-title">Defect inventory</h2>
         <div class="overlay-actions">
           <button class="btn btn-sm" id="resCsv">Export CSV</button>
           <button class="btn btn-sm" id="resJson">Export JSON</button>
@@ -1627,9 +1642,9 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="resultsBody"></div>
     </div>
 
-    <div class="overlay-panel hidden" id="panel-fix">
+    <div class="overlay-panel hidden" id="panel-fix" role="dialog" aria-modal="true" aria-labelledby="panel-fix-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">Correction queue</h2>
+        <h2 class="overlay-title" id="panel-fix-title">Correction queue</h2>
         <div class="overlay-actions">
           <button class="btn btn-sm" id="loadFixesBtn">Load proposals</button>
           <button class="btn btn-sm" id="dryRunBtn" disabled>Dry run</button>
@@ -1643,9 +1658,9 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="fixBody"></div>
     </div>
 
-    <div class="overlay-panel hidden" id="panel-investigations">
+    <div class="overlay-panel hidden" id="panel-investigations" role="dialog" aria-modal="true" aria-labelledby="panel-investigations-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">Investigations <span style="font-family: var(--mono); font-size: 11px; color: var(--ink-mute); text-transform: none; letter-spacing: 0; margin-left: 8px;" id="investCount"></span></h2>
+        <h2 class="overlay-title" id="panel-investigations-title">Investigations <span style="font-family: var(--mono); font-size: 11px; color: var(--ink-mute); text-transform: none; letter-spacing: 0; margin-left: 8px;" id="investCount"></span></h2>
         <div class="overlay-actions">
           <div class="seg" id="investFilterSeg" data-tweak="invest" style="margin-right: 6px;">
             <button class="seg-btn" data-v="review" aria-pressed="true">Review band</button>
@@ -1660,9 +1675,9 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="investigationsBody"></div>
     </div>
 
-    <div class="overlay-panel hidden" id="panel-history">
+    <div class="overlay-panel hidden" id="panel-history" role="dialog" aria-modal="true" aria-labelledby="panel-history-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">Audit ledger</h2>
+        <h2 class="overlay-title" id="panel-history-title">Audit ledger</h2>
         <div class="overlay-actions">
           <button class="btn btn-sm" id="histRefresh">Refresh</button>
           <button class="btn btn-sm" id="histClear">Clear history & logs</button>
@@ -1674,9 +1689,9 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="historyBody"></div>
     </div>
 
-    <div class="overlay-panel hidden" id="panel-discuss">
+    <div class="overlay-panel hidden" id="panel-discuss" role="dialog" aria-modal="true" aria-labelledby="panel-discuss-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">Discussion board</h2>
+        <h2 class="overlay-title" id="panel-discuss-title">Discussion board</h2>
         <div class="overlay-actions">
           <button class="btn btn-brand btn-sm" id="newThreadBtn">New thread</button>
           <button class="btn btn-sm" id="clearDiscussBtn">Clear board</button>
@@ -1688,9 +1703,9 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="discussBody"></div>
     </div>
 
-    <div class="overlay-panel hidden" id="panel-formality">
+    <div class="overlay-panel hidden" id="panel-formality" role="dialog" aria-modal="true" aria-labelledby="panel-formality-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">Report formality guidelines</h2>
+        <h2 class="overlay-title" id="panel-formality-title">Report formality guidelines</h2>
         <div class="overlay-actions">
           <button class="btn btn-sm" id="resetFormalityBtn">Reset defaults</button>
           <button class="btn btn-brand btn-sm" id="saveFormalityBtn">Save</button>
@@ -1702,9 +1717,9 @@ table.t a:hover { text-decoration: underline; }
       <div class="overlay-body" id="formalityBody"></div>
     </div>
 
-    <div class="overlay-panel hidden" id="panel-auth">
+    <div class="overlay-panel hidden" id="panel-auth" role="dialog" aria-modal="true" aria-labelledby="panel-auth-title">
       <div class="overlay-head">
-        <h2 class="overlay-title">OpenStreetMap account</h2>
+        <h2 class="overlay-title" id="panel-auth-title">OpenStreetMap account</h2>
         <div class="overlay-actions">
           <button class="icon-btn" data-close-panel="auth" aria-label="Close">
             <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -1826,9 +1841,15 @@ table.t a:hover { text-decoration: underline; }
   "weight": "med"
 }/*EDITMODE-END*/</script>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-<script src="https://unpkg.com/esri-leaflet@3.0.14/dist/esri-leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH"
+        crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"
+        integrity="sha384-eXVCORTRlv4FUUgS/xmOyr66XBVraen8ATNLMESp92FKXLAMiKkerixTiBvXriZr"
+        crossorigin="anonymous"></script>
+<script src="https://unpkg.com/esri-leaflet@3.0.14/dist/esri-leaflet.js"
+        integrity="sha384-Lm29z+brYIz3vevy21cGCkFIoyyO9sVj7QBYlIPhhWZM9SlgXJ13rYSTS8uO6/iD"
+        crossorigin="anonymous"></script>
 <script src="/js/atlas.js"></script>
 <script src="/js/atlas-extras.js"></script>
 </body>
