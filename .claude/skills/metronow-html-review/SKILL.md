@@ -1,18 +1,16 @@
 ---
 name: metronow-html-review
-description: "Code review and quality standards for MetroNow Atlas HTML (9.0% of codebase). Use this skill when auditing HTML files, checking accessibility, validating semantic markup, or when someone asks \"review this page,\" \"check the markup,\" \"is this accessible,\" or \"does this meet WCAG.\" The app is a single HTML file with inline CSS and JS. Multiple HTML variants exist (bundle, offline, standalone). Repo: https://github.com/AICincy/MetroNow.git"
+description: "Code review and quality standards for MetroNow Atlas HTML. Use this skill when auditing HTML files, checking accessibility, validating semantic markup, or when someone asks \"review this page,\" \"check the markup,\" \"is this accessible,\" or \"does this meet WCAG.\" The shipping app is `web/public/index.html` (single file with inline `<style>` and external script tags). Several non-shipping HTML reports live in `docs/`. Repo: https://github.com/AICincy/MetroNow.git"
 compatibility: HTML5, WCAG 2.1 Level AA, Leaflet 1.9
 ---
 
 # MetroNow Atlas HTML Audit Guide
 
-Instructional reference for agents autonomously auditing and remediating MetroNow Atlas HTML. The app ships as a single HTML file with inline `<style>` and `<script>` blocks. Multiple variants exist:
+Instructional reference for agents autonomously auditing and remediating MetroNow Atlas HTML. The shipping app is a single HTML file:
 
-- `MetroNow_Atlas__bundle_src_.html` - Main development bundle (~1785 lines)
-- `MetroNow_Atlas__offline_.html` - Offline fallback (~200 lines)
-- `MetroNow_Atlas__1_.html` - Standalone variant
-- `Independent_Audit__1_.html` - Audit report page
-- `Change_Log__2_.html` - Changelog page
+- `web/public/index.html` (~1815 lines) - Main app shell with inline `<style>` block and external `<script>` tags pointing to `js/atlas.js` and `js/atlas-extras.js`.
+
+Non-shipping HTML reports also live in `docs/` (`metronow-atlas.html`, `independent-audit.html`, `change-log.html`). These are static documentation, not the runtime app, and should only be audited if explicitly requested.
 
 Classify every finding:
 
@@ -41,8 +39,8 @@ The HTML file has this structure:
   </div>
   <div id="toast" class="toast"></div>
   <!-- Leaflet JS from unpkg CDN -->
-  <script>/* atlas.js ~1639 lines */</script>
-  <script>/* atlas-extras.js ~495 lines */</script>
+  <script src="js/atlas.js"></script>          <!-- ~2072 lines -->
+  <script src="js/atlas-extras.js"></script>   <!-- ~132 lines -->
 </body>
 </html>
 ```

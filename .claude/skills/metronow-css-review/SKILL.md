@@ -1,12 +1,12 @@
 ---
 name: metronow-css-review
-description: "Code review and quality standards for MetroNow Atlas CSS (3.2% of codebase). Use this skill when auditing stylesheets, checking design token compliance, validating responsive layout, auditing color contrast, or when someone asks \"review my styles,\" \"check the CSS,\" \"is this accessible,\" or \"does this use the right tokens.\" All CSS is inline in the HTML file. Design system uses IBM Plex fonts, warm-neutral editorial palette, and CSS custom properties. Repo: https://github.com/AICincy/MetroNow.git"
+description: "Code review and quality standards for MetroNow Atlas CSS. Use this skill when auditing stylesheets, checking design token compliance, validating responsive layout, auditing color contrast, or when someone asks \"review my styles,\" \"check the CSS,\" \"is this accessible,\" or \"does this use the right tokens.\" CSS lives in two places: an inline `<style>` block in `web/public/index.html` and an external `web/public/css/atlas-supplement.css`. Design system uses IBM Plex fonts, warm-neutral editorial palette, and CSS custom properties. Repo: https://github.com/AICincy/MetroNow.git"
 compatibility: CSS3, CSS Custom Properties, CSS Grid, Flexbox
 ---
 
 # MetroNow Atlas CSS Audit Guide
 
-Instructional reference for agents autonomously auditing and remediating MetroNow Atlas CSS. All styles are inline in the HTML `<style>` block and injected at runtime by `atlas-extras.js`. There are no external CSS files.
+Instructional reference for agents autonomously auditing and remediating MetroNow Atlas CSS. Styles live in two places: a large inline `<style>` block at the top of `web/public/index.html` and an external stylesheet at `web/public/css/atlas-supplement.css` for components added by `atlas.js`. There is no runtime style injection by `atlas-extras.js`.
 
 Classify every finding:
 
@@ -16,10 +16,9 @@ Classify every finding:
 
 ## 1. Architecture
 
-No CSS files exist. All styles live in:
-- `<style>` block inside the main HTML file (~800+ lines)
-- Injected `<style id="atlas-extras-css">` from `atlas-extras.js` (~62 lines)
-- Inline styles on `tweaks-panel.jsx` components (React inline)
+CSS lives in:
+- `<style>` block inside `web/public/index.html` (~1390 lines, including the `:root` token definitions)
+- `web/public/css/atlas-supplement.css` (~526 lines) — components added by `atlas.js`
 
 No preprocessor (SASS/SCSS/PostCSS). No CSS modules. No Tailwind. Pure CSS custom properties.
 
@@ -212,7 +211,7 @@ html, body {
 
 ## 8. Print Styles
 
-`atlas-extras.js` injects print media styles:
+Print media styles are defined in the inline `<style>` block in `index.html`:
 
 ```css
 @media print {

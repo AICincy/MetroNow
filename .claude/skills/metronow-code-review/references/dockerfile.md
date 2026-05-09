@@ -1,10 +1,6 @@
-# Dockerfile Audit Standards
-
-MetroNow Atlas dockerfile audit criteria. Severity levels defined in parent SKILL.md.
-
 # MetroNow Atlas Dockerfile Audit Guide
 
-Instructional reference for agents autonomously auditing and remediating MetroNow Atlas container configuration. The backend is a FastAPI Python service (port 3000) that runs TIGER audit scans against OpenStreetMap data via Overpass API. The frontend is a single HTML file with inline JS/CSS served from the same origin.
+Instructional reference for agents autonomously auditing and remediating MetroNow Atlas container configuration. The runtime is a multi-stage build that produces a `python:3.12-slim` image with Node.js 20 layered in via NodeSource. The Express.js server (`web/server.js`) listens on port 3000 and shells out to the Python `osm` CLI installed from `pyproject.toml`.
 
 Classify every finding:
 
@@ -14,26 +10,26 @@ Classify every finding:
 
 ## 1. Base Image Selection
 
-**Blocker:** Using `:latest` tag (no version pinning)
+**Blocker:** Using `:latest` tag (no version pinning).
 
-**Warning:** Using Alpine for the Python backend. MetroNow depends on geospatial libraries (GDAL, Shapely, potentially PROJ). Alpine causes native compilation issues with these. Use `python:3.11-slim` or `python:3.11-slim-bookworm`.
+**Warning:** Using Alpine for the Python stage. The `osm` package depends on geospatial libraries (Shapely, GDAL via wheels, etc.) which often hit native-compilation issues on musl. Prefer `python:3.12-slim` or `python:3.12-slim-bookworm`.
 
 ```dockerfile
 # Blocker
 FROM python:latest
 
 # Warning (geospatial dep issues)
-FROM python:3.11-alpine
+FROM python:3.12-alpine
 
 # Correct for MetroNow backend
-FROM python:3.11-slim-bookworm
+FROM python:3.12-slim
 ```
 
 ## 2. Security (All Blockers)
 
 **Non-root user:**
 ```dockerfile
-RUN groupadd -r metronow && useradd -r -g metronow -u 1000 metronow
+RUN groupadd -r metronow && useradd -r -g metronow -u 1000 -m metronow
 WORKDIR /app
 COPY --chown=metronow:metronow . .
 USER metronow
@@ -52,45 +48,55 @@ ENV OSM_API_TOKEN=secret123
 ```dockerfile
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    curl \
-    libgdal-dev \
-    libgeos-dev \
+    curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 ```
 
 ## 3. Build Optimization
 
-**Layer caching:** Copy dependency manifest before app code:
-```dockerfile
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-```
+**Layer caching:** Copy dependency manifests before app code so dependency-install layers stay cached when only app code changes.
 
-**Multi-stage build:** Production images must not contain build tools:
-```dockerfile
-FROM python:3.11-slim-bookworm AS builder
-WORKDIR /build
-COPY requirements.txt .
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libgdal-dev libgeos-dev && \
-    pip install --user --no-cache-dir -r requirements.txt
+**Multi-stage build:** Production image must not contain build tools. The current `Dockerfile` uses three stages:
 
-FROM python:3.11-slim-bookworm
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgdal32 libgeos-c1v5 curl && \
-    rm -rf /var/lib/apt/lists/*
-RUN groupadd -r metronow && useradd -r -g metronow metronow
+```dockerfile
+FROM python:3.12-slim AS python-deps
 WORKDIR /app
-COPY --from=builder /root/.local /home/metronow/.local
-COPY --chown=metronow:metronow . .
-ENV PATH=/home/metronow/.local/bin:$PATH
-USER metronow
+COPY pyproject.toml .
+COPY src/ src/
+RUN pip install --no-cache-dir .
+
+FROM node:20-slim AS node-deps
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json* ./
+RUN npm ci --production
+
+FROM python:3.12-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+       > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get purge -y curl gnupg \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=python-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=python-deps /usr/local/bin/osm /usr/local/bin/osm
+COPY --from=node-deps /app/web/node_modules web/node_modules
+COPY src/ src/
+COPY pyproject.toml .
+COPY web/ web/
 EXPOSE 3000
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["node", "web/server.js"]
 ```
 
-Note: The backend runs on port 3000, not 8000. The frontend hardcodes this:
+Notes:
+- The runtime is Express.js (Node 20). The `python:3.12-slim` final stage is correct because the Express server shells out to the Python `osm` CLI installed in `/usr/local/bin/osm`.
+- The frontend hardcodes port 3000 in `web/public/js/atlas.js`:
 ```javascript
 const API = (() => {
   const here = new URL(location.href);
@@ -103,8 +109,8 @@ const API = (() => {
 
 **Blocker:** Shell form CMD (PID 1 issues):
 ```dockerfile
-CMD uvicorn app:app --host 0.0.0.0 --port 3000   # Wrong
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "3000"]  # Correct
+CMD node web/server.js                # Wrong (shell form)
+CMD ["node", "web/server.js"]         # Correct (exec form)
 ```
 
 **Warning:** Multiple RUN layers for one operation. Chain with `&&`.
@@ -113,68 +119,49 @@ CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "3000"]  # Correct
 
 ## 5. Health Check
 
-**Warning:** Missing `HEALTHCHECK`. The backend exposes `/health`:
+**Warning:** Missing `HEALTHCHECK`. The Express server exposes `/api/zones` as a liveness signal:
 ```dockerfile
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/api/zones',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
 ```
 
 ## 6. .dockerignore
 
-**Warning:** Missing `.dockerignore`. Required contents for MetroNow:
+**Warning:** Missing `.dockerignore`. Recommended contents for MetroNow:
 ```
 .git
+.github
 .gitignore
 .env
 .env.*
 __pycache__
 *.pyc
+*.egg-info
 node_modules
+web/node_modules
+.pytest_cache
+.ruff_cache
 .vscode
 .idea
-*.md
-docs/
 .claude/
-*.html
-!index.html
+osm-audit-*/
+tests/
+docs/
 ```
 
-Note: Exclude HTML variants (`MetroNow_Atlas__offline_.html`, etc.) from the build context. Only include the main `index.html` served by FastAPI.
+## 7. Frontend Serving
 
-## 7. Docker Compose
+The Express.js backend serves the static frontend from `web/public/` on the same port (3000). The Dockerfile should:
+- Copy `web/` into the image so Express can serve `web/public/index.html`, `web/public/js/*`, and `web/public/css/*`.
+- Not install any frontend build tools — there is no build step.
+- Allow IBM Plex fonts and Leaflet to load from CDN at runtime (not bundled).
 
-**Warning:** Using deprecated `version` key.
+## 8. Docker Compose
 
-```yaml
-services:
-  atlas:
-    build:
-      context: .
-      target: production
-    environment:
-      OSM_API_URL: ${OSM_API_URL:-https://overpass-api.de/api}
-      CAGIS_DATA_URL: ${CAGIS_DATA_URL}
-    ports:
-      - "3000:3000"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-```
+There is no `docker-compose.yml` in the repository. If one is added later, audit it for:
 
-**Blocker in Compose:**
-- Hardcoded secrets or API tokens (use `.env`)
-- Missing `restart` policy
-
-**Warning in Compose:**
-- Missing `healthcheck`
-- Dev volumes in production configs
-
-## 8. Frontend Serving
-
-The FastAPI backend serves the frontend HTML. The Dockerfile should:
-- Copy the main HTML file into the app directory
-- Not install Node.js or any frontend build tools (there is no build step)
-- Ensure IBM Plex fonts and Leaflet load from CDN at runtime (not bundled)
+- **Blocker:** Hardcoded secrets or API tokens (use `.env`).
+- **Blocker:** Missing `restart` policy.
+- **Warning:** Missing `healthcheck`.
+- **Warning:** Dev volumes in production configs.
+- **Warning:** Deprecated top-level `version` key.

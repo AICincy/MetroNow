@@ -1,16 +1,12 @@
-# HTML Audit Standards
-
-MetroNow Atlas html audit criteria. Severity levels defined in parent SKILL.md.
-
 # MetroNow Atlas HTML Audit Guide
 
-Instructional reference for agents autonomously auditing and remediating MetroNow Atlas HTML. The app ships as a single HTML file with inline `<style>` and `<script>` blocks. Multiple variants exist:
+MetroNow Atlas HTML audit criteria. Severity levels defined in parent SKILL.md.
 
-- `MetroNow_Atlas__bundle_src_.html` - Main development bundle (~1785 lines)
-- `MetroNow_Atlas__offline_.html` - Offline fallback (~200 lines)
-- `MetroNow_Atlas__1_.html` - Standalone variant
-- `Independent_Audit__1_.html` - Audit report page
-- `Change_Log__2_.html` - Changelog page
+Instructional reference for agents autonomously auditing and remediating MetroNow Atlas HTML. The shipping app is:
+
+- `web/public/index.html` (~1815 lines) - Main app shell with inline `<style>` block and external `<script>` tags pointing to `js/atlas.js` and `js/atlas-extras.js`.
+
+Non-shipping HTML reports also live in `docs/` (`metronow-atlas.html`, `independent-audit.html`, `change-log.html`). These are static documentation, not the runtime app.
 
 Classify every finding:
 
@@ -39,8 +35,8 @@ The HTML file has this structure:
   </div>
   <div id="toast" class="toast"></div>
   <!-- Leaflet JS from unpkg CDN -->
-  <script>/* atlas.js ~1639 lines */</script>
-  <script>/* atlas-extras.js ~495 lines */</script>
+  <script src="js/atlas.js"></script>          <!-- ~2072 lines -->
+  <script src="js/atlas-extras.js"></script>   <!-- ~132 lines -->
 </body>
 </html>
 ```

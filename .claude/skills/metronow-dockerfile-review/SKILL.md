@@ -1,12 +1,12 @@
 ---
 name: metronow-dockerfile-review
-description: "Code review and quality standards for MetroNow Atlas Dockerfile configuration (0.2% of codebase). Use this skill when auditing Dockerfiles, docker-compose files, container configs, or when someone asks \"review my Dockerfile,\" \"is this image secure,\" \"optimize my Docker build,\" or \"check my compose file.\" The backend is FastAPI on port 3000 with Python geospatial dependencies (GDAL, Shapely). Frontend is a single HTML file. Repo: https://github.com/AICincy/MetroNow.git"
+description: "Code review and quality standards for MetroNow Atlas Dockerfile configuration. Use this skill when auditing Dockerfiles, docker-compose files, container configs, or when someone asks \"review my Dockerfile,\" \"is this image secure,\" \"optimize my Docker build,\" or \"check my compose file.\" The runtime is a multi-stage build producing a python:3.12-slim image with Node.js 20 layered in; the Express.js server (web/server.js) listens on port 3000 and shells out to the Python `osm` CLI. Frontend is a single HTML file served by Express. Repo: https://github.com/AICincy/MetroNow.git"
 compatibility: Docker 24+, Docker Compose v2, BuildKit, Multi-stage builds
 ---
 
 # MetroNow Atlas Dockerfile Audit Guide
 
-Instructional reference for agents autonomously auditing and remediating MetroNow Atlas container configuration. The backend is a FastAPI Python service (port 3000) that runs TIGER audit scans against OpenStreetMap data via Overpass API. The frontend is a single HTML file with inline JS/CSS served from the same origin.
+Instructional reference for agents autonomously auditing and remediating MetroNow Atlas container configuration. The runtime is a multi-stage Docker build that produces a `python:3.12-slim` image with Node.js 20 layered in via NodeSource. The Express.js server (`web/server.js`) listens on port 3000 and shells out to the Python `osm` CLI installed from `pyproject.toml` for TIGER audit scans. The frontend is a single HTML file served by Express from the same origin.
 
 Classify every finding:
 
@@ -18,17 +18,17 @@ Classify every finding:
 
 **Blocker:** Using `:latest` tag (no version pinning)
 
-**Warning:** Using Alpine for the Python backend. MetroNow depends on geospatial libraries (GDAL, Shapely, potentially PROJ). Alpine causes native compilation issues with these. Use `python:3.11-slim` or `python:3.11-slim-bookworm`.
+**Warning:** Using Alpine for the Python stage. The `osm` package depends on geospatial libraries (Shapely, GDAL via wheels) which often hit native-compilation issues on musl. Prefer `python:3.12-slim` or `python:3.12-slim-bookworm`.
 
 ```dockerfile
 # Blocker
 FROM python:latest
 
 # Warning (geospatial dep issues)
-FROM python:3.11-alpine
+FROM python:3.12-alpine
 
 # Correct for MetroNow backend
-FROM python:3.11-slim-bookworm
+FROM python:3.12-slim
 ```
 
 ## 2. Security (All Blockers)
@@ -69,30 +69,32 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 ```
 
-**Multi-stage build:** Production images must not contain build tools:
-```dockerfile
-FROM python:3.11-slim-bookworm AS builder
-WORKDIR /build
-COPY requirements.txt .
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libgdal-dev libgeos-dev && \
-    pip install --user --no-cache-dir -r requirements.txt
+**Multi-stage build:** Production images must not contain build tools. The current `Dockerfile` already uses three stages (`python-deps`, `node-deps`, final `python:3.12-slim`):
 
-FROM python:3.11-slim-bookworm
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgdal32 libgeos-c1v5 curl && \
-    rm -rf /var/lib/apt/lists/*
-RUN groupadd -r metronow && useradd -r -g metronow metronow
+```dockerfile
+FROM python:3.12-slim AS python-deps
 WORKDIR /app
-COPY --from=builder /root/.local /home/metronow/.local
-COPY --chown=metronow:metronow . .
-ENV PATH=/home/metronow/.local/bin:$PATH
-USER metronow
+COPY pyproject.toml .
+COPY src/ src/
+RUN pip install --no-cache-dir .
+
+FROM node:20-slim AS node-deps
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json* ./
+RUN npm ci --production
+
+FROM python:3.12-slim
+# … add a non-root metronow user, layer Node 20 from NodeSource …
+WORKDIR /app
+COPY --from=python-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=python-deps /usr/local/bin/osm /usr/local/bin/osm
+COPY --from=node-deps /app/web/node_modules web/node_modules
+COPY web/ web/
 EXPOSE 3000
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["node", "web/server.js"]
 ```
 
-Note: The backend runs on port 3000, not 8000. The frontend hardcodes this:
+Note: The backend runs on port 3000. The frontend hardcodes this in `web/public/js/atlas.js`:
 ```javascript
 const API = (() => {
   const here = new URL(location.href);
@@ -105,8 +107,8 @@ const API = (() => {
 
 **Blocker:** Shell form CMD (PID 1 issues):
 ```dockerfile
-CMD uvicorn app:app --host 0.0.0.0 --port 3000   # Wrong
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "3000"]  # Correct
+CMD node web/server.js                # Wrong (shell form)
+CMD ["node", "web/server.js"]         # Correct (exec form)
 ```
 
 **Warning:** Multiple RUN layers for one operation. Chain with `&&`.
@@ -115,44 +117,49 @@ CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "3000"]  # Correct
 
 ## 5. Health Check
 
-**Warning:** Missing `HEALTHCHECK`. The backend exposes `/health`:
+**Warning:** Missing `HEALTHCHECK`. The Express server exposes `/api/zones` as a liveness signal:
 ```dockerfile
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/api/zones',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
 ```
 
 ## 6. .dockerignore
 
-**Warning:** Missing `.dockerignore`. Required contents for MetroNow:
+**Warning:** Missing `.dockerignore`. Recommended contents for MetroNow:
 ```
 .git
+.github
 .gitignore
 .env
 .env.*
 __pycache__
 *.pyc
+*.egg-info
 node_modules
+web/node_modules
+.pytest_cache
+.ruff_cache
 .vscode
 .idea
-*.md
-docs/
 .claude/
-*.html
-!index.html
+osm-audit-*/
+tests/
+docs/
 ```
-
-Note: Exclude HTML variants (`MetroNow_Atlas__offline_.html`, etc.) from the build context. Only include the main `index.html` served by FastAPI.
 
 ## 7. Docker Compose
 
-**Warning:** Using deprecated `version` key.
+There is no `docker-compose.yml` in the repository. If one is added later, audit it for:
+
+**Blocker:** Hardcoded secrets or API tokens (use `.env`); missing `restart` policy.
+
+**Warning:** Missing `healthcheck`; dev volumes in production configs; deprecated top-level `version` key.
 
 ```yaml
 services:
   atlas:
     build:
       context: .
-      target: production
     environment:
       OSM_API_URL: ${OSM_API_URL:-https://overpass-api.de/api}
       CAGIS_DATA_URL: ${CAGIS_DATA_URL}
@@ -160,26 +167,18 @@ services:
       - "3000:3000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/zones',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
 ```
 
-**Blocker in Compose:**
-- Hardcoded secrets or API tokens (use `.env`)
-- Missing `restart` policy
-
-**Warning in Compose:**
-- Missing `healthcheck`
-- Dev volumes in production configs
-
 ## 8. Frontend Serving
 
-The FastAPI backend serves the frontend HTML. The Dockerfile should:
-- Copy the main HTML file into the app directory
-- Not install Node.js or any frontend build tools (there is no build step)
-- Ensure IBM Plex fonts and Leaflet load from CDN at runtime (not bundled)
+The Express.js backend serves the static frontend from `web/public/` on the same port (3000). The Dockerfile should:
+- Copy `web/` into the image so Express can serve `web/public/index.html`, `web/public/js/*`, and `web/public/css/*`.
+- Not require any frontend build tools — there is no build step.
+- Allow IBM Plex fonts and Leaflet to load from CDN at runtime (not bundled).
 
 ## Review Output Format
 

@@ -1,7 +1,7 @@
 ---
 name: metronow-javascript-review
-description: "Code review and quality standards for MetroNow Atlas JavaScript (16.9% of codebase). Use this skill when auditing JS files, reviewing atlas.js or atlas-extras.js, checking code quality, evaluating state management, assessing error handling, or when someone asks \"review this JavaScript,\" \"audit the frontend,\" \"check this code,\" or \"what's wrong with this function.\" The codebase is vanilla JS with IIFE closures, Leaflet maps, and a global state object. One JSX file (tweaks-panel.jsx) uses React via Babel CDN. Repo: https://github.com/AICincy/MetroNow.git"
-compatibility: Vanilla JS (ES2020+), Leaflet 1.9, React (tweaks-panel.jsx only)
+description: "Code review and quality standards for MetroNow Atlas JavaScript. Use this skill when auditing JS files, reviewing atlas.js or atlas-extras.js, checking code quality, evaluating state management, assessing error handling, or when someone asks \"review this JavaScript,\" \"audit the frontend,\" \"check this code,\" or \"what's wrong with this function.\" The codebase is vanilla JS with IIFE closures, Leaflet maps, and a global state object. No framework, no JSX. Repo: https://github.com/AICincy/MetroNow.git"
+compatibility: Vanilla JS (ES2020+), Leaflet 1.9
 ---
 
 # MetroNow Atlas JavaScript Audit Guide
@@ -16,13 +16,12 @@ Classify every finding:
 
 ## 1. Architecture Overview
 
-The frontend is two JS files plus one JSX utility:
+The frontend is two JS files served from `web/public/js/`:
 
-- `atlas.js` (~1639 lines) - Main app. IIFE with `"use strict"`. Contains all state, rendering, API calls, map logic, and event wiring.
-- `atlas-extras.js` (~495 lines) - Enhancement layer. Adds keyboard shortcuts, bulk select, OSM-ID linkification, tools launcher. Uses DOM hooks only, no atlas.js internals.
-- `tweaks-panel.jsx` (~568 lines) - Reusable React component for design tweaks panel. Loaded via Babel CDN. Only JSX in the project.
+- `atlas.js` (~2072 lines) - Main app. IIFE with `"use strict"`. Contains all state, rendering, API calls, Leaflet map logic, and event wiring.
+- `atlas-extras.js` (~132 lines) - Default-tweak loader, accent / density / weight appliers, theme toggle wiring. DOM hooks only, no atlas.js internals.
 
-No build system. No bundler. No module imports. Scripts load via inline `<script>` tags in the HTML file.
+No build system. No bundler. No module imports. Scripts load via `<script src="…">` tags in `web/public/index.html`.
 
 ## 2. State Management
 
@@ -159,26 +158,19 @@ function escapeHtml(s) {
 
 **Blocker audit:** Search every `innerHTML` assignment. Verify all interpolated values pass through `escapeHtml()`. Known safe patterns: `fmt.num()`, `fmt.time()`, `fmt.bytes()` (return strings from numbers). Unsafe: any value from `w.name`, `tags.*`, `state.discuss`, user-entered text.
 
-## 10. tweaks-panel.jsx (React Component)
+## 10. atlas-extras.js Patterns
 
-This is the only React code. It ships reusable form controls (`TweakSlider`, `TweakRadio`, `TweakColor`, `TweakToggle`, etc.) and the host-protocol bridge (`useTweaks` hook).
+The actual file is ~132 lines and does only the following:
 
-**Audit criteria:**
-- Standard React rules apply here only (hooks rules, key props, dependency arrays)
-- **Warning:** `window.addEventListener` in pointer handlers without cleanup
-- Components are exported to `window` via `Object.assign(window, { ... })`, which is intentional for non-module usage
-
-## 11. atlas-extras.js Patterns
-
-- Injects its own `<style>` element at runtime
-- Redefines `$()` and `escapeHtml()` locally (not shared with atlas.js)
-- Patches `window.fetch` for rate-limiting API GETs (coalescing, micro-cache)
-- Uses `MutationObserver` to re-run enhancers on DOM changes
+- `loadDefaults()` — parses an inline `<script id="default-tweaks" type="application/json">` block at startup and returns the parsed object (with `try/catch` around `JSON.parse`).
+- Persists tweak state to `localStorage` under `metronow.atlas.tweaks.v1` (the read is wrapped in `try/catch`; the write currently is not — flag as Warning).
+- Applies accent / density / weight CSS custom properties to `document.documentElement` via `setProperty`.
+- Wires the theme-toggle button and the OS color-scheme `matchMedia` listener (auto mode only).
+- Calls `window.atlasRedraw` defensively if it exists, after a tweak change.
 
 **Audit criteria:**
-- **Warning:** Fetch patch affects ALL GET requests to `/api/`, not just specific endpoints
-- **Warning:** Cache TTL (`CACHE_MS = 1500`) may serve stale data after rapid writes
-- **Info:** Observer fires on every DOM mutation; consider debouncing `tick()`
+- **Warning:** `localStorage.setItem` without `try/catch` (quota / disabled-storage failure modes).
+- **Info:** No `MutationObserver`, no `window.fetch` patching, no runtime `<style>` injection — those patterns described in earlier skill drafts do not apply to this file.
 
 ## Review Output Format
 

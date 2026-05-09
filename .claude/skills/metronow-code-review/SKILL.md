@@ -1,6 +1,6 @@
 ---
 name: metronow-code-review
-description: Unified code review and audit standards for the MetroNow Atlas TIGER Audit Console (https://github.com/AICincy/MetroNow.git). Use this skill when auditing any code in the MetroNow project, doing a PR review, checking code quality, validating accessibility, reviewing Docker config, or when someone asks "review this code," "audit the frontend," "check my PR," "what's wrong with this file," or "does this meet our standards." The codebase is vanilla JavaScript (IIFE pattern, no framework), single-file HTML with inline CSS/JS, IBM Plex typography, Leaflet maps, and a FastAPI backend on port 3000. Covers JS, HTML, CSS, and Dockerfile review with severity-classified findings.
+description: Unified code review and audit standards for the MetroNow Atlas TIGER Audit Console (https://github.com/AICincy/MetroNow.git). Use this skill when auditing any code in the MetroNow project, doing a PR review, checking code quality, validating accessibility, reviewing Docker config, or when someone asks "review this code," "audit the frontend," "check my PR," "what's wrong with this file," or "does this meet our standards." The codebase is vanilla JavaScript (IIFE pattern, no framework), single-file HTML with inline CSS/JS, IBM Plex typography, Leaflet maps, and an Express.js backend on port 3000 that shells out to the Python `osm` CLI. Covers JS, HTML, CSS, and Dockerfile review with severity-classified findings.
 ---
 
 # MetroNow Atlas Unified Code Audit Guide
@@ -9,24 +9,24 @@ Instructional reference for agents autonomously auditing and remediating the Met
 
 ## Architecture Overview
 
-MetroNow Atlas is a TIGER audit console for OpenStreetMap data in Hamilton County, Ohio. The frontend is a single HTML file with inline CSS (~800 lines) and JS (~2100 lines across two scripts). No build system, no bundler, no framework (except one JSX utility loaded via Babel CDN).
+MetroNow Atlas is a TIGER audit console for OpenStreetMap data in Hamilton County, Ohio. The frontend is a single HTML file (`web/public/index.html`) with inline CSS and two external JS files. No build system, no bundler, no framework. The backend is an Express.js server (`web/server.js`) that shells out to the Python `osm` CLI for audit pipeline work.
 
 Key files:
-- `atlas.js` (~1639 lines) - Main app, IIFE, global `state` object, Leaflet map, API calls
-- `atlas-extras.js` (~495 lines) - Enhancement layer, keyboard shortcuts, fetch patching
-- `tweaks-panel.jsx` (~568 lines) - React component for design controls (only React in project)
-- `*.html` - Multiple variants (bundle, offline, standalone, audit report, changelog)
-- `Dockerfile` / `docker-compose.yml` - Container config for FastAPI backend
+- `web/public/index.html` (~1815 lines) - Single-page UI shell, inline `<style>` block, links to atlas.js + atlas-extras.js
+- `web/public/js/atlas.js` (~2072 lines) - Main app, IIFE, global `state` object, Leaflet map, API calls
+- `web/public/js/atlas-extras.js` (~132 lines) - Default-tweak loader, accent/density/weight appliers, theme toggle wiring
+- `web/public/css/atlas-supplement.css` (~526 lines) - Components added by atlas.js
+- `web/server.js` (~942 lines) - Express.js REST API on port 3000, child-process invocations of the `osm` CLI
+- `Dockerfile` - Multi-stage container config (python-deps + node-deps + final python:3.12-slim runtime)
 
 ## Routing
 
 Read the appropriate reference file before beginning the audit:
 
-- **`.js` files** (atlas.js, atlas-extras.js): Read `references/javascript.md`
-- **`.jsx` files** (tweaks-panel.jsx): Read `references/javascript.md` (React section at bottom)
+- **`.js` files** (atlas.js, atlas-extras.js, server.js): Read `references/javascript.md`
 - **`.html` files**: Read `references/html.md`
-- **CSS** (inline `<style>` blocks): Read `references/css.md`
-- **`Dockerfile`, `docker-compose.yml`, `.dockerignore`**: Read `references/dockerfile.md`
+- **CSS** (inline `<style>` blocks + `web/public/css/atlas-supplement.css`): Read `references/css.md`
+- **`Dockerfile`, `.dockerignore`**: Read `references/dockerfile.md`
 
 For PRs spanning multiple file types, read all relevant references and produce one combined review.
 
