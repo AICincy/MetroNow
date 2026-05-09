@@ -338,7 +338,7 @@
 .tweaks.open { right: 12px; }
 
 /* ---- toast supplements (severity colors already exist for .error/.ok) ---- */
-.toast.warn { background: #b25f00; color: #fff; }
+.toast.warn { background: var(--warn); color: #fff; }
 
 /* ---- leaflet popup with OSM links ---- */
 .leaflet-popup-content { margin: 10px 12px; font-family: var(--sans); }
@@ -402,9 +402,9 @@
 .ins-section {
   margin-top: 12px;
   padding: 8px 10px;
-  border: 1px solid var(--border, #d8d8d8);
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--bg-sunken, #f7f7f7);
+  background: var(--bg-sunken);
 }
 .ins-section-head {
   display: flex;
