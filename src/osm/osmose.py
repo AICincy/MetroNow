@@ -218,14 +218,25 @@ def fetch_issues(
         resp.raise_for_status()
         data = resp.json()
     except (requests.RequestException, ValueError) as exc:
+        from . import feed_errors
+        reason = "timeout" if "timed out" in str(exc).lower() else (
+            "non_json" if isinstance(exc, ValueError) else "http_error"
+        )
+        feed_errors.record("osmose", reason, detail=str(exc))
         log.warning("Osmose fetch failed (%s); returning empty list.", exc)
         return []
 
     if not isinstance(data, dict):
+        from . import feed_errors
+        feed_errors.record("osmose", "malformed_payload",
+                           detail="non-object response")
         log.warning("Osmose payload was not a JSON object; returning empty list.")
         return []
     raw_issues = data.get("issues")
     if not isinstance(raw_issues, list):
+        from . import feed_errors
+        feed_errors.record("osmose", "malformed_payload",
+                           detail="missing 'issues' list")
         log.warning("Osmose payload missing 'issues' list; returning empty list.")
         return []
 
