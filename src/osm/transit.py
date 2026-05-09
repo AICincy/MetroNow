@@ -335,6 +335,9 @@ def _request(
         resp = requests.get(url, params=params, headers=headers, timeout=timeout)
         _increment_usage()  # count even on error responses — Transit does
         if resp.status_code == 429:
+            from . import feed_errors
+            feed_errors.record("transit", "rate_limit",
+                               detail=f"{endpoint} returned 429")
             log.warning(
                 "Transit returned 429 for %s; rate limit hit despite pacing.",
                 endpoint,
@@ -345,6 +348,11 @@ def _request(
         _write_cached(endpoint, params, payload)
         return payload
     except (requests.RequestException, ValueError) as exc:
+        from . import feed_errors
+        reason = "timeout" if "timed out" in str(exc).lower() else (
+            "non_json" if isinstance(exc, ValueError) else "http_error"
+        )
+        feed_errors.record("transit", reason, detail=f"{endpoint}: {exc}")
         log.warning("Transit %s failed: %s", endpoint, exc)
         return None
 

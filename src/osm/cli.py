@@ -142,12 +142,18 @@ def scan(
     """Fetch OSM data, analyse history, classify defects, and generate reports."""
     from rich.progress import Progress
 
+    from . import feed_errors
     from .classify import classify
     from .csv_export import write_csvs
     from .dashboard import write_dashboard
     from .fetch import fetch_overpass
     from .history_filter import filter_by_history
     from .xlsx import write_xlsx
+
+    # Reset the fail-open visibility counter at the start of each scan
+    # so a previous run's transient errors don't pollute this run's
+    # summary. The end-of-scan block surfaces anything recorded.
+    feed_errors.reset()
 
     zones_to_run = ZONE_KEYS if zone == "all" else [zone]
     audit_ts = dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -404,6 +410,22 @@ def scan(
         click.echo(f"{'─'*50}")
         click.echo(f"  Files saved to: {out_dir}")
         click.echo(f"{'='*50}")
+
+    # After all zones complete, surface any fail-open events that
+    # accumulated across the run. Read-only feeds (Notes, Osmose,
+    # Transit, MOTIS) silently return empty data on transient errors so
+    # they can't block a scan; this block makes "feed was down" visible
+    # vs. "feed was up but found nothing", which would otherwise be
+    # indistinguishable in the summary.
+    fe_human = feed_errors.format_human()
+    if fe_human:
+        click.echo("")
+        click.echo(fe_human)
+        click.echo(
+            "  (These were absorbed by the fail-open contract — the scan "
+            "completed with whatever data was available. Re-run if a "
+            "particular feed's findings matter.)"
+        )
 
 
 # --- fix ---

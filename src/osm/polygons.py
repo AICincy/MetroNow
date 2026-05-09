@@ -71,15 +71,22 @@ _POLYGON_CACHE: dict[str, Any] = {}
 
 
 def _load_polygon_from(path: Path) -> Any:
-    """Read a single-feature GeoJSON polygon file. Returns None on any error."""
+    """Read a single-feature GeoJSON polygon. Returns None on any error.
+
+    Routes the actual read through :mod:`importlib.resources` keyed on
+    the basename so the loader works for non-filesystem package
+    backends (zipapp, frozen). The ``path`` argument is preserved for
+    error messages and is still authoritative for callers that want
+    to check filesystem mtime.
+    """
     if not SHAPELY_AVAILABLE:
         return None
-    if not path.exists():
-        return None
     try:
-        with path.open("r", encoding="utf-8") as fh:
-            feat = json.load(fh)
+        from .resources import read_text_resource
+        feat = json.loads(read_text_resource("osm.zones", path.name))
         return shape(feat["geometry"])
+    except (FileNotFoundError, ModuleNotFoundError):
+        return None
     except (OSError, KeyError, ValueError) as exc:
         log.error("Could not parse polygon at %s: %s", path, exc)
         return None

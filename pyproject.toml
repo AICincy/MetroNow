@@ -24,3 +24,12 @@ dev = ["pytest>=8.0", "pytest-cov"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# Runtime data files. dashboard.py reads templates/dashboard.html;
+# polygons.py reads zones/*.geojson. Without this declaration these
+# files are excluded from the wheel and the package is broken when
+# installed (vs. editable from a checkout). Verified 2026-05-09 by
+# building a wheel with `pip wheel . --no-deps` and confirming both
+# files were absent from the resulting archive.
+osm = ["templates/*.html", "zones/*.geojson"]

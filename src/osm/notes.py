@@ -158,11 +158,19 @@ def fetch_notes(
         resp.raise_for_status()
         data = resp.json()
     except (requests.RequestException, ValueError) as exc:
+        from . import feed_errors
+        reason = "timeout" if "timed out" in str(exc).lower() else (
+            "non_json" if isinstance(exc, ValueError) else "http_error"
+        )
+        feed_errors.record("notes", reason, detail=str(exc))
         log.warning("OSM Notes fetch failed (%s); returning empty list.", exc)
         return []
 
     features = data.get("features") if isinstance(data, dict) else None
     if not isinstance(features, list):
+        from . import feed_errors
+        feed_errors.record("notes", "malformed_payload",
+                           detail="missing 'features' list")
         log.warning(
             "OSM Notes payload missing 'features' list; returning empty list."
         )
