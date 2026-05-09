@@ -334,6 +334,11 @@ better shape than the skill description implies.
 | metronow-javascript-review|        0 |        3 |    4 |
 | **Total**                 |    **3** |   **18** | **14** |
 
+**REMEDIATION STATUS (2026-05-09 EOD):** all 3 Blockers and all 18
+Warnings closed on branch `claude/audit-metro-skills-mB9FB` (PR #21).
+See `docs/metro-skills-remediation-2026-05-09.md` for the per-commit
+breakdown.
+
 **The three Blockers, ranked by remediation leverage:**
 
 1. `Dockerfile` — add non-root `USER`. Single change, container-security
