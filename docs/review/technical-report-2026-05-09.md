@@ -40,7 +40,7 @@ with `ls` / `find`. Test counts were taken from
 | R5.2  | Document conflation scoring constants       | REWRITE   | `REVIEW_CONFIDENCE` is documented at `conflate.py:84–96`; the `_T_REV` alias is declared inline at `web/server.js:294` (`REVIEW_CONFIDENCE as _T_REV`). The real gap is composite scoring across CAGIS+TIGER (see R5.3). |
 | R5.3  | Composite confidence cascade                | ACCEPT    | Per-source `cagis_match.confidence` and TIGER confidence aren't fused into a single way score. |
 | R6.1  | Codecov in CI                               | ACCEPT    | `pytest-cov` is in `pyproject.toml` dev deps but `ci.yml:43` runs `pytest tests/ -v --tb=short` with no `--cov`. |
-| R6.2  | E2E scan→submit test                        | ACCEPT    | Worth adding. **Caveat**: the report's example imports `osm.review.proposed_fixes_for_way`, which does not exist; redo against the real API. |
+| R6.2  | E2E scan→submit test                        | ACCEPT    | Worth adding. Redo against the real API.                                                       |
 | R6.3  | API integration tests via supertest         | REWRITE   | No Node test harness exists today. First add the harness (jest/vitest + supertest), *then* the tests. |
 
 ## Section-by-Section Notes
