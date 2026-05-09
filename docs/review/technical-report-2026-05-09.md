@@ -125,8 +125,7 @@ Recast R5.2 as "add a composite confidence helper" and merge it with R5.3.
 - No coverage upload step.
 
 R6.1 is straightforward and high-leverage. R6.2's example is fine in
-principle but uses a function (`osm.review.proposed_fixes_for_way`) that
-doesn't exist — when implementing, build the test against the real
+principle; when implementing, build the test against the real
 review/changeset API. R6.3 needs a one-step prerequisite (introduce a
 Node test runner) before the supertest examples make sense.
 
