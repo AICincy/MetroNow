@@ -1,0 +1,61 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: metronow-app:latest
+    container_name: metronow-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      TRUST_PROXY: "1"
+      ALLOWED_ORIGIN: "https://${DOMAIN:?set DOMAIN in .env}"
+    volumes:
+      # OAuth token, OAuth client credentials, CAGIS conflation cache
+      # (90-day TTL), history cache (7-day TTL). Survives `docker compose
+      # down` and image rebuilds. Path matches CONFIG_DIR resolution in
+      # web/server.js (HOME=/root inside the python:3.12-slim container).
+      - osm_config:/root/.config/osm
+    networks:
+      - web
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/zones',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: metronow-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: "${DOMAIN:?set DOMAIN in .env}"
+      ACME_EMAIL: "${ACME_EMAIL:?set ACME_EMAIL in .env}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # caddy_data holds the issued TLS certs and ACME account key —
+      # losing this volume forces a re-issue and counts against
+      # Let's Encrypt rate limits (5 dupes per week per cert).
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - web
+    depends_on:
+      - app
+
+networks:
+  web:
+    driver: bridge
+
+volumes:
+  osm_config:
+  caddy_data:
+  caddy_config:
