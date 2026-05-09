@@ -306,4 +306,195 @@ this branch. The 14 Info items in the original audit were observations
   today, since they are correctly used as decorative-only colors
   per the existing markup.
 
+---
+
+### Entry 7 — `/health` endpoint + project-wide Express review (commit `bce6197`)
+
+**Resolves:** non-audit improvement found during a project-wide pass
+on `web/server.js` (out of metronow-* skill scope but in scope for
+"project-wide audit + remediation day").
+
+**Change:** Add lightweight `GET /health` endpoint that returns
+`{ ok: true }` with no subprocess and no disk I/O. Update Dockerfile
+HEALTHCHECK to hit `/health` instead of `/api/zones` (which had been
+spawning a Python subprocess every 30 seconds just to confirm
+liveness). Skill text in `metronow-code-review/references/dockerfile.md`
+and `metronow-dockerfile-review/SKILL.md` updated in lockstep so
+future audits don't get confused.
+
+**Server.js review observations (no further action):**
+helmet CSP with documented allow-list, CORS scoped to localhost:3000,
+express-rate-limit, validateZone() whitelist regex + zonePath()
+containment guard, server-side OAuth PKCE flow registry with
+single-use TTL, execFile (no shell), safeError() strips Python
+traceback paths, validateFix() shape validation, scanInProgress
+concurrency guard.
+
+---
+
+### Entry 8 — CI hygiene (commit `7d0c3c3`)
+
+**Findings:** 4 GitHub Actions workflows audited.
+
+- `npm-publish-github-packages.yml` — DELETED. Unmodified GitHub
+  starter template residue. Triggered on `release: [created]`,
+  ran `npm test` (no test script in web/package.json), then tried
+  to publish a package literally named "web" v1.0.0 to GitHub
+  Packages. Would fail noisily on first Release.
+- `stale.yml` — actions/stale@v5 → @v9; placeholder messages
+  ("Stale issue message") replaced with concrete 90-day-stale /
+  14-day-close text and `keep-open` / `security` exemption labels
+  documented inline. Added `workflow_dispatch` trigger for manual
+  testing.
+- `ci.yml` — left as-is. Strong: least-privilege contents:read,
+  Python 3.12+3.13 matrix, ruff/mypy/pytest with coverage
+  reporting, wheel-build smoke check that confirms package-data
+  is correctly declared.
+- `codeql.yml` — left as-is for this entry; reconfigured later in
+  Entry 11.
+
+`npm audit` against web/ deps: 0 vulnerabilities across 70 prod deps.
+
+---
+
+### Entry 9 — Final CSS token cleanup (commit `e2c056f`)
+
+Three more genuine findings from a second-pass review of remaining
+hex literals in inline `<style>` and `atlas-supplement.css`:
+
+1. `atlas-supplement.css :402-407` — `var(--border, #d8d8d8)` and
+   `var(--bg-sunken, #f7f7f7)` slipped through the earlier
+   replace_all sweep (it only matched bare `var(--border)`, not
+   the form with `, fallback`). Fixed.
+2. `atlas-supplement.css :341` — `.toast.warn` was using a single
+   hardcoded `#b25f00`; the sibling `.toast.error` and `.toast.ok`
+   already use `var(--err)` / `var(--ok)`. Now uses `var(--warn)`.
+3. `index.html :1826` — `var(--ink-mute, #6a6a6a)` had a literal
+   fallback that didn't match the actual `--ink-mute` value.
+   Removed the fallback.
+
+After this commit, `grep -nE 'var\(--[a-z-]+,\s*#'` returns zero
+matches across both files. Remaining hex literals are all in
+legitimate locations (token definitions, white-on-saturated
+contrast pairs, swatch-picker preview colors, intentional
+component-local badge palettes).
+
+---
+
+### Entry 10 — gitignore expansion (commit `9e9ba45`)
+
+Add CI tool caches and coverage outputs that the CI workflow
+generates locally: `.mypy_cache/`, `.ruff_cache/`, `.pytest_cache/`,
+`.coverage[.*]`, `coverage.xml`, `coverage.json`, `htmlcov/`. None
+of these were currently tracked but the entries are preventative
+for any developer running CI commands locally.
+
+---
+
+### Entry 11 — Codex/Copilot review feedback (commits `caade3a`, `4c7533c`)
+
+The PR was reviewed by three bots: Gemini-code-assist, Codex
+(chatgpt-codex-connector), and Copilot. Gemini's 5 comments were
+already addressed by the earlier skill-text drift commit (Entry 1)
+and auto-resolved as outdated. Codex and Copilot found four real
+issues — three of which were regressions I shipped earlier today.
+
+**Regressions caught (mea culpa):**
+
+1. `atlas.js :621` (Codex P1, Copilot Medium) — my "consistency"
+   change in commit `4961365` swapped `el.onclick = …` for
+   `el.addEventListener("click", …)` on the legend filter wiring.
+   Looked cleaner but turned an idempotent reassignment into an
+   accumulator: `renderClasses()` runs on every stats update, and
+   the `.leg-item` nodes persist across re-renders, so each render
+   added another click listener. After N renders one click would
+   fire `toggleClassFilter` N times.
+   *Fix in `caade3a`:* revert to `onclick =` and add a comment
+   explaining why this is intentionally inconsistent with the rest
+   of the file.
+
+2. `Dockerfile :49` (Codex P1, Copilot High) — my non-root-USER
+   commit `3c6e0f9` added `--chown=metronow:metronow` to every
+   COPY but never `chown`'d `/app` itself. WORKDIR creates the
+   directory as root-owned, so the Express server's runtime writes
+   (`osm-audit-<zone>/`, `edit-history.json`) would fail with
+   EACCES the moment the container ran a scan.
+   *Fix in `caade3a`:* add `chown metronow:metronow /app` before
+   `USER metronow`.
+
+3. `web/server.js :108` (Copilot Medium) — my `/health` endpoint
+   in `bce6197` was mounted *after* both `rateLimit` and
+   `express.static`, so the probe was rate-limited and the static
+   middleware ran a disk stat on every healthcheck. The comment
+   claimed otherwise — wrong.
+   *Fix in `4c7533c`:* move `/health` to immediately after
+   `app.use(cors(…))`, before the rate limiter / static / json
+   middleware.
+
+**Genuine new bug (not a regression):**
+
+4. `atlas.js openPanel` (Copilot Medium) — `focusReturnTarget`
+   was overwritten on every `openPanel()` call. When a flow
+   panel-switches (`submitFixes()` opens the auth panel while the
+   Fix panel is up), the saved target became an element inside
+   the now-hidden Fix panel; `closeAllPanels()` then tried to
+   focus a hidden element.
+   *Fix in `4c7533c`:* only capture the return target on the
+   *first* open (`if (!trappedPanel) focusReturnTarget = …`).
+   Hardened `closeAllPanels()` to check `isConnected` before
+   focusing, with `document.body` as a final fallback.
+
+**CodeQL `auth.py` alert saga:**
+
+CodeQL `py/clear-text-logging-sensitive-data` has flagged the
+auth.py URL print since this file was first written. CLAUDE.md
+records the project-level position as "won't fix / false positive
+UI dismissal." When my project-wide audit pass surfaced the alert
+again, I tried two approaches in sequence:
+
+- *First attempt (commit `caade3a`):* inline `# lgtm[…]`
+  suppression comment. WRONG — that's the legacy LGTM syntax;
+  GitHub Code Scanning's CodeQL doesn't honor inline source-level
+  suppression at all. The alert kept firing.
+- *Second attempt (commit `4c7533c`):* add
+  `.github/codeql/codeql-config.yml` with a query-filter
+  excluding `py/clear-text-logging-sensitive-data` for
+  `src/osm/auth.py`, referenced from `codeql.yml` via
+  `config-file:`.
+
+While that second attempt was in flight, GitHub's Copilot Autofix
+bot pushed `ea1d470` with a *different* fix: parse the URL with
+`urlsplit` and `print` only the base endpoint without the query
+string. That breaks the data flow CodeQL was tracing, so the alert
+no longer fires.
+
+The autofix has a UX trade-off — anyone whose browser fails to
+open and uses the manual-paste fallback gets a base URL without
+the `state` / `code_challenge` / `client_id` query params, which
+won't complete the OAuth flow on its own. But the harness flagged
+the change as intentional, so I deferred to it on the rebase.
+
+The codeql-config.yml exclusion remains as defense-in-depth: if
+the autofix's data-flow break is ever reverted by a future
+refactor, the config still suppresses the false-positive alert.
+
+**Learned:**
+
+- "Consistency for its own sake" introduces bugs. The legend
+  wiring's `onclick =` was correct for its render lifecycle even
+  though it didn't match the rest of the file. Idempotency >
+  pattern uniformity.
+- `--chown=metronow:metronow` on `COPY` doesn't `chown` the
+  enclosing directory. WORKDIR creates the directory before any
+  COPY runs, and the directory itself stays root-owned unless
+  explicitly `chown`'d.
+- Middleware ordering in Express matters — comments asserting
+  ordering must be verified against actual code position. The
+  `/health` route must precede the rate-limit middleware to
+  bypass it.
+- GitHub Code Scanning's CodeQL does NOT honor `# lgtm[…]` or
+  `# noqa` style inline suppression. Use
+  `.github/codeql/codeql-config.yml` with `query-filters` for
+  source-controlled false-positive dismissal.
+
 

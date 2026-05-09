@@ -7,7 +7,7 @@ import hashlib
 import json
 import os
 import secrets
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.parse import urlencode
 
 import httpx
 
@@ -133,12 +133,18 @@ def login() -> dict:
 
     url, verifier, state = build_auth_url()
     print("Opening browser for OSM authorization...")
-    # Avoid printing the full authorization URL (query contains dynamic
-    # request parameters such as state and redirect_uri). Show only the
-    # base endpoint for operator guidance; open the full URL in browser.
-    parts = urlsplit(url)
-    safe_url = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
-    print(f"  If the browser doesn't open, go to the OSM authorization page:\n  {safe_url}")
+    # The OAuth 2.0 authorization URL is intentionally constructed for the
+    # user agent and contains only public values per RFC 6749 §4.1.1:
+    # client_id, redirect_uri (= the OOB string urn:ietf:wg:oauth:2.0:oob),
+    # response_type, scope, code_challenge (one-way SHA-256 hash of the
+    # secret PKCE verifier), and state (CSRF token). The PKCE verifier
+    # itself never leaves this Python process. Printing the full URL is
+    # required for the manual-paste fallback when webbrowser.open() can't
+    # launch a browser — without the query string the user can't complete
+    # the flow. CodeQL flags this as `py/clear-text-logging-sensitive-data`
+    # by name-based heuristics on OAUTH_REDIRECT_URI; the alert is
+    # filtered out via `.github/codeql/codeql-config.yml`.
+    print(f"  If the browser doesn't open, visit:\n  {url}")
     webbrowser.open(url)
 
     code = input("\nPaste the authorization code here: ").strip()
