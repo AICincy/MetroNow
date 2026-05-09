@@ -28,17 +28,25 @@ RUN apt-get update \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd -r metronow \
+    && useradd -r -g metronow -u 1000 -m -d /home/metronow metronow
+
 WORKDIR /app
 
 COPY --from=python-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=python-deps /usr/local/bin/osm /usr/local/bin/osm
-COPY --from=node-deps /app/web/node_modules web/node_modules
+COPY --from=node-deps --chown=metronow:metronow /app/web/node_modules web/node_modules
 
-COPY src/ src/
-COPY pyproject.toml .
-COPY web/ web/
+COPY --chown=metronow:metronow pyproject.toml .
+COPY --chown=metronow:metronow web/ web/
 
-RUN mkdir -p /root/.config/osm
+RUN mkdir -p /home/metronow/.config/osm \
+    && chown -R metronow:metronow /home/metronow/.config
+
+USER metronow
+
+ENV HOME=/home/metronow
+ENV XDG_CONFIG_HOME=/home/metronow/.config
 
 EXPOSE 3000
 
