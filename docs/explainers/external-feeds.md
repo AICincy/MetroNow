@@ -1,12 +1,12 @@
-# External feeds — five read-only clients with shared design rules
+# External feeds: five read-only clients with shared design rules
 
 **Summary.** Five modules under `src/osm/` consume external data
 sources to enrich, corroborate, or deduplicate the audit pipeline's
 output: `bus_routes.py` (CAGIS METRO Bus Routes), `gtfs.py` (SORTA
 GTFS), `notes.py` (OSM Notes), `osmose.py` (Osmose-QA issues), and
 `history.py` (OSM API v0.6 revision history). They share a common
-shape — bbox-keyed disk cache, per-feed TTL, fail-open posture, OSM
-User-Agent compliance — and differ in their authoritative role.
+shape: bbox-keyed disk cache, per-feed TTL, fail-open posture, OSM
+User-Agent compliance: and differ in their authoritative role.
 None of them write anywhere; all are strictly read.
 
 ---
@@ -34,7 +34,7 @@ path of changeset submission.
 | Feed | Endpoint | Cache | TTL | Authoritative for |
 |---|---|---|---|---|
 | `bus_routes.py` | CAGIS ArcGIS Online item `af1e72d1373a4ceab400aa4fd2bc8173` (METRO Bus Routes) | `~/.config/osm/bus_routes_cache/` | 7 days | Transit-corridor corroboration for `oneway_conflicts` detector |
-| `gtfs.py` | `https://www.go-metro.com/uploads/GTFS/google_transit_info.zip` (resolved via Mobility Database `mdb-366`) | `~/.config/osm/gtfs_cache/sorta_stops.json` | 7 days | `misplaced_bus_stops` detector — validates `highway=bus_stop` nodes against actual GTFS stop positions |
+| `gtfs.py` | `https://www.go-metro.com/uploads/GTFS/google_transit_info.zip` (resolved via Mobility Database `mdb-366`) | `~/.config/osm/gtfs_cache/sorta_stops.json` | 7 days | `misplaced_bus_stops` detector: validates `highway=bus_stop` nodes against actual GTFS stop positions |
 | `notes.py` | `GET https://api.openstreetmap.org/api/0.6/notes.json?bbox=...` | `~/.config/osm/notes_cache/` | 1 hour | Surfaces existing community-reported problems on the same ways the pipeline flags |
 | `osmose.py` | `GET https://osmose.openstreetmap.fr/api/0.3/issues?bbox=...&full=true` | `~/.config/osm/osmose_cache/` | 24 hours | Existing Osmose-QA issues on the same elements (avoid auto-submitting fixes the community already sees) |
 | `history.py` | `GET https://api.openstreetmap.org/api/0.6/way/<id>/history.json` | `~/.config/osm/history_cache/<2-char hash>/` | 7 days | Per-way revision history; consumed by `history_filter.analyse_way_history()` |
@@ -48,7 +48,7 @@ Five rules that every feed module honors:
    of `(bbox, params)` so equivalent queries hit the same file.
 2. **TTL matched to source freshness.** GTFS / OSM Notes change
    minute-to-minute; CAGIS bus routes change quarterly at most. The
-   per-feed TTLs reflect this — 1 hour for notes, 24 hours for
+   per-feed TTLs reflect this: 1 hour for notes, 24 hours for
    osmose, 7 days for bus_routes and history, and (in-process only)
    for GTFS during a single scan run.
 3. **Fail-open everywhere.** Any HTTP / JSON / connection error logs
@@ -114,10 +114,10 @@ the OSM API, and the way `bus_routes` feeds JUST the
 
 ## Per-feed details
 
-### `bus_routes.py` — CAGIS METRO Bus Routes
+### `bus_routes.py`: CAGIS METRO Bus Routes
 
 - **Source**: CAGIS ArcGIS Online item
-  `af1e72d1373a4ceab400aa4fd2bc8173`, "METRO Bus Routes — Open Data,"
+  `af1e72d1373a4ceab400aa4fd2bc8173`, "METRO Bus Routes: Open Data,"
   owner `cagisopendata`. 202 features as of 2026-05.
 - **Public API**: `fetch_bus_routes(zone)`
   ([bus_routes.py:91](../../src/osm/bus_routes.py#L91)) returns a list
@@ -128,11 +128,11 @@ the OSM API, and the way `bus_routes` feeds JUST the
   midpoint.
 - **Consumer**: `oneway_conflicts` detector in
   `src/osm/detectors.py:153`. The detector flags a way only when the
-  conflict signal coincides with a transit corridor — a bus-corridor
+  conflict signal coincides with a transit corridor: a bus-corridor
   oneway error has materially higher rider impact than the same
   error on a residential side street.
 
-### `gtfs.py` — SORTA GTFS feed
+### `gtfs.py`: SORTA GTFS feed
 
 - **Source**: `google_transit_info.zip` from go-metro.com, resolved
   via Mobility Database catalog `mdb-366` (the public-feed-URL
@@ -151,7 +151,7 @@ the OSM API, and the way `bus_routes` feeds JUST the
   with `GTFS_CACHE_TTL_DAYS = 7`. Re-runs within the week skip the
   zip download and the parse.
 
-### `notes.py` — OSM Notes
+### `notes.py`: OSM Notes
 
 - **Source**: `GET https://api.openstreetmap.org/api/0.6/notes.json?bbox=...`
   (ODbL, no auth required for reads).
@@ -166,7 +166,7 @@ the OSM API, and the way `bus_routes` feeds JUST the
   `osm_notes` is supplied. Per `docs/explainers/detector-taxonomy.md`,
   the `near_note` field is context for human review, not a gate.
 
-### `osmose.py` — Osmose-QA
+### `osmose.py`: Osmose-QA
 
 - **Source**: `GET https://osmose.openstreetmap.fr/api/0.3/issues?bbox=...&full=true&limit=N`
   (Osmose-QA project, ODbL-derived).
@@ -180,7 +180,7 @@ the OSM API, and the way `bus_routes` feeds JUST the
   to avoid auto-submitting changes to elements the community already
   has eyes on.
 
-### `history.py` — OSM API v0.6 revision history
+### `history.py`: OSM API v0.6 revision history
 
 - **Source**: `GET https://api.openstreetmap.org/api/0.6/way/<id>/history.json`
   (ODbL).
@@ -202,7 +202,7 @@ the OSM API, and the way `bus_routes` feeds JUST the
 - **`bus_routes` only feeds `oneway_conflicts`.** The other seven
   detectors don't consult bus-routes data. If you write a new
   detector that benefits from transit-corridor context, plumb it
-  in explicitly — there's no automatic cross-detector enrichment.
+  in explicitly: there's no automatic cross-detector enrichment.
 - **`gtfs` caches parsed stops on disk for 7 days.** Stored as
   JSON at `~/.config/osm/gtfs_cache/sorta_stops.json`. SORTA
   schedule revisions are infrequent enough (typically quarterly
@@ -231,39 +231,39 @@ the OSM API, and the way `bus_routes` feeds JUST the
 
 ## Code references
 
-- [`src/osm/bus_routes.py:91`](../../src/osm/bus_routes.py#L91) —
+- [`src/osm/bus_routes.py:91`](../../src/osm/bus_routes.py#L91):
   `fetch_bus_routes()`.
-- [`src/osm/bus_routes.py:175`](../../src/osm/bus_routes.py#L175) —
+- [`src/osm/bus_routes.py:175`](../../src/osm/bus_routes.py#L175):
   `is_on_transit_corridor()`.
-- [`src/osm/gtfs.py:131`](../../src/osm/gtfs.py#L131) —
+- [`src/osm/gtfs.py:131`](../../src/osm/gtfs.py#L131):
   `resolve_sorta_feed_url()` (Mobility Database catalog lookup).
-- [`src/osm/gtfs.py:191`](../../src/osm/gtfs.py#L191) —
+- [`src/osm/gtfs.py:191`](../../src/osm/gtfs.py#L191):
   `fetch_sorta_stops()`.
-- [`src/osm/notes.py:108`](../../src/osm/notes.py#L108) —
+- [`src/osm/notes.py:108`](../../src/osm/notes.py#L108):
   `fetch_notes()` bbox endpoint.
-- [`src/osm/notes.py:215`](../../src/osm/notes.py#L215) —
+- [`src/osm/notes.py:215`](../../src/osm/notes.py#L215):
   `annotate_findings_with_notes()`.
-- [`src/osm/osmose.py:174`](../../src/osm/osmose.py#L174) —
+- [`src/osm/osmose.py:174`](../../src/osm/osmose.py#L174):
   `fetch_issues()`.
-- [`src/osm/osmose.py:301`](../../src/osm/osmose.py#L301) —
+- [`src/osm/osmose.py:301`](../../src/osm/osmose.py#L301):
   `annotate_fixes_with_osmose()`.
-- [`src/osm/history.py:21`](../../src/osm/history.py#L21) —
+- [`src/osm/history.py:21`](../../src/osm/history.py#L21):
   `RATE_LIMIT_DELAY = 0.5`, `HISTORY_CACHE_TTL_DAYS = 7`.
-- [`src/osm/history.py:48`](../../src/osm/history.py#L48) —
+- [`src/osm/history.py:48`](../../src/osm/history.py#L48):
   `fetch_way_history()`.
-- [`src/osm/history.py:146`](../../src/osm/history.py#L146) —
+- [`src/osm/history.py:146`](../../src/osm/history.py#L146):
   `batch_fetch_way_histories()` (async via httpx).
 
 ## See also
 
-- [`CLAUDE.md` § Layout / External feeds](../../CLAUDE.md) — the dense
+- [`CLAUDE.md` § Layout / External feeds](../../CLAUDE.md): the dense
   one-line entries this explainer decompresses.
-- [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md) —
+- [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md):
   where bus_routes, gtfs, and notes feed the rider-impact detectors.
-- [`docs/explainers/history-filter.md`](history-filter.md) — how
+- [`docs/explainers/history-filter.md`](history-filter.md): how
   `history.py`'s output gets analysed.
-- [`docs/explainers/transit-quota.md`](transit-quota.md) — Transit App
+- [`docs/explainers/transit-quota.md`](transit-quota.md): Transit App
   is a SIXTH external feed but warrants its own explainer due to
   quota mechanics.
-- [`docs/sources.md`](../sources.md) — the project's evaluation log
+- [`docs/sources.md`](../sources.md): the project's evaluation log
   for external sources.

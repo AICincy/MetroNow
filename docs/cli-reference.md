@@ -63,7 +63,7 @@ osm notes --zone <key> [--force-refresh] [--status open|closed|all]
 osm osmose --zone <key> [--force-refresh] [--item ITEM_CODE]...
 ```
 
-**`osm scan`** is the workhorse — it runs the entire audit pipeline
+**`osm scan`** is the workhorse: it runs the entire audit pipeline
 end-to-end and writes `osm-audit-<zone>/scan-results.json`. Notable
 flags:
 
@@ -88,7 +88,7 @@ later comparison via `osm baseline-diff`. See
 [`docs/explainers/conflation-matcher.md`](explainers/conflation-matcher.md).
 
 **`osm baseline-diff`** compares two manifests and flags
-*asymmetric-promotion* violations — `MATCHED_HIGH` growth sourced from
+*asymmetric-promotion* violations: `MATCHED_HIGH` growth sourced from
 `MATCHED_REVIEW` contraction rather than from `F3_GEOMETRY_FAIL`
 reduction. The default behavior (no `--from` / `--to`) discovers the
 two most recent manifests by mtime.
@@ -115,9 +115,9 @@ osm preflight --zone <key> [--strict] [--skip-pytest]
 
 Runs the 17 codified pre-flight checks. Exit codes:
 
-- `0` — all PASS or only MANUAL items pending
-- `1` — at least one FAIL (stop and fix)
-- `2` — at least one WARN, and `--strict` was set
+- `0`: all PASS or only MANUAL items pending
+- `1`: at least one FAIL (stop and fix)
+- `2`: at least one WARN, and `--strict` was set
 
 `--skip-pytest` short-circuits `check_pytest_passes` (which actually
 shells out to pytest and takes 30+ seconds on a fresh checkout).
@@ -132,14 +132,14 @@ osm maproulette --zone <key> [--kind class-a|gaps|both] [--out <path>]
 ```
 
 **`osm fix`** is the only command that actually writes to OSM. Default
-behavior is `--dry-run` friendly — print the changeset XML and stop.
+behavior is `--dry-run` friendly: print the changeset XML and stop.
 A live submission requires explicit confirmation. See
 [`docs/explainers/osm-community-gating.md`](explainers/osm-community-gating.md)
 for the seven changeset tags this command emits and the four-step
 gating that must precede first-batch submission.
 
 **`osm maproulette`** writes a `.geojsonl` file under
-`osm-audit-<zone>/maproulette/` — one MapRoulette task per OSM way
+`osm-audit-<zone>/maproulette/`: one MapRoulette task per OSM way
 with a Markdown instruction. `--kind` accepts `class-a` (default;
 Class A/AB ways below the auto-submit threshold), `gaps`
 (node-disconnect candidates), or `both` (writes two separate
@@ -205,7 +205,7 @@ console-script entry point depends on a clean install).
    matters (per the `--with-bus-route-corroboration` pattern).
 4. **One responsibility per command.** Don't bundle unrelated
    functionality. The split between `route-diff` and `fix-impact`
-   is the canonical example — both use BRouter, but for different
+   is the canonical example: both use BRouter, but for different
    purposes; they're separate commands.
 5. **Match the audit pipeline's data flow.** Audit commands read
    from disk (a prior scan); submit commands read from disk and
@@ -213,32 +213,32 @@ console-script entry point depends on a clean install).
 
 ## Code references
 
-- [`src/osm/cli.py:37`](../src/osm/cli.py#L37) — `main()` Click group
+- [`src/osm/cli.py:37`](../src/osm/cli.py#L37): `main()` Click group
   root.
-- [`src/osm/cli.py:49`](../src/osm/cli.py#L49) — `auth` subgroup.
-- [`src/osm/cli.py:135`](../src/osm/cli.py#L135) — `scan` (workhorse).
-- [`src/osm/cli.py:459`](../src/osm/cli.py#L459) — `fix` (only OSM
+- [`src/osm/cli.py:49`](../src/osm/cli.py#L49): `auth` subgroup.
+- [`src/osm/cli.py:135`](../src/osm/cli.py#L135): `scan` (workhorse).
+- [`src/osm/cli.py:459`](../src/osm/cli.py#L459): `fix` (only OSM
   writer).
-- [`src/osm/cli.py:590`](../src/osm/cli.py#L590) — `conflate`.
-- [`src/osm/cli.py:685`](../src/osm/cli.py#L685) — `conflate-tiger`.
-- [`src/osm/cli.py:782`](../src/osm/cli.py#L782) — `route-diff`.
-- [`src/osm/cli.py:873`](../src/osm/cli.py#L873) — `fix-impact`.
-- [`src/osm/cli.py:991`](../src/osm/cli.py#L991) — `baseline-diff`.
-- [`src/osm/cli.py:1101`](../src/osm/cli.py#L1101) — `maproulette`.
-- [`src/osm/cli.py:1193`](../src/osm/cli.py#L1193) — `transit-status`.
-- [`src/osm/cli.py:1241`](../src/osm/cli.py#L1241) — `transit-budget`.
-- [`src/osm/cli.py:1307`](../src/osm/cli.py#L1307) — `motis-status`.
-- [`src/osm/cli.py:1361`](../src/osm/cli.py#L1361) — `preflight`.
-- [`src/osm/cli.py:1434`](../src/osm/cli.py#L1434) — `report`.
+- [`src/osm/cli.py:590`](../src/osm/cli.py#L590): `conflate`.
+- [`src/osm/cli.py:685`](../src/osm/cli.py#L685): `conflate-tiger`.
+- [`src/osm/cli.py:782`](../src/osm/cli.py#L782): `route-diff`.
+- [`src/osm/cli.py:873`](../src/osm/cli.py#L873): `fix-impact`.
+- [`src/osm/cli.py:991`](../src/osm/cli.py#L991): `baseline-diff`.
+- [`src/osm/cli.py:1101`](../src/osm/cli.py#L1101): `maproulette`.
+- [`src/osm/cli.py:1193`](../src/osm/cli.py#L1193): `transit-status`.
+- [`src/osm/cli.py:1241`](../src/osm/cli.py#L1241): `transit-budget`.
+- [`src/osm/cli.py:1307`](../src/osm/cli.py#L1307): `motis-status`.
+- [`src/osm/cli.py:1361`](../src/osm/cli.py#L1361): `preflight`.
+- [`src/osm/cli.py:1434`](../src/osm/cli.py#L1434): `report`.
 
 ## See also
 
-- [`CLAUDE.md` § Layout / Plumbing](../CLAUDE.md) — where `cli.py` is
+- [`CLAUDE.md` § Layout / Plumbing](../CLAUDE.md): where `cli.py` is
   listed.
-- [`docs/explainers/`](explainers/) — per-subsystem explainers each
+- [`docs/explainers/`](explainers/): per-subsystem explainers each
   cross-link back to the relevant subcommand.
-- [`docs/skills/`](skills/) — many skills wrap one or more of these
+- [`docs/skills/`](skills/): many skills wrap one or more of these
   subcommands as their primary action (e.g. `zone-audit` wraps
   `osm scan`; `cagis-conflate` wraps `osm conflate`).
-- [Click documentation](https://click.palletsprojects.com/) — the
+- [Click documentation](https://click.palletsprojects.com/): the
   CLI framework.
