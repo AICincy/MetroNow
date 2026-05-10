@@ -2,7 +2,7 @@
 name: changeset-submit
 description: Submit corrections to OSM API v0.6 with full community compliance — proper changeset tags, size limits, rate-limit awareness, and dry-run support.
 when_to_use: "User says submit, push corrections, fix, create changeset, dry run, or wants to apply corrections to OpenStreetMap"
-allowed-tools: Read Grep Glob Bash(python *) Bash(node *)
+allowed-tools: Read Grep Glob Bash(python *)
 argument-hint: "[zone] [--dry-run]"
 arguments: [zone, flags]
 ---
@@ -24,7 +24,7 @@ Before ANY changeset submission, verify:
 
 ## Current auth state
 
-!`powershell -Command "if (Test-Path (Join-Path $env:USERPROFILE '.config/osm/token.json')) { Write-Output 'Token file exists' } else { Write-Output 'NO TOKEN - authenticate first at http://localhost:3000' }"`
+!`test -f "$HOME/.config/osm/token.json" && echo "Token file exists" || echo "NO TOKEN - authenticate first at http://localhost:3000"`
 
 ## Hard limits (RESEARCH-FINDINGS Section 3, Item 1)
 
