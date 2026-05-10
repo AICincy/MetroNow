@@ -1,7 +1,7 @@
 ---
 name: zone-audit
 description: Run the full TIGER defect audit pipeline for a MetroNow service zone — fetch from Overpass, classify defects, analyze history, generate reports.
-when_to_use: "User says scan, audit, check a zone, run an audit, or mentions a specific zone name like blue_ash_montgomery"
+when_to_use: "User says scan, audit, check a zone, run an audit, or mentions a specific zone name like blue-ash-montgomery"
 allowed-tools: Read Grep Glob Bash(node *) Bash(python *)
 argument-hint: "[zone-name]"
 arguments: [zone]
@@ -17,7 +17,7 @@ Run the full audit pipeline for MetroNow zone: **$zone**
 
 ## Current scan state
 
-!`powershell -Command "Get-ChildItem -Path 'osm_audit_*' -Directory -ErrorAction SilentlyContinue | ForEach-Object { $r = Join-Path $_.FullName 'scan_results.json'; if (Test-Path $r) { Write-Output ('  ' + $_.Name + ' — last scan: ' + (Get-Item $r).LastWriteTime) } }"`
+!`for d in osm-audit-*/; do [ -f "$d/scan-results.json" ] && echo "  ${d%/} — last scan: $(date -r "$d/scan-results.json")"; done 2>/dev/null || echo "  (no zones scanned yet)"`
 
 ## Pipeline steps
 

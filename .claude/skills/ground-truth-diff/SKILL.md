@@ -33,7 +33,7 @@ Roads in TIGER 2024 that have no OSM equivalent — genuinely new construction s
 The 2007 import introduced systematic name errors:
 - **USPS abbreviation spacing**: "Mac Donald St" → should be "MacDonald Street"
 - **Stripped apostrophes**: "O Toole Avenue" → should be "O'Toole Avenue"
-- **Stripped diacritics**: "Canada Road" for "Cananda Road"
+- **Stripped diacritics**: "Canada Road" for "Cañada Road" (the `ñ` was lost in the 2007 import)
 - **ALL CAPS remnants**: Some ways still have uppercase names from TIGER
 
 TIGER 2024 has corrected many of these. Diffing reveals which OSM ways still carry the 2005-era name.

@@ -30,7 +30,7 @@ Per RESEARCH-FINDINGS.md Item 17 and the OSM Automated Edits code of conduct: co
 
 2. **Create Challenge** — POST to `https://maproulette.org/api/v2/challenge`
    - Source: GeoJSON feed from scan results
-   - AOI: Zone polygon from `src/osm/zones.py` bbox
+   - AOI: Zone polygon from `src/osm/zones/__init__.py` (the `ZONES` dict)
    - Instructions: Per-defect-class fix guidance
    - Tags: `tiger`, `metronow`, `hamilton-county`
 
