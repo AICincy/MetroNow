@@ -119,9 +119,10 @@ the OSM API, and the way `bus_routes` feeds JUST the
 - **Source**: CAGIS ArcGIS Online item
   `af1e72d1373a4ceab400aa4fd2bc8173`, "METRO Bus Routes: Open Data,"
   owner `cagisopendata`. 202 features as of 2026-05.
-- **Public API**: `fetch_bus_routes(zone)`
+- **Public API**: `fetch_bus_routes(*, force_refresh=False, timeout=60)`
   ([bus_routes.py:91](../../src/osm/bus_routes.py#L91)) returns a list
-  of `BusRoute` dataclasses;
+  of `BusRoute` dataclasses (no positional arguments — the function is
+  zone-agnostic; the per-zone consumer is the calling detector);
   `is_on_transit_corridor(way, bus_routes)`
   ([bus_routes.py:175](../../src/osm/bus_routes.py#L175)) returns True
   if any bus route's polyline passes within ~50m of the way's
@@ -207,8 +208,11 @@ the OSM API, and the way `bus_routes` feeds JUST the
   JSON at `~/.config/osm/gtfs_cache/sorta_stops.json`. SORTA
   schedule revisions are infrequent enough (typically quarterly
   service-bid cycles) that a 7-day TTL is a comfortable freshness
-  margin. `osm scan --force-refresh` bypasses the cache when
-  investigating a fresh GTFS revision.
+  margin. `osm scan` does not have a `--force-refresh` flag; to
+  invalidate the GTFS cache, delete
+  `~/.config/osm/gtfs_cache/sorta_stops.json` before the next scan,
+  or call `osm.gtfs.fetch_sorta_stops(force_refresh=True)`
+  programmatically.
 - **`notes` returns CLOSED notes too unless filtered.** The
   `annotate_findings_with_notes` helper filters to `status=open`
   before matching. If you call `fetch_notes` directly, filter
