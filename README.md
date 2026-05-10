@@ -3,7 +3,7 @@
 **Summary.** OSM road-defect detection and correction pipeline for the
 four Hamilton County zones served by SORTA's [MetroNow](https://www.go-metro.com/metronow)
 on-demand microtransit service. Via Transportation's ViaMapping
-routing layer is built on OpenStreetMap — defects in OSM propagate,
+routing layer is built on OpenStreetMap: defects in OSM propagate,
 on Via's next ingest, into the routing tiles every MetroNow trip
 relies on. The pipeline harvests candidate defects from Overpass,
 classifies them with a TIGER-fixup taxonomy, ground-truths a subset
@@ -15,7 +15,7 @@ full community compliance.
 
 ## What this is
 
-The 2007–2008 TIGER/Line bulk import (`DaveHansenTiger`) seeded a
+The 2007-2008 TIGER/Line bulk import (`DaveHansenTiger`) seeded a
 generation of defects in OSM's Hamilton County coverage: false
 `oneway=yes` on residential streets, over-connected intersections at
 grade separations, `highway=residential` defaults that should have
@@ -61,7 +61,8 @@ flowchart LR
     Review -- "auto-submit (verified)" --> Changeset
     Review -- "Class A/AB without HIGH" --> MapRoulette
     Classify -- "rider-impact track" --> Detectors
-    Detectors --> MapRoulette
+    UI["Atlas UI<br/>Rider-impact findings panel"]
+    Detectors --> UI
     Polygons & Classify & Detectors & Conflate & Review --> Reports
 
     classDef harvest fill:#3a3a3a,stroke:#888,color:#eee
@@ -79,39 +80,100 @@ The pipeline emits two parallel tracks. The **classifier track**
 auto-submission. The **detector track** (eight rider-impact checks)
 ships findings to the UI for human triage; it never reaches
 `changeset.py`. This split is the project's mechanical-edit safety
-perimeter — see [`docs/explainers/detector-taxonomy.md`](docs/explainers/detector-taxonomy.md).
+perimeter: see [`docs/explainers/detector-taxonomy.md`](docs/explainers/detector-taxonomy.md).
 
 ## Defect taxonomy (classifier track)
 
-| Class | Predicate | Severity |
-|---|---|---|
-| **AB** | residential / unclassified / tertiary / service way is `oneway` (truthy: `yes`/`true`/`1`/`-1`) AND shares a normalized name with ≥1 other way in the zone | CRITICAL |
-| **A** | same as AB without the multi-segment co-occurrence | CRITICAL |
-| **B** | normalized-name multi-segment grouping without false-oneway | HIGH |
-| **C** | residual: in harvest, no Class A/B signal | LOW |
+```mermaid
+---
+title: How an OSM way lands in Class A / AB / B / C
+---
+flowchart TD
+    Way["OSM way<br/>(highway in residential / unclassified /<br/>tertiary / service)"]
+    OnewayQ{"oneway truthy?<br/>(yes / true / 1 / -1)"}
+    NameQ{"shares normalized name<br/>with ≥1 other way in zone?"}
+    NameQ2{"shares normalized name<br/>with ≥1 other way in zone?"}
 
-Plus haversine-based node-disconnect detection between Class B
-segments (`src/osm/gaps.py`) with a 30 m proximity threshold and 5 m
-junction clustering.
+    AB["Class AB: CRITICAL<br/>oneway + multi-segment<br/>(compound defect, highest routing impact)"]
+    A["Class A: CRITICAL<br/>oneway, no multi-segment"]
+    B["Class B: HIGH<br/>multi-segment, no oneway<br/>(disconnect risk via gaps.py:<br/>30 m threshold + 5 m clustering)"]
+    C["Class C: LOW<br/>no immediate defect signal"]
+
+    Way --> OnewayQ
+    OnewayQ -- yes --> NameQ
+    OnewayQ -- no --> NameQ2
+    NameQ -- yes --> AB
+    NameQ -- no --> A
+    NameQ2 -- yes --> B
+    NameQ2 -- no --> C
+
+    classDef critical fill:#5b1c1c,stroke:#a04040,color:#f8e0e0,font-weight:bold
+    classDef high fill:#5b3a1c,stroke:#a06632,color:#f5ead7
+    classDef low fill:#1f4d2b,stroke:#3b8c5a,color:#e8f3ec
+    class AB,A critical
+    class B high
+    class C low
+```
+
+The classifier emits one terminal class per way. Class B's
+multi-segment grouping additionally feeds haversine-based
+node-disconnect detection in `src/osm/gaps.py` (30 m proximity
+threshold, 5 m junction clustering). See
+[`docs/explainers/detector-taxonomy.md`](docs/explainers/detector-taxonomy.md)
+for the full classifier-vs-detector decomposition.
 
 ## Rider-impact detectors
 
 Eight detectors operate over the harvested ways, nodes, and relations.
-These surface defects independently of TIGER provenance:
+Each finding carries a `routing_impact` score (1 = noise; 5 = blocks
+an arterial-class route). The detectors are independent: one broken
+detector cannot kill the audit run thanks to the `_safe_run` wrapper
+in `classify.py`.
 
-| Detector | Predicate | Routing impact (1–5) |
-|---|---|---|
-| `oneway_minus_one` | `oneway=-1` on a Class A highway type | 4 |
-| `oneway_conflicts` | same-name parallel ways with same-direction `oneway`; lateral-vs-longitudinal-offset filter excludes legitimate divided carriageways | 5 |
-| `access_blocked_residential` | `access` ∈ {`no`, `private`} on `highway=residential`, excluding `motor_vehicle=destination` (gated communities) | 5 |
-| `barriers_without_access` | `barrier` ∈ {`gate`, `bollard`, `lift_gate`, `swing_gate`, `cycle_barrier`} with no access qualifier | 4 |
-| `broken_turn_restrictions` | `relation[type=restriction]` missing `from` / `via` / `to` member, or empty `restriction` tag | 4 |
-| `arterial_named_residential` | `highway=residential` whose name terminates in Boulevard / Parkway / Expressway / Pike / Highway / Crossing / Memorial | 3 |
-| `missing_maxspeed_arterial` | `highway` ∈ {tertiary, unclassified} without `maxspeed` | 3 |
-| `misplaced_bus_stops` | `highway=bus_stop` whose nearest drivable-way vertex exceeds 20 m, after cross-checking against SORTA GTFS stop positions | 2 |
+```mermaid
+---
+title: Eight rider-impact detectors grouped by routing impact (5 = highest)
+---
+flowchart LR
+    subgraph Impact5["routing_impact = 5<br/>(blocks an arterial-class route)"]
+        direction TB
+        D5a["oneway_conflicts<br/>same-name parallel ways with<br/>same-direction oneway;<br/>lateral-vs-longitudinal filter<br/>excludes divided carriageways"]
+        D5b["access_blocked_residential<br/>access in {no, private} on<br/>highway=residential, excluding<br/>motor_vehicle=destination<br/>(gated communities)"]
+    end
 
-Each finding carries an explicit `routing_impact` score; the Atlas UI
-surfaces them in an inventory panel sorted by impact descending.
+    subgraph Impact4["routing_impact = 4<br/>(degrades routing materially)"]
+        direction TB
+        D4a["oneway_minus_one<br/>oneway=-1 on a Class A<br/>highway type"]
+        D4b["barriers_without_access<br/>barrier in {gate, bollard,<br/>lift_gate, swing_gate,<br/>cycle_barrier} without<br/>access qualifier"]
+        D4c["broken_turn_restrictions<br/>relation[type=restriction]<br/>missing from / via / to<br/>member, or empty<br/>restriction tag"]
+    end
+
+    subgraph Impact3["routing_impact = 3<br/>(misclassifies highway type)"]
+        direction TB
+        D3a["arterial_named_residential<br/>highway=residential whose<br/>name ends in Boulevard /<br/>Parkway / Expressway / Pike /<br/>Highway / Crossing / Memorial"]
+        D3b["missing_maxspeed_arterial<br/>highway in {tertiary,<br/>unclassified} without<br/>maxspeed"]
+    end
+
+    subgraph Impact2["routing_impact = 2<br/>(rider-facing but soft)"]
+        direction TB
+        D2["misplaced_bus_stops<br/>highway=bus_stop whose<br/>nearest drivable vertex > 20 m,<br/>cross-checked against<br/>SORTA GTFS stop positions"]
+    end
+
+    classDef sev5 fill:#5b1c1c,stroke:#a04040,color:#f8e0e0
+    classDef sev4 fill:#5b3a1c,stroke:#a06632,color:#f5ead7
+    classDef sev3 fill:#3a3a1c,stroke:#888866,color:#eeeec0
+    classDef sev2 fill:#1f4d2b,stroke:#3b8c5a,color:#e8f3ec
+    class Impact5,D5a,D5b sev5
+    class Impact4,D4a,D4b,D4c sev4
+    class Impact3,D3a,D3b sev3
+    class Impact2,D2 sev2
+```
+
+The Atlas UI surfaces findings in an inventory panel sorted by
+`routing_impact` descending. None of these are auto-submitted: they
+require human review and (for findings exceeding 5% expected
+false-positive rate) optionally a MapRoulette challenge for
+community triage.
 
 ## Conflation against ground truth
 
@@ -128,25 +190,43 @@ confidence = 0.5 · name_similarity      (Ratcliff-Obershelp on normalized names
 The geometry term uses **directed** Hausdorff (max-over-OSM-points
 of min-distance-to-CAGIS). The symmetric form blew up on the common
 topology where OSM has a long named street broken into shorter ways
-at intersections — see [`docs/explainers/conflation-matcher.md`](docs/explainers/conflation-matcher.md).
+at intersections: see [`docs/explainers/conflation-matcher.md`](docs/explainers/conflation-matcher.md).
 
-Three confidence bands gate downstream behavior:
+```mermaid
+---
+title: Confidence bands → downstream treatment
+---
+flowchart LR
+    Score["confidence score<br/>0.5·name + 0.3·geom + 0.2·dir"]
 
-- `confidence ≥ 0.85` → **auto-submit eligible**: CAGIS `TRVL_DIR`
-  overrides OSM `oneway`, CAGIS `SPEEDLIMIT` supplies a missing
-  `maxspeed`, CAGIS `STRLABEL` flags a name mismatch (always queued
-  for human review — CAGIS uses postal abbreviations, OSM convention
-  is spelled-out names).
-- `0.6 ≤ confidence < 0.85` → **human-review queue**: surfaced as a
-  candidate, never auto-submitted.
-- `confidence < 0.6` → match dict still attached to the way but
-  filtered out of both submit and review queues; the
-  `diagnose_match()` baseline pass classifies these into F1–F4 /
-  MIXED_LOW for matcher tuning.
+    HIGH["MATCHED_HIGH<br/>≥ 0.85<br/>auto-submit eligible"]
+    REVIEW["MATCHED_REVIEW<br/>0.6 ≤ conf < 0.85<br/>human-review queue"]
+    LOW["confidence &lt; 0.6<br/>filtered out of submit + review<br/>diagnose_match → F1 through F4 / MIXED_LOW"]
+    FALLBACK["MATCHED_FALLBACK_REVIEW<br/>fallback path (within 100m)<br/>capped at 0.6: never auto-submits"]
 
-The nearest-neighbor fallback (when STRtree returns no candidates
-within 30 m) is hard-capped at `REVIEW_CONFIDENCE` — fallback hits
-populate human review but never auto-submit.
+    Score -- "in-buffer (≤30m), conf ≥ 0.85" --> HIGH
+    Score -- "in-buffer, 0.6 ≤ conf < 0.85" --> REVIEW
+    Score -- "in-buffer, conf < 0.6" --> LOW
+    Score -- "out-of-buffer fallback" --> FALLBACK
+
+    HIGH -- "set TRVL_DIR<br/>+ SPEEDLIMIT<br/>+ STRLABEL (review)" --> Submit(("changeset.py<br/>auto-submit"))
+    REVIEW --> Triage(("Atlas Fix panel<br/>human review"))
+    FALLBACK --> Triage
+    LOW --> Diagnostic(("baseline-diff<br/>tuning only"))
+
+    classDef safe fill:#1f4d2b,stroke:#3b8c5a,color:#e8f3ec
+    classDef judgment fill:#5b3a1c,stroke:#a06632,color:#f5ead7
+    classDef gate fill:#3a3a3a,stroke:#888,color:#eee
+    class HIGH,Submit safe
+    class REVIEW,FALLBACK,Triage judgment
+    class LOW,Diagnostic gate
+```
+
+The nearest-neighbor fallback (when STRtree returns no in-buffer
+candidates) is hard-capped at `REVIEW_CONFIDENCE`: fallback hits
+populate human review but **never** auto-submit. This is the
+project's epistemic gate: any edit submitted to OSM as a mechanical
+edit must clear 0.85 against an authoritative external source.
 
 ## Service zones
 
@@ -161,7 +241,10 @@ Zone polygons are extracted from SORTA's published web map and stored
 under [`src/osm/zones/<zone-key>.geojson`](src/osm/zones/); see
 [`docs/explainers/zone-data-flow.md`](docs/explainers/zone-data-flow.md)
 for why the bbox-and-polygon split is load-bearing (Forest Park's bbox
-bleeds 1 km north into Butler County, producing 78% F1 pre-clip).
+bleeds 1 km north into Butler County, producing a 78%
+`F1_NO_CANDIDATE` rate pre-clip — these are ways with no CAGIS
+match because CAGIS coverage stops at the county line, not because
+the OSM geometry was wrong).
 
 ## Quickstart
 
@@ -218,12 +301,58 @@ paste-ready drafts live under [`docs/community-prep/`](docs/community-prep/).
 
 ## Project documentation
 
+```mermaid
+---
+title: Documentation surfaces: what's where, by reader
+---
+flowchart TD
+    Reader["Reader<br/>(future-you / fresh AI session /<br/>OSM admin / curious newcomer)"]
+
+    CLAUDE["CLAUDE.md<br/>dense context manifest<br/>(fast-loading for AI sessions)"]
+    Glossary["docs/glossary.md<br/>color-coded terms / tags /<br/>sources / workflow"]
+
+    subgraph Decompress["docs/explainers/: 13 decompression docs"]
+        direction TB
+        DT["detector-taxonomy<br/>conflation-matcher<br/>osm-community-gating<br/>phase-status<br/>zone-data-flow<br/>routing-engine-dispatch<br/>conventions<br/>oauth-pkce-flow<br/>history-filter<br/>preflight-checks<br/>maproulette-tasks<br/>transit-quota<br/>external-feeds"]
+    end
+
+    subgraph Skills["docs/skills/: 14 skill explainers"]
+        direction TB
+        SK["zone-audit / cagis-conflate /<br/>ground-truth-diff / tiger-history-deep /<br/>osmcha-monitor / community-prep /<br/>changeset-submit / maproulette-challenge /<br/>metronow-{code,javascript,html,css,dockerfile}-review /<br/>metronow-explainer"]
+    end
+
+    subgraph Codebase["docs/: codebase-area overviews"]
+        direction TB
+        OV["cli-reference (17 osm subcommands)<br/>tests-overview (pytest layout)<br/>web-architecture (Express + SPA)<br/>sources (external-feed evaluation log)"]
+    end
+
+    subgraph Community["docs/community-prep/: paste-ready drafts"]
+        direction TB
+        CP["00-README<br/>01-wiki-page<br/>02-talk-us-post<br/>03-minh-outreach<br/>04-pre-flight-checklist<br/>05-transit-api-compliance"]
+    end
+
+    Reader --> CLAUDE
+    Reader --> Glossary
+    CLAUDE -. "cross-links to" .-> Decompress
+    CLAUDE -. "cross-links to" .-> Codebase
+    Decompress -. "cross-links to" .-> Skills
+    Glossary -. "anchors terms in" .-> Decompress
+    Decompress -. "Phase 1 chain" .-> Community
+
+    classDef manifest fill:#3a3a3a,stroke:#888,color:#eee,font-weight:bold
+    classDef anchor fill:#5b3a1c,stroke:#a06632,color:#f5ead7
+    classDef detail fill:#1f4d2b,stroke:#3b8c5a,color:#e8f3ec
+    class CLAUDE manifest
+    class Glossary anchor
+    class Decompress,Skills,Codebase,Community,DT,SK,OV,CP detail
+```
+
 Three layered surfaces, each with its own template and audience:
 
-- **[`CLAUDE.md`](CLAUDE.md)** — dense context manifest. Source of
+- **[`CLAUDE.md`](CLAUDE.md)**: dense context manifest. Source of
   truth for architecture, conventions, phase status. Optimized for
   fast loading by AI sessions.
-- **[`docs/explainers/`](docs/explainers/)** — 13 hand-written
+- **[`docs/explainers/`](docs/explainers/)**: 13 hand-written
   decompression docs for the dense `CLAUDE.md` sections. Each follows
   the same template (summary → bridge steps → load-bearing Mermaid →
   `file:line` citations). Topics: detector taxonomy, conflation
@@ -231,19 +360,19 @@ Three layered surfaces, each with its own template and audience:
   routing engine dispatch, conventions, OAuth + PKCE flow, history
   filter, pre-flight checks, MapRoulette tasks, Transit App quota,
   external feeds.
-- **[`docs/skills/`](docs/skills/)** — 14 explainers for the
+- **[`docs/skills/`](docs/skills/)**: 14 explainers for the
   `.claude/skills/` directory. Short, skim-friendly companions to
   each `SKILL.md` for re-entry.
 
 Plus codebase-area overviews:
 
-- [`docs/cli-reference.md`](docs/cli-reference.md) — 17 `osm`
+- [`docs/cli-reference.md`](docs/cli-reference.md): 17 `osm`
   subcommands grouped by lifecycle stage.
-- [`docs/tests-overview.md`](docs/tests-overview.md) — pytest layout,
+- [`docs/tests-overview.md`](docs/tests-overview.md): pytest layout,
   what's tested vs deliberately not, how to add a test.
-- [`docs/web-architecture.md`](docs/web-architecture.md) — Express
+- [`docs/web-architecture.md`](docs/web-architecture.md): Express
   server + vanilla SPA + shell-out-to-Python design.
-- [`docs/sources.md`](docs/sources.md) — external-source evaluation
+- [`docs/sources.md`](docs/sources.md): external-source evaluation
   log (active, defensive backups, bookmarks, ruled-out).
 
 ## Background
@@ -268,12 +397,16 @@ defect detectors or the changeset submission path.
 
 ## See also
 
-- [`CLAUDE.md`](CLAUDE.md) — project context manifest.
-- [`docs/explainers/detector-taxonomy.md`](docs/explainers/detector-taxonomy.md) — the dual-track classifier vs detector design.
-- [`docs/explainers/conflation-matcher.md`](docs/explainers/conflation-matcher.md) — directed-Hausdorff scoring + asymmetric-promotion alert.
-- [`docs/explainers/osm-community-gating.md`](docs/explainers/osm-community-gating.md) — the four-step Phase 1 gating in dependency order.
-- [`docs/cli-reference.md`](docs/cli-reference.md) — every `osm` subcommand.
-- [Open data attribution]: data © OpenStreetMap contributors (ODbL); data © Cincinnati Area GIS / Hamilton County, Ohio (Open Data Hub).
+- [`CLAUDE.md`](CLAUDE.md): project context manifest.
+- [`docs/glossary.md`](docs/glossary.md): every project-specific
+  term, OSM tag, authoritative source, and workflow concept,
+  color-coded by category (🔴 critical / 🟡 review / 🟢 ground-truth /
+  🔵 declarative / ⚪ informational).
+- [`docs/explainers/detector-taxonomy.md`](docs/explainers/detector-taxonomy.md): the dual-track classifier vs detector design.
+- [`docs/explainers/conflation-matcher.md`](docs/explainers/conflation-matcher.md): directed-Hausdorff scoring + asymmetric-promotion alert.
+- [`docs/explainers/osm-community-gating.md`](docs/explainers/osm-community-gating.md): the four-step Phase 1 gating in dependency order.
+- [`docs/cli-reference.md`](docs/cli-reference.md): every `osm` subcommand.
+- **Open data attribution:** data © OpenStreetMap contributors (ODbL); data © Cincinnati Area GIS / Hamilton County, Ohio (Open Data Hub).
 
 ## License
 
