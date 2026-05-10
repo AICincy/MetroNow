@@ -45,15 +45,34 @@ no static-site generator, no toolchain.
   mode each load-bearing rule closes (path traversal, quota
   underrun, XSS, false "done" reports) and the code that implements
   the defense.
+- [`oauth-pkce-flow.md`](oauth-pkce-flow.md) — OAuth 2.0
+  Authorization Code + PKCE flow with the OOB redirect URI, why
+  `state` is unenforced (PKCE does the real CSRF protection), and
+  the chmod-0600 token storage.
+- [`history-filter.md`](history-filter.md) — two-tier review-status
+  analysis (UNREVIEWED / LIKELY_REVIEWED / INCONCLUSIVE); why
+  `tiger:reviewed=no` is unreliable and what 22-tag set indicates
+  meaningful review instead.
+- [`preflight-checks.md`](preflight-checks.md) — the 17 codified
+  checks across 6 categories with PASS/FAIL/WARN/MANUAL statuses
+  and what `MANUAL` exists for (items the program literally cannot
+  introspect).
+- [`maproulette-tasks.md`](maproulette-tasks.md) — Phase 3
+  escalation path for Class A/AB ways below the auto-submit
+  threshold; per-task Markdown instructions; the GeoJSON Lines
+  output format and `[lat, lon] → [lon, lat]` conversion.
+- [`transit-quota.md`](transit-quota.md) — Transit App quota
+  preservation under the 1,500 calls/month free tier; the 80%
+  budget cap; the three load-bearing ToS obligations
+  ("Powered by Transit", User-Agent, 10-business-day pre-release
+  notice).
 
 ## Candidate next topics
 
-The original 6-item backlog from `metronow-explainer/SKILL.md` is
-fully shipped. See that skill's "Topic backlog" section for the
-running list of candidate next topics (oauth-pkce-flow,
-history-filter, maproulette-tasks, preflight-checks, transit-quota,
-etc.) when re-entry pain on a new subsystem makes another explainer
-worth writing.
+Both rounds of the original SKILL.md backlog are fully shipped (the
+6-item first round + the 5-item second round). See that skill's
+"Topic backlog" section for any new candidate topics when re-entry
+pain on a new subsystem makes another explainer worth writing.
 
 ## Style
 
