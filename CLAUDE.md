@@ -93,7 +93,9 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
 ## Detector taxonomy
 
 Two parallel tracks. Both run in `classify()`; the second only emits to the
-"Rider-impact findings" panel — never to the mechanical-fix queue.
+"Rider-impact findings" panel — never to the mechanical-fix queue. See
+[`docs/explainers/detector-taxonomy.md`](docs/explainers/detector-taxonomy.md)
+for the decompressed version with diagram and code citations.
 
 - **Classifier (TIGER-fixup heuristic, mechanical-fix candidates):** Class
   A, AB, B, C; node-disconnect gaps. Defined in `classify.py` and `gaps.py`.
