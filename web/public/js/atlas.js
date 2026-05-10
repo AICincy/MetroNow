@@ -53,6 +53,11 @@
     pendingFixes: [],        // [{way, fix}, ...]
     classFilters: { AB: true, A: true, B: true, C: false, GAPS: true },
     scanInProgress: false,
+    // Monotonic token bumped on every runScan() and every selectZone().
+    // A running scan captures the token at start and short-circuits its
+    // own resolve/reject/finally if the global token has moved on,
+    // preventing an old scan from clobbering a newer scan's UI state.
+    scanToken: 0,
     scanStartedAt: 0,
     scanTimerId: null,
     auth: { authenticated: false, scope: null },
@@ -179,6 +184,18 @@
     fitToZoneBounds();
     state.results = null;
     state.pendingFixes = [];
+    // If a scan was running on the previous zone, the user has navigated
+    // away from it. Bumping scanToken orphans the in-flight scan: when
+    // its await chain resolves later, every guard checking scanToken ===
+    // myScanToken inside runScan() short-circuits, so the orphaned scan
+    // does NOT mutate scanInProgress, the timer, or the button (which
+    // may now belong to a fresh scan on the new zone). Then we
+    // authoritatively reset the local UI so a new scan can start.
+    state.scanToken++;
+    state.scanInProgress = false;
+    stopScanTimer();
+    const scanBtn = $("#scanBtn");
+    if (scanBtn) scanBtn.disabled = false;
     // reset class filters so prior zone's toggles don't leak across
     state.classFilters = { AB: true, A: true, B: true, C: false, GAPS: true };
     state.tablePages = { ab: 1, a: 1 };
@@ -761,6 +778,11 @@
     if (state.scanInProgress) return;
     if (!state.currentZone) { toast("Pick a zone first", "warn"); return; }
     state.scanInProgress = true;
+    // Capture this scan's identity. Every continuation below checks
+    // state.scanToken === myScanToken and bails if the user navigated
+    // to a different zone or kicked off a newer scan while we were
+    // in-flight (see selectZone()).
+    const myScanToken = ++state.scanToken;
     const btn = $("#scanBtn");
     if (btn) btn.disabled = true;
     consoleShow(true);
@@ -792,10 +814,12 @@
         },
       });
       clearStageTimers();
+      if (state.scanToken !== myScanToken) return;  // orphaned by a zone switch / newer scan
       consoleLog(`Scan complete — ${(result.stats.total || 0).toLocaleString()} ways analyzed`, "ok");
       consoleStatus("audit · complete", "ok");
       // pull full results so we can draw the map
       const full = await api("/api/results/" + state.currentZone);
+      if (state.scanToken !== myScanToken) return;
       state.results = full;
       drawResults(full);
       renderStats(full.summary_stats || {});
@@ -809,13 +833,20 @@
       announceToScreenReader(`Scan complete. ${(result.stats.total || 0)} ways analyzed, ${(result.stats.class_ab_count || 0)} compound defects found.`);
     } catch (e) {
       clearStageTimers();
+      if (state.scanToken !== myScanToken) return;
       consoleLog("Scan failed: " + e.message, "error");
       consoleStatus("audit · error", "error");
       toast("Scan failed: " + e.message, "error");
     } finally {
-      stopScanTimer();
-      state.scanInProgress = false;
-      if (btn) btn.disabled = false;
+      // Only clear shared scan state if WE are still the active scan.
+      // If selectZone() or a newer runScan() bumped state.scanToken
+      // while we were awaiting, those UI hooks now belong to whatever
+      // started after us — we must not mutate them on our way out.
+      if (state.scanToken === myScanToken) {
+        stopScanTimer();
+        state.scanInProgress = false;
+        if (btn) btn.disabled = false;
+      }
     }
   }
 
