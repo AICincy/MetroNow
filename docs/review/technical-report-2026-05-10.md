@@ -59,7 +59,7 @@ against current HEAD:
 
 | Invariant | Status | Citation |
 |-----------|--------|----------|
-| `zonePath()` containment guard | VERIFIED | `web/server.js:140`; 15 callsites at lines 409, 455, 530, 537, 539, 547, 612, 760, 787, 809, 854, 899, 902, 940; no raw `path.join` bypasses found |
+| `zonePath()` containment guard | VERIFIED | `web/server.js:140`; 13 callsites at lines 409, 455, 530, 539, 547, 612, 760, 787, 809, 854, 899, 902, 940; no raw `path.join` bypasses found |
 | `fcntl.flock` + Windows fallback in transit usage counter | VERIFIED | `src/osm/transit.py:209-232` (LOCK_EX at L226, LOCK_UN at L232, fallback comment L210) |
 | Strict CSP, `script-src` excludes `'unsafe-inline'` | VERIFIED | `web/server.js:46` (`"script-src": ["'self'", "https://unpkg.com"]`); `'unsafe-inline'` is restricted to `style-src` per the documented Leaflet exception |
 | CSP allow-list mirrors `index.html` external origins | VERIFIED | unpkg, fonts.googleapis.com, fonts.gstatic.com, basemaps.cartocdn.com, server.arcgisonline.com, services.arcgis.com, *.tile.openstreetmap.org, nominatim.openstreetmap.org all enumerated |
