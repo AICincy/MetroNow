@@ -83,35 +83,96 @@ perimeter — see [`docs/explainers/detector-taxonomy.md`](docs/explainers/detec
 
 ## Defect taxonomy (classifier track)
 
-| Class | Predicate | Severity |
-|---|---|---|
-| **AB** | residential / unclassified / tertiary / service way is `oneway` (truthy: `yes`/`true`/`1`/`-1`) AND shares a normalized name with ≥1 other way in the zone | CRITICAL |
-| **A** | same as AB without the multi-segment co-occurrence | CRITICAL |
-| **B** | normalized-name multi-segment grouping without false-oneway | HIGH |
-| **C** | residual: in harvest, no Class A/B signal | LOW |
+```mermaid
+---
+title: How an OSM way lands in Class A / AB / B / C
+---
+flowchart TD
+    Way["OSM way<br/>(highway in residential / unclassified /<br/>tertiary / service)"]
+    OnewayQ{"oneway truthy?<br/>(yes / true / 1 / -1)"}
+    NameQ{"shares normalized name<br/>with ≥1 other way in zone?"}
+    NameQ2{"shares normalized name<br/>with ≥1 other way in zone?"}
 
-Plus haversine-based node-disconnect detection between Class B
-segments (`src/osm/gaps.py`) with a 30 m proximity threshold and 5 m
-junction clustering.
+    AB["Class AB — CRITICAL<br/>oneway + multi-segment<br/>(compound defect, highest routing impact)"]
+    A["Class A — CRITICAL<br/>oneway, no multi-segment"]
+    B["Class B — HIGH<br/>multi-segment, no oneway<br/>(disconnect risk via gaps.py:<br/>30 m threshold + 5 m clustering)"]
+    C["Class C — LOW<br/>no immediate defect signal"]
+
+    Way --> OnewayQ
+    OnewayQ -- yes --> NameQ
+    OnewayQ -- no --> NameQ2
+    NameQ -- yes --> AB
+    NameQ -- no --> A
+    NameQ2 -- yes --> B
+    NameQ2 -- no --> C
+
+    classDef critical fill:#5b1c1c,stroke:#a04040,color:#f8e0e0,font-weight:bold
+    classDef high fill:#5b3a1c,stroke:#a06632,color:#f5ead7
+    classDef low fill:#1f4d2b,stroke:#3b8c5a,color:#e8f3ec
+    class AB,A critical
+    class B high
+    class C low
+```
+
+The classifier emits one terminal class per way. Class B's
+multi-segment grouping additionally feeds haversine-based
+node-disconnect detection in `src/osm/gaps.py` (30 m proximity
+threshold, 5 m junction clustering). See
+[`docs/explainers/detector-taxonomy.md`](docs/explainers/detector-taxonomy.md)
+for the full classifier-vs-detector decomposition.
 
 ## Rider-impact detectors
 
 Eight detectors operate over the harvested ways, nodes, and relations.
-These surface defects independently of TIGER provenance:
+Each finding carries a `routing_impact` score (1 = noise; 5 = blocks
+an arterial-class route). The detectors are independent — one broken
+detector cannot kill the audit run thanks to the `_safe_run` wrapper
+in `classify.py`.
 
-| Detector | Predicate | Routing impact (1–5) |
-|---|---|---|
-| `oneway_minus_one` | `oneway=-1` on a Class A highway type | 4 |
-| `oneway_conflicts` | same-name parallel ways with same-direction `oneway`; lateral-vs-longitudinal-offset filter excludes legitimate divided carriageways | 5 |
-| `access_blocked_residential` | `access` ∈ {`no`, `private`} on `highway=residential`, excluding `motor_vehicle=destination` (gated communities) | 5 |
-| `barriers_without_access` | `barrier` ∈ {`gate`, `bollard`, `lift_gate`, `swing_gate`, `cycle_barrier`} with no access qualifier | 4 |
-| `broken_turn_restrictions` | `relation[type=restriction]` missing `from` / `via` / `to` member, or empty `restriction` tag | 4 |
-| `arterial_named_residential` | `highway=residential` whose name terminates in Boulevard / Parkway / Expressway / Pike / Highway / Crossing / Memorial | 3 |
-| `missing_maxspeed_arterial` | `highway` ∈ {tertiary, unclassified} without `maxspeed` | 3 |
-| `misplaced_bus_stops` | `highway=bus_stop` whose nearest drivable-way vertex exceeds 20 m, after cross-checking against SORTA GTFS stop positions | 2 |
+```mermaid
+---
+title: Eight rider-impact detectors grouped by routing impact (5 = highest)
+---
+flowchart LR
+    subgraph Impact5["routing_impact = 5<br/>(blocks an arterial-class route)"]
+        direction TB
+        D5a["oneway_conflicts<br/>same-name parallel ways with<br/>same-direction oneway;<br/>lateral-vs-longitudinal filter<br/>excludes divided carriageways"]
+        D5b["access_blocked_residential<br/>access in {no, private} on<br/>highway=residential, excluding<br/>motor_vehicle=destination<br/>(gated communities)"]
+    end
 
-Each finding carries an explicit `routing_impact` score; the Atlas UI
-surfaces them in an inventory panel sorted by impact descending.
+    subgraph Impact4["routing_impact = 4<br/>(degrades routing materially)"]
+        direction TB
+        D4a["oneway_minus_one<br/>oneway=-1 on a Class A<br/>highway type"]
+        D4b["barriers_without_access<br/>barrier in {gate, bollard,<br/>lift_gate, swing_gate,<br/>cycle_barrier} without<br/>access qualifier"]
+        D4c["broken_turn_restrictions<br/>relation[type=restriction]<br/>missing from / via / to<br/>member, or empty<br/>restriction tag"]
+    end
+
+    subgraph Impact3["routing_impact = 3<br/>(misclassifies highway type)"]
+        direction TB
+        D3a["arterial_named_residential<br/>highway=residential whose<br/>name ends in Boulevard /<br/>Parkway / Expressway / Pike /<br/>Highway / Crossing / Memorial"]
+        D3b["missing_maxspeed_arterial<br/>highway in {tertiary,<br/>unclassified} without<br/>maxspeed"]
+    end
+
+    subgraph Impact2["routing_impact = 2<br/>(rider-facing but soft)"]
+        direction TB
+        D2["misplaced_bus_stops<br/>highway=bus_stop whose<br/>nearest drivable vertex > 20 m,<br/>cross-checked against<br/>SORTA GTFS stop positions"]
+    end
+
+    classDef sev5 fill:#5b1c1c,stroke:#a04040,color:#f8e0e0
+    classDef sev4 fill:#5b3a1c,stroke:#a06632,color:#f5ead7
+    classDef sev3 fill:#3a3a1c,stroke:#888866,color:#eeeec0
+    classDef sev2 fill:#1f4d2b,stroke:#3b8c5a,color:#e8f3ec
+    class Impact5,D5a,D5b sev5
+    class Impact4,D4a,D4b,D4c sev4
+    class Impact3,D3a,D3b sev3
+    class Impact2,D2 sev2
+```
+
+The Atlas UI surfaces findings in an inventory panel sorted by
+`routing_impact` descending. None of these are auto-submitted — they
+require human review and (for findings exceeding 5% expected
+false-positive rate) optionally a MapRoulette challenge for
+community triage.
 
 ## Conflation against ground truth
 
