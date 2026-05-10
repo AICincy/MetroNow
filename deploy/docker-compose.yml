@@ -3,7 +3,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: metronow-app:latest
+    image: metronow-app:${APP_IMAGE_TAG:-latest}
     container_name: metronow-app
     restart: unless-stopped
     environment:
@@ -15,14 +15,15 @@ services:
       # OAuth token, OAuth client credentials, CAGIS conflation cache
       # (90-day TTL), history cache (7-day TTL). Survives `docker compose
       # down` and image rebuilds. Path matches CONFIG_DIR resolution in
-      # web/server.js (HOME=/root inside the python:3.12-slim container).
-      - osm_config:/root/.config/osm
+      # web/server.js, which reads $HOME — the Dockerfile sets HOME to
+      # /home/metronow under the non-root `metronow` USER (uid 1000).
+      - osm_config:/home/metronow/.config/osm
     networks:
       - web
     expose:
       - "3000"
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/zones',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 20s

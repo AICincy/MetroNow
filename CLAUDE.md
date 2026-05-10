@@ -36,9 +36,17 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
     [`docs/explainers/zone-data-flow.md`](docs/explainers/zone-data-flow.md).
   - Output: `xlsx.py`, `dashboard.py`, `csv_export.py`
   - Plumbing: `cli.py` (Click; see [`docs/cli-reference.md`](docs/cli-reference.md)),
-    `config.py`, `zones.py`, `geo.py`, `cache.py`, `auth.py`
-    (OAuth 2.0 + PKCE; see
+    `config.py`, `zones/` (package — see "Zone polygons" above),
+    `geo.py`, `_geometry.py` (shared shapely helpers used by
+    `conflate.py` and `route_diff.py`), `cache.py`, `resources.py`
+    (centralised `importlib.resources` access for templated data),
+    `auth.py` (OAuth 2.0 + PKCE; see
     [`docs/explainers/oauth-pkce-flow.md`](docs/explainers/oauth-pkce-flow.md))
+  - Internal cross-cuts: `feed_errors.py` (process-local fail-open
+    visibility counter shared by the external-feed clients),
+    `maproulette.py` (MapRoulette challenge generator; see
+    [`docs/explainers/maproulette-tasks.md`](docs/explainers/maproulette-tasks.md)),
+    `templates/` (HTML templates rendered by `dashboard.py`)
 - `web/`: Express.js server + vanilla HTML/CSS/JS frontend (MetroNow Atlas
   redesign). See [`docs/web-architecture.md`](docs/web-architecture.md).
   - `web/server.js`: REST API on port 3000, shells out to Python via
