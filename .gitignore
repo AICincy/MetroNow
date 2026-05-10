@@ -46,3 +46,6 @@ edit-history.json
 
 # Config with secrets
 .env
+.env.*
+!.env.example
+!.env.*.example
