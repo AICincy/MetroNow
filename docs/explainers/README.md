@@ -23,13 +23,14 @@ no static-site generator, no toolchain.
   `MATCHED_FALLBACK_REVIEW` / `MIXED_LOW` / F1–F4), the fallback
   hard-cap at `REVIEW_CONFIDENCE`, and the `osm baseline-diff`
   asymmetric-promotion alert.
+- [`osm-community-gating.md`](osm-community-gating.md) — the four-step
+  Phase 1 gating in dependency order (Minh outreach → `_cincyimport`
+  account → wiki page → talk-us@ + 14-day window), what happens if
+  you skip each step, and the seven changeset tags every mechanical
+  edit must carry.
 
 ## Backlog (in priority of confusion-on-re-entry)
 
-- `osm-community-gating.md` — what mechanical edits are, why OSM
-  treats them specially, what each of the four required steps does
-  (wiki page, talk-us@, account convention, changeset tags), what
-  happens if you skip one.
 - `phase-status.md` — what each Phase 1–4 delivers, what gates the
   transitions, why Phase 1 is human-action-blocked.
 - `zone-data-flow.md` — SORTA web map → `src/osm/zones/*.geojson` →
