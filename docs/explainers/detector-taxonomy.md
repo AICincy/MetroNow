@@ -199,7 +199,7 @@ admins inspecting a changeset.
 - [`src/osm/conflate.py`](../../src/osm/conflate.py) — directed-Hausdorff
   matcher; supplements the classifier track only.
 - [`web/server.js:386`](../../web/server.js#L386),
-  [`:633`](../../web/server.js#L633) — REST handlers that lift
+  [`:453`](../../web/server.js#L453) — REST handlers that lift
   `extra_findings` into the API response.
 - [`web/public/index.html:1521`](../../web/public/index.html#L1521) —
   "Rider-impact findings" panel — the UI surface for `extra_findings`.
