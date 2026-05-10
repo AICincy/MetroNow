@@ -43,7 +43,7 @@ read different keys:
    detectors. The two tracks share no code path beyond the Overpass parse.
 2. **Classifier outputs:** `class_a`, `class_a_only`, `class_ab`,
    `class_b_streets`, `gaps`. These feed `osm.review.proposed_fixes_for_way`
-   ([review.py:9-23](../../src/osm/review.py#L9-L23)) which produces three
+   ([review.py:112-325](../../src/osm/review.py#L112-L325)) which produces three
    layers of fix proposals (heuristic → CAGIS-verified → TIGER-verified)
    and is the only path to `osm.changeset` (the OSM API submitter).
 3. **Detector outputs:** `extra_findings`, populated at
