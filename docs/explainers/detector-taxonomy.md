@@ -41,21 +41,30 @@ read different keys:
    ([classify.py:99](../../src/osm/classify.py#L99)) builds Class A / AB /
    B / C buckets and gap candidates, *and* runs the eight rider-impact
    detectors. The two tracks share no code path beyond the Overpass parse.
-2. **Classifier outputs:** `class_a`, `class_a_only`, `class_ab`,
-   `class_b_streets`, `gaps`. These feed `osm.review.proposed_fixes_for_way`
-   ([review.py:112-325](../../src/osm/review.py#L112-L325)) which produces three
-   layers of fix proposals (heuristic → CAGIS-verified → TIGER-verified)
-   and is the only path to `osm.changeset` (the OSM API submitter).
+2. **Classifier outputs:** every way is annotated with a `defect_class`
+   (Class A / AB / B / C) and surfaced through bucket views (`class_a`,
+   `class_a_only`, `class_ab`, `class_b_streets`). `gaps` is a separate
+   topology-candidate list. Per-way fix proposals come from
+   `osm.review.proposed_fixes_for_way`
+   ([review.py:112](../../src/osm/review.py#L112)), which is invoked per
+   way over `all_ways` and reads each way's `cagis_match` / `tiger_match`
+   annotations to produce three layers of fixes (heuristic →
+   CAGIS-verified → TIGER-verified). It is the only path to
+   `osm.changeset` (the OSM API submitter). `gaps` does **not** flow
+   through this path — gap entries are topology issues without a
+   single-way fix shape and ship to MapRoulette / human review only.
 3. **Detector outputs:** `extra_findings`, populated at
    [classify.py:269-323](../../src/osm/classify.py#L269-L323) via eight
    `_safe_run` calls. The `_safe_run` wrapper ensures one broken detector
    cannot kill a scan run.
-4. **UI consumption is segregated.** The web frontend pulls `extra_findings`
-   into a separate "Rider-impact findings" panel
-   ([index.html:1521](../../web/public/index.html#L1521),
-   [server.js:386](../../web/server.js#L386),
-   [server.js:453](../../web/server.js#L453)). There is no UI control
-   that promotes a `extra_findings` row to the changeset queue.
+4. **UI consumption is segregated.** The web frontend renders
+   `extra_findings` in a separate "Rider-impact findings" panel
+   ([index.html:1521](../../web/public/index.html#L1521)). The data path
+   is: the scan endpoint persists `extra_findings` to `scan-results.json`
+   ([server.js:386](../../web/server.js#L386)) and the results endpoint
+   serves it back to the frontend
+   ([server.js:453](../../web/server.js#L453)). There is no UI control
+   that promotes an `extra_findings` row to the changeset queue.
 5. **CAGIS conflation supplements the classifier track only.** When
    `osm.conflate` annotates a way with `cagis_match`, that match is read by
    `review.proposed_fixes_for_way` to upgrade a Class A/AB/B fix from
@@ -105,7 +114,11 @@ flowchart TD
     UIPanel["UI: 'Rider-impact findings' panel<br/>index.html:1521"]
     Triage(("Human triage<br/>OSM editor /<br/>MapRoulette"))
 
-    ClassifierTrack --> Conflate
+    ClassA --> Conflate
+    ClassAB --> Conflate
+    ClassB --> Conflate
+    ClassC --> Conflate
+    Gaps -- "topology, not a single-way fix" --> Triage
     Conflate -- "confidence ≥ 0.85" --> Review
     Conflate -- "0.6 ≤ confidence < 0.85" --> Review
     Review -- "auto-submit (verified)" --> Changeset
@@ -193,14 +206,20 @@ admins inspecting a changeset.
   finding kind, lines 118 / 153 / 338 / 375 / 407 / 443 / 475 / 596).
 - [`src/osm/gaps.py:9`](../../src/osm/gaps.py#L9) —
   `detect_gaps()` haversine-endpoint detector for the classifier track.
-- [`src/osm/review.py:112-325`](../../src/osm/review.py#L112-L325) —
-  three-layer fix-proposal stack; reads classifier outputs and CAGIS
-  matches, never reads `extra_findings`.
+- [`src/osm/review.py:1-24`](../../src/osm/review.py#L1-L24) — module
+  docstring describing the three-layer fix-proposal stack (heuristic /
+  CAGIS-verified / TIGER-verified).
+- [`src/osm/review.py:112`](../../src/osm/review.py#L112) —
+  `proposed_fixes_for_way()` implementation; called per way over
+  `all_ways`, reads each way's `cagis_match` / `tiger_match`
+  annotations, never reads `extra_findings`.
 - [`src/osm/conflate.py`](../../src/osm/conflate.py) — directed-Hausdorff
   matcher; supplements the classifier track only.
-- [`web/server.js:386`](../../web/server.js#L386),
-  [`:453`](../../web/server.js#L453) — REST handlers that lift
-  `extra_findings` into the API response.
+- [`web/server.js:386`](../../web/server.js#L386) — `extra_findings`
+  persisted to `scan-results.json` inside the `/api/scan` endpoint.
+- [`web/server.js:453`](../../web/server.js#L453) — `/api/results/:zone`
+  REST handler that returns the persisted JSON (including
+  `extra_findings`) to the frontend.
 - [`web/public/index.html:1521`](../../web/public/index.html#L1521) —
   "Rider-impact findings" panel — the UI surface for `extra_findings`.
 

@@ -67,7 +67,7 @@ Most confusing sections have at least three.
 | **Undefined jargon** | Acronyms, project-specific terms, third-party tool names appear without expansion or link | Inline definition on first use, parenthetical for the rest |
 | **Unstated WHY** | A rule is stated as a rule with no consequence-of-breaking-it | Add a "because otherwise…" clause, or a "this matters because…" sentence |
 | **Skipped bridge steps** | The doc jumps from a concept to a constant or from a problem to a fix without showing the path | Numbered list of intermediate steps, each with a one-line rationale |
-| **Prose where a picture is needed** | More than 3 entities interacting, a state machine, a decision tree, or time-ordered messages | Mermaid block (see `metronow-illustrate` for the diagram library and house style) |
+| **Prose where a picture is needed** | More than 3 entities interacting, a state machine, a decision tree, or time-ordered messages | Mermaid block — see the Mermaid house style section below and `docs/explainers/detector-taxonomy.md` for a worked reference |
 | **Uncited claim** | "X works this way" with no `file:line` reference to verify or update against | Add a code-references list at the end of the explainer |
 
 ## Fix protocol
@@ -81,8 +81,10 @@ For each confusing section, apply this template — in this order:
 3. **Walk the bridge steps** as a numbered list. Each step gets one line
    of rationale.
 4. **Insert a diagram** if there are 3+ entities, a state machine, a
-   decision tree, or a time-ordered exchange. Use `metronow-illustrate`
-   for the diagram itself.
+   decision tree, or a time-ordered exchange. Hand-write a Mermaid block
+   following the house style section below; `docs/explainers/detector-taxonomy.md`
+   is the reference example for subgraphs, edge labels, and `classDef`
+   color semantics.
 5. **Cite code** at the end: `file:line` references for every claim about
    behavior. This is what makes the explainer age with the codebase
    instead of going stale.
