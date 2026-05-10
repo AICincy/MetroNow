@@ -1,6 +1,6 @@
 # Skill: `metronow-html-review`
 
-**Summary.** Audit HTML files — primarily the single-file
+**Summary.** Audit HTML files: primarily the single-file
 `web/public/index.html` shell that is the MetroNow Atlas frontend.
 Checks accessibility (WCAG), semantic markup, and integration with
 the inline `<style>` block + external script tags.
@@ -9,17 +9,17 @@ the inline `<style>` block + external script tags.
 
 Applies the HTML-specific subset of standards:
 
-- **Semantic markup** — `<nav>`, `<main>`, `<section>`, `<header>`,
+- **Semantic markup**: `<nav>`, `<main>`, `<section>`, `<header>`,
   `<footer>` over generic `<div>`s where applicable.
-- **Accessibility (WCAG AA)** — every interactive element has an
+- **Accessibility (WCAG AA)**: every interactive element has an
   accessible name; ARIA attributes are correct (Blocker-level when
   WCAG-failing).
-- **`escapeHtml()` boundary** — no untrusted text inserted via raw
+- **`escapeHtml()` boundary**: no untrusted text inserted via raw
   `innerHTML`. Cross-checked against the JS layer.
-- **Inline `<style>` discipline** — atlas's inline CSS lives in one
+- **Inline `<style>` discipline**: atlas's inline CSS lives in one
   block at the top of `<head>`; runtime additions go via
   `web/public/css/atlas-supplement.css` (loaded by atlas.js).
-- **External origin alignment** — every CDN reference (unpkg,
+- **External origin alignment**: every CDN reference (unpkg,
   fonts.googleapis.com, etc.) must appear in the helmet CSP allow-list
   in `web/server.js`.
 
@@ -42,8 +42,8 @@ to the HTML file under review.
 
 ## Related skills
 
-- [`metronow-code-review`](metronow-code-review.md) — umbrella.
-- [`metronow-css-review`](metronow-css-review.md) — paired since the
+- [`metronow-code-review`](metronow-code-review.md): umbrella.
+- [`metronow-css-review`](metronow-css-review.md): paired since the
   inline `<style>` block lives in HTML but is reviewed under CSS rules.
 
 ## See also

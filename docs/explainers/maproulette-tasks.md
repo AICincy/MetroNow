@@ -1,4 +1,4 @@
-# MapRoulette tasks — escalation path for Class A/AB ways without auto-submit confidence
+# MapRoulette tasks: escalation path for Class A/AB ways without auto-submit confidence
 
 **Summary.** Some Class A/AB ways have a probable false `oneway=yes`/`-1`
 tag (TIGER-fixup heuristic) but the CAGIS conflation either couldn't
@@ -76,7 +76,7 @@ The module produces one challenge per zone in five steps:
    `instruction`, `priority`.
 5. **Serialize as GeoJSON Lines.** `task_to_feature(task)`
    ([maproulette.py:198](../../src/osm/maproulette.py#L198)) converts
-   each task into a GeoJSON `Feature` with a `LineString` geometry —
+   each task into a GeoJSON `Feature` with a `LineString` geometry:
    converting the in-pipeline `[lat, lon]` to GeoJSON's `[lon, lat]`
    order. The output file is one `.geojson` line per task (newline-
    delimited), per the MapRoulette ingestion format
@@ -86,7 +86,7 @@ The module produces one challenge per zone in five steps:
 
 ```mermaid
 ---
-title: Class A/AB way → MapRoulette task
+title: "Class A/AB way → MapRoulette task"
 ---
 flowchart TD
     Classified["classified['all_ways']<br/>(post-conflate, post-history-filter)"]
@@ -96,7 +96,7 @@ flowchart TD
     HighConf{"confidence ≥ 0.85?"}
     SkipAuto["Skip<br/>(goes to auto-submit)"]
     InstructA["Generate Markdown:<br/>'CAGIS REVIEW band signal'<br/>or 'weak CAGIS signal'<br/>maproulette.py:85"]
-    InstructB["Generate Markdown:<br/>'no CAGIS match —<br/>TIGER heuristic only'"]
+    InstructB["Generate Markdown:<br/>'no CAGIS match,<br/>TIGER heuristic only'"]
     Prio{"defect_class<br/>= AB?"}
     PrioHigh["priority=HIGH (0)"]
     PrioMed["priority=MEDIUM (1)"]
@@ -128,7 +128,7 @@ flowchart TD
 
 *What this shows: every Class A/AB way that did NOT clear the
 auto-submit threshold becomes a MapRoulette task. Two skip paths
-prevent duplicate work — non-A/AB classes don't go to MapRoulette at
+prevent duplicate work: non-A/AB classes don't go to MapRoulette at
 all (they're for different review channels), and HIGH-confidence
 matches go to auto-submit instead. What this hides: the per-zone
 file naming pattern, the optional `mr-cli` cooperative-challenge
@@ -145,7 +145,7 @@ Three reasons not to:
 - **Locality.** Local mappers know their streets. A mapper who
   drives Reading Pike daily knows whether `oneway=yes` is correct
   there; the maintainer doesn't.
-- **Auditability.** Every MapRoulette task has a public history —
+- **Auditability.** Every MapRoulette task has a public history:
   who completed it, what they marked, and any comments. That history
   is part of the project's defense if a future revert dispute
   arises ("we did surface this for community review").
@@ -153,7 +153,7 @@ Three reasons not to:
 The 5% false-positive threshold mentioned in `CLAUDE.md` is the
 trigger. When a defect class's expected false-positive rate exceeds
 5%, MapRoulette is required by project policy. Class A/AB without
-HIGH-confidence CAGIS evidence sits in that band by construction —
+HIGH-confidence CAGIS evidence sits in that band by construction:
 the absence of a high-confidence match *is* the uncertainty signal.
 
 ## Edge cases and gotchas
@@ -161,13 +161,13 @@ the absence of a high-confidence match *is* the uncertainty signal.
 - **The challenge name uses the wiki URL.** The instruction footer
   cites `https://wiki.openstreetmap.org/wiki/Hamilton_County_TIGER_Audit`
   ([maproulette.py:138](../../src/osm/maproulette.py#L138)). When the
-  real wiki page lands at a different URL, this needs updating —
+  real wiki page lands at a different URL, this needs updating:
   same reason `WIKI_URL` in `config.py` needs updating before first
   changeset (see `docs/explainers/preflight-checks.md`).
 - **GeoJSON requires `[lon, lat]`, the pipeline uses `[lat, lon]`.**
   `task_to_feature()`
   ([maproulette.py:204](../../src/osm/maproulette.py#L204)) does the
-  swap. Don't add a second swap upstream — the pipeline format is
+  swap. Don't add a second swap upstream: the pipeline format is
   `[lat, lon]` everywhere internally because that matches Overpass
   output.
 - **`unverified_class_a_ways` skips ways with empty geometry.** A
@@ -194,41 +194,41 @@ the absence of a high-confidence match *is* the uncertainty signal.
 ## Code references
 
 - [`src/osm/maproulette.py:1-40`](../../src/osm/maproulette.py#L1-L40)
-  — module docstring (Phase 3 framing, output format, etiquette).
+ : module docstring (Phase 3 framing, output format, etiquette).
 - [`src/osm/maproulette.py:57-59`](../../src/osm/maproulette.py#L57-L59)
-  — `PRIORITY_HIGH / MEDIUM / LOW` constants.
-- [`src/osm/maproulette.py:65`](../../src/osm/maproulette.py#L65) —
+ : `PRIORITY_HIGH / MEDIUM / LOW` constants.
+- [`src/osm/maproulette.py:65`](../../src/osm/maproulette.py#L65):
   `MR_INCLUDE_KINDS = frozenset({CLASS_A, CLASS_AB})`.
 - [`src/osm/maproulette.py:68-78`](../../src/osm/maproulette.py#L68-L78)
-  — `MapRouletteTask` dataclass.
+ : `MapRouletteTask` dataclass.
 - [`src/osm/maproulette.py:85-140`](../../src/osm/maproulette.py#L85-L140)
-  — `_instruction_for()` Markdown generator with three CAGIS branches.
+ : `_instruction_for()` Markdown generator with three CAGIS branches.
 - [`src/osm/maproulette.py:143-150`](../../src/osm/maproulette.py#L143-L150)
-  — `_priority_for()` AB > A > other.
+ : `_priority_for()` AB > A > other.
 - [`src/osm/maproulette.py:153-176`](../../src/osm/maproulette.py#L153-L176)
-  — `unverified_class_a_ways()` filter.
+ : `unverified_class_a_ways()` filter.
 - [`src/osm/maproulette.py:179-195`](../../src/osm/maproulette.py#L179-L195)
-  — `build_tasks()` projection.
-- [`src/osm/maproulette.py:198`](../../src/osm/maproulette.py#L198) —
+ : `build_tasks()` projection.
+- [`src/osm/maproulette.py:198`](../../src/osm/maproulette.py#L198):
   `task_to_feature()` GeoJSON serialization.
-- [`web/server.js`](../../web/server.js) — the
+- [`web/server.js`](../../web/server.js): the
   `/api/maproulette/:zone/class-a` endpoint that writes the per-zone
   GeoJSON Lines file using `zonePath()` containment.
 
 ## See also
 
-- [`CLAUDE.md` § OSM community requirements](../../CLAUDE.md) —
+- [`CLAUDE.md` § OSM community requirements](../../CLAUDE.md):
   references MapRoulette as the channel for findings with > 5%
   expected false-positive rate.
-- [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md) —
+- [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md):
   the dual-track classifier vs detector design; MapRoulette is for
   the classifier track's unverified candidates.
-- [`docs/explainers/conflation-matcher.md`](conflation-matcher.md) —
+- [`docs/explainers/conflation-matcher.md`](conflation-matcher.md):
   why `cagis_match.confidence` < HIGH is the trigger for MapRoulette.
-- [`docs/explainers/zone-data-flow.md`](zone-data-flow.md) — the
+- [`docs/explainers/zone-data-flow.md`](zone-data-flow.md): the
   zone polygon clip that the etiquette policy references (only ways
   inside the zone go to MapRoulette).
-- [MapRoulette docs](https://learn.maproulette.org/) — challenge /
+- [MapRoulette docs](https://learn.maproulette.org/): challenge /
   task / cooperative-challenge formats.
-- `.claude/skills/maproulette-challenge` — the project skill that
+- `.claude/skills/maproulette-challenge`: the project skill that
   invokes this module to produce a challenge per scan.

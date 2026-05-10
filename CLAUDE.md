@@ -2,12 +2,12 @@
 
 OSM road defect detection and correction for Hamilton County MetroNow
 microtransit zones. Via Transportation's ViaMapping routing layer is built on
-OpenStreetMap — corrections submitted here propagate, on Via's next ingest, to
+OpenStreetMap: corrections submitted here propagate, on Via's next ingest, to
 the routing tiles that ViaAlgo consumes for every MetroNow trip.
 
 ## Layout
 
-- `src/osm/` — Python package (pip-installable as `osm`)
+- `src/osm/`: Python package (pip-installable as `osm`)
   - Pipeline: `fetch.py`, `polygons.py`, `classify.py`, `detectors.py`,
     `gaps.py`, `history.py`, `history_filter.py` (see
     [`docs/explainers/history-filter.md`](docs/explainers/history-filter.md)),
@@ -16,7 +16,7 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
     [`docs/explainers/external-feeds.md`](docs/explainers/external-feeds.md)
     for shared design + per-feed details): `gtfs.py` (SORTA GTFS
     stops cross-check, with Mobility Database catalog lookup mdb-366
-    for the feed URL), `bus_routes.py` (CAGIS METRO Bus Routes —
+    for the feed URL), `bus_routes.py` (CAGIS METRO Bus Routes,
     transit-corridor corroboration for oneway_conflict findings),
     `transit.py` (Transit App API client, rate-limit +
     monthly-quota aware, `fcntl.flock`-guarded counter; see
@@ -39,26 +39,27 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
     `config.py`, `zones.py`, `geo.py`, `cache.py`, `auth.py`
     (OAuth 2.0 + PKCE; see
     [`docs/explainers/oauth-pkce-flow.md`](docs/explainers/oauth-pkce-flow.md))
-- `web/` — Express.js server + vanilla HTML/CSS/JS frontend (MetroNow Atlas
+- `web/`: Express.js server + vanilla HTML/CSS/JS frontend (MetroNow Atlas
   redesign). See [`docs/web-architecture.md`](docs/web-architecture.md).
-  - `web/server.js` — REST API on port 3000, shells out to Python via
+  - `web/server.js`: REST API on port 3000, shells out to Python via
     `child_process`
-  - `web/public/index.html` — single-page UI with overlay panels (Inventory,
+  - `web/public/index.html`: single-page UI with overlay panels (Inventory,
     Fix, Ledger, Discuss, Account)
-  - `web/public/js/atlas.js` — main app logic
-  - `web/public/js/atlas-extras.js` — theme/density/accent/weight tweaks
-  - `web/public/css/atlas-supplement.css` — components added by atlas.js
-  - `web/public/.legacy/` — original UI preserved for rollback
-- `tests/` — pytest suite; see
+  - `web/public/js/atlas.js`: main app logic
+  - `web/public/js/atlas-extras.js`: theme/density/accent/weight tweaks
+  - `web/public/css/atlas-supplement.css`: components added by atlas.js
+  - `web/public/.legacy/`: original UI preserved for rollback
+- `tests/`: pytest suite; see
   [`docs/tests-overview.md`](docs/tests-overview.md) for layout, what's
   tested vs deliberately not, and how to add a test.
-- `osm-audit-{zone}/` — generated outputs per zone (gitignored): raw Overpass
-  cache under `data/`, `scan-results.json`, `reports/`, `csv/`
-- `docs/community-prep/` — paste-ready community-gating drafts:
+- `osm-audit-{zone}/` (generated outputs per zone, gitignored): raw
+  Overpass cache under `data/`, plus `scan-results.json`, `reports/`,
+  and `csv/`
+- `docs/community-prep/`: paste-ready community-gating drafts:
   `00-README.md` (index), `01-wiki-page.md`, `02-talk-us-post.md`,
   `03-minh-outreach.md`, `04-pre-flight-checklist.md`,
   `05-transit-api-compliance.md`
-- `docs/motis-deployment.md` — honest stand-up notes for the MOTIS prototype
+- `docs/motis-deployment.md`: honest stand-up notes for the MOTIS prototype
 
 ## Paths
 
@@ -80,9 +81,9 @@ stylistic preferences and names the failure mode each load-bearing
 rule closes.
 
 - File names use hyphens, never underscores
-- No CLI instructions to the user — run everything directly
-- Auto mode is the default — make decisions, don't present menus
-- Audit work before declaring done — verify at module boundaries (fetch
+- No CLI instructions to the user: run everything directly
+- Auto mode is the default: make decisions, don't present menus
+- Audit work before declaring done: verify at module boundaries (fetch
   output feeds classify, classify output feeds reports, classify output
   feeds conflation, review output feeds changeset) and spot-check outputs
   against known data before signing off
@@ -90,7 +91,7 @@ rule closes.
   the resolved-prefix containment guard runs at every site (CodeQL
   js/path-injection hygiene)
 - Concurrent file mutators (e.g. transit usage counter) hold an
-  exclusive `fcntl.flock` on POSIX — falls back to unlocked write when
+  exclusive `fcntl.flock` on POSIX: falls back to unlocked write when
   fcntl is unavailable
 - Strict CSP via helmet is required; the allow-list mirrors the
   external origins in `web/public/index.html` (unpkg, CARTO, Esri,
@@ -118,7 +119,7 @@ and what happens if you skip any step.
 ## Detector taxonomy
 
 Two parallel tracks. Both run in `classify()`; the second only emits to the
-"Rider-impact findings" panel — never to the mechanical-fix queue. See
+"Rider-impact findings" panel: never to the mechanical-fix queue. See
 [`docs/explainers/detector-taxonomy.md`](docs/explainers/detector-taxonomy.md)
 for the decompressed version with diagram and code citations.
 
@@ -140,19 +141,19 @@ CAGIS centerline conflation lives in `src/osm/conflate.py`. See
 for the decompressed version with diagram and code citations. Tunings
 that survived data-driven validation:
 
-- **Directed Hausdorff (OSM→CAGIS only)**, not symmetric — F3
+- **Directed Hausdorff (OSM→CAGIS only)**, not symmetric: F3
   ("geometry fail") was 70.5% of misses with symmetric because OSM
   fragments are legitimate sub-segments of longer CAGIS centerlines.
   Switching to the directed form lifted auto-submit 5.0% → 12.1%.
 - Three-term scoring: `W_NAME=0.5 + W_GEOMETRY=0.3 + W_DIRECTION=0.2`,
   thresholds `BUFFER_M=30.0`, `HIGH_CONFIDENCE=0.85`,
   `REVIEW_CONFIDENCE=0.6`, `FALLBACK_BUFFER_M=100.0`
-- Nearest-neighbor fallback is hard-capped at `REVIEW_CONFIDENCE` —
+- Nearest-neighbor fallback is hard-capped at `REVIEW_CONFIDENCE`:
   it can populate the human-review band, never the auto-submit pool
-- Diagnostics: F1–F4 bucket attribution (`NO_CANDIDATE`, `NAME_FAIL`,
+- Diagnostics: F1 through F4 bucket attribution (`NO_CANDIDATE`, `NAME_FAIL`,
   `GEOMETRY_FAIL`, `DIRECTION_DRAG`); `osm baseline-diff --zone <key>`
   flags asymmetric-promotion violations between matcher runs
-- Match rate across 4 zones: 22.76–26.40%; auto-submit pool 2,043
+- Match rate across 4 zones: 22.76-26.40%; auto-submit pool 2,043
   ways
 
 ## Phase status (as of 2026-05-08 EOD, commit `9836bb9`)
@@ -161,7 +162,7 @@ See [`docs/explainers/phase-status.md`](docs/explainers/phase-status.md)
 for the decompressed version with diagram, what each phase delivered,
 and where the cross-cutting workstreams fit.
 
-- **Phase 1 (community gating)** — ⏳ blocked on human action.
+- **Phase 1 (community gating)**: ⏳ blocked on human action.
   All five `docs/community-prep/*.md` drafts ready; Transit-App ToS
   compliance email **sent** to Richard at Transit App (awaiting
   reply on quota uplift). Wiki / talk-us@ / community.osm.org
@@ -169,22 +170,22 @@ and where the cross-cutting workstreams fit.
   direct technical correspondence (directed-Hausdorff matcher,
   MOTIS prototype). `_cincyimport`-convention account not yet
   created.
-- **Phase 2, 3, 4** — ✅ complete; matcher fixes shipped, MapRoulette
+- **Phase 2, 3, 4**: ✅ complete; matcher fixes shipped, MapRoulette
   generators shipped, polygon-clip / route-diff / detector hardening
   shipped.
-- **MOTIS prototype** — ✅ shipped at `src/osm/motis.py` plus
+- **MOTIS prototype**: ✅ shipped at `src/osm/motis.py` plus
   `osm motis-status`; opt-in via `MOTIS_BASE` env; pipeline
   silently degrades to BRouter when MOTIS isn't reachable. Engine
   dispatcher in `route_diff.py` is the next-session item.
-- **Pre-flight automation** — ✅ `osm preflight --zone <key>` runs
+- **Pre-flight automation**: ✅ `osm preflight --zone <key>` runs
   17 checks; FAIL/WARN/MANUAL exit codes; `--strict` escalates WARN.
-- **Transit App quota tooling** — ✅ `osm transit-status`,
+- **Transit App quota tooling**: ✅ `osm transit-status`,
   `osm transit-budget [--calls N]`. Concurrent-safe usage counter
   via `fcntl.flock`. The required attribution `"Powered by Transit"`
   ships verbatim in the Atlas footer.
-- **CodeQL alerts** — #4, #6–10, #17, #24 fixed in code; #3
+- **CodeQL alerts**: #4, #6-10, #17, #24 fixed in code; #3
   (auth.py:120 OAuth URL print) flagged for "won't fix / false
-  positive" UI dismissal — by RFC 6749 §4.1.1 the URL contains no
+  positive" UI dismissal: by RFC 6749 §4.1.1 the URL contains no
   actual secrets.
 
 ## Operator identity context
@@ -195,4 +196,4 @@ US Government GIS Volunteer. The Transit-App ToS-compliance email and
 talk-us@ post lean on this regulatory perimeter (49 CFR Parts 21, 27,
 37, 38; § 37.169 demand-responsive equivalent service; FTA Circulars
 4710.1 + 4702.1B; EO 12898 + EO 13166). Paid-tier options are off the
-table — leverage civic angle, not budget.
+table: leverage civic angle, not budget.

@@ -1,4 +1,4 @@
-# Routing engine dispatch — BRouter default, MOTIS opt-in
+# Routing engine dispatch: BRouter default, MOTIS opt-in
 
 **Summary.** MetroNow uses a routing engine to filter false positives out
 of the rider-impact detector findings. If a candidate fix doesn't change
@@ -6,7 +6,7 @@ the routing graph, the finding is most likely noise; if it does, it
 likely needs human review. Today the project ships **two** routing
 engines with deliberately matching call shapes: **BRouter** (the
 default; OSM-only, car-fast profile, GPL) and **MOTIS** (opt-in;
-multi-modal — OSM + GTFS in the same graph). Both expose `fetch_route()`
+multi-modal: OSM + GTFS in the same graph). Both expose `fetch_route()`
 that returns `{length_m, duration_s, cost, geometry}`. The "next-session
 item" referenced in `CLAUDE.md` is wiring a single dispatcher line in
 `route_diff.py` that picks the engine based on `motis.is_available()`,
@@ -38,7 +38,7 @@ The two engines answer that question differently:
 - **MOTIS** ([motis.py](../../src/osm/motis.py)) is multi-modal: OSM
   *and* GTFS in the same graph. The advantage for MetroNow's purposes
   is that a route between two stops can reflect both walking-network
-  changes AND transit schedule effects in a single comparison — the
+  changes AND transit schedule effects in a single comparison: the
   right engine for "what if SORTA changed this corridor's frequency on
   its next ingest" questions.
 
@@ -68,7 +68,7 @@ dispatcher can swap them without changing call sites:
    the public BRouter server; MOTIS reads `MOTIS_BASE` env var,
    defaulting to `http://localhost:8080`
    ([motis.py:58, 74-75](../../src/osm/motis.py#L58)). MOTIS won't
-   work without a self-hosted or operator-pointed instance — the
+   work without a self-hosted or operator-pointed instance: the
    pipeline degrades to BRouter-only if MOTIS isn't reachable.
 5. **Health probe gates engagement.** `motis.is_available()`
    ([motis.py:328](../../src/osm/motis.py#L328)) sends a near-trivial
@@ -97,7 +97,7 @@ because the return shape matches.
 
 ```mermaid
 ---
-title: Two engines, one shape — current state and the next-session dispatcher
+title: "Two engines, one shape: current state and the next-session dispatcher"
 ---
 flowchart TD
     Caller["route-diff caller<br/>(detector false-positive filter)"]
@@ -142,7 +142,7 @@ flowchart TD
 ```
 
 *What this shows: the two engines are equivalent at the call-shape
-level — both end at the same `{length_m, duration_s, cost, geometry}`
+level: both end at the same `{length_m, duration_s, cost, geometry}`
 output. Today, callers pick one engine explicitly per site. Tomorrow,
 a single `is_available()` probe in `route_diff.py` will pick MOTIS
 when reachable and BRouter otherwise. What this hides: the 24-hour
@@ -158,7 +158,7 @@ better:
 - **BRouter is car-only.** It models the road network without
   knowledge of transit schedules. For most rider-impact detectors
   (`oneway_minus_one`, `oneway_conflicts`, `access_blocked_residential`,
-  `barriers_without_access`) this is exactly enough — the question is
+  `barriers_without_access`) this is exactly enough: the question is
   "does this tag change the road graph for vehicles that route
   through it?" BRouter answers that with high fidelity and at low
   operational cost (public service, no self-host).
@@ -167,7 +167,7 @@ better:
   legs. For detectors like `misplaced_bus_stops` and the future
   ViaMapping-cadence questions ("if SORTA changed this corridor's
   frequency, would routing materially change?"), MOTIS answers
-  questions BRouter literally cannot. The cost is operational —
+  questions BRouter literally cannot. The cost is operational:
   someone has to stand up MOTIS, point `MOTIS_BASE` at it, and keep
   it fed with current GTFS.
 - **Neither is right for everything.** The dispatcher pattern (try
@@ -204,7 +204,7 @@ verbatim means the caller never knows which engine answered.
 - **MOTIS's `time` parameter matters.** The `is_available()` probe
   passes the current UTC time to MOTIS so the schedule layer is
   consulted, even though origin == destination. A future
-  `fetch_route()` call needs a real time too — pure spatial
+  `fetch_route()` call needs a real time too: pure spatial
   routing isn't a MOTIS use case.
 - **The dispatcher lives in `route_diff.py`, not in a new module.**
   When the next-session work happens, don't introduce a new
@@ -212,46 +212,46 @@ verbatim means the caller never knows which engine answered.
   `route_diff.fetch_route` (or a thin wrapper); separate-module
   abstraction would be premature.
 - **`fetch_route` returns `None` for unreachable destinations.** This
-  is not an error — it's a signal that the routing graph cannot find
+  is not an error: it's a signal that the routing graph cannot find
   a path. The route-diff caller treats that signal as evidence that a
   candidate fix matters
   ([route_diff.py:18-22](../../src/osm/route_diff.py#L18-L22)).
 
 ## Code references
 
-- [`src/osm/route_diff.py:1-22`](../../src/osm/route_diff.py#L1-L22) —
+- [`src/osm/route_diff.py:1-22`](../../src/osm/route_diff.py#L1-L22):
   module docstring explaining the BRouter false-positive-filter design.
-- [`src/osm/route_diff.py:376`](../../src/osm/route_diff.py#L376) —
+- [`src/osm/route_diff.py:376`](../../src/osm/route_diff.py#L376):
   BRouter `fetch_route()`. Returns
   `{length_m, duration_s, cost, geometry}` or `None`.
-- [`src/osm/route_diff.py:128`](../../src/osm/route_diff.py#L128) —
+- [`src/osm/route_diff.py:128`](../../src/osm/route_diff.py#L128):
   `_polite_sleep()` rate-limit honor.
-- [`src/osm/motis.py:1-30`](../../src/osm/motis.py#L1-L30) — module
+- [`src/osm/motis.py:1-30`](../../src/osm/motis.py#L1-L30): module
   docstring explaining the prototype + degrade-to-BRouter posture.
-- [`src/osm/motis.py:58, 74-75`](../../src/osm/motis.py#L58) —
+- [`src/osm/motis.py:58, 74-75`](../../src/osm/motis.py#L58):
   `MOTIS_DEFAULT_BASE = "http://localhost:8080"` and `MOTIS_BASE` env
   override.
-- [`src/osm/motis.py:175`](../../src/osm/motis.py#L175) — MOTIS
+- [`src/osm/motis.py:175`](../../src/osm/motis.py#L175): MOTIS
   `fetch_route()`. Same return shape as BRouter.
-- [`src/osm/motis.py:328-349`](../../src/osm/motis.py#L328-L349) —
+- [`src/osm/motis.py:328-349`](../../src/osm/motis.py#L328-L349):
   `is_available()` health probe (`/api/v5/plan` round-trip with origin
   == destination).
-- [`docs/motis-deployment.md`](../motis-deployment.md) — honest
+- [`docs/motis-deployment.md`](../motis-deployment.md): honest
   stand-up notes for the MOTIS prototype (out-of-scope for this
   explainer; covers operator setup).
 
 ## See also
 
-- [`CLAUDE.md` § Layout / Routing](../../CLAUDE.md) — the dense
+- [`CLAUDE.md` § Layout / Routing](../../CLAUDE.md): the dense
   reference this explainer decompresses.
-- [`CLAUDE.md` § Phase status / MOTIS prototype](../../CLAUDE.md) —
+- [`CLAUDE.md` § Phase status / MOTIS prototype](../../CLAUDE.md):
   the "next-session item" pointer to the dispatcher line.
-- [`docs/explainers/phase-status.md`](phase-status.md) — where MOTIS
-  fits as a cross-cutting workstream alongside Phases 2–4.
-- [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md) —
+- [`docs/explainers/phase-status.md`](phase-status.md): where MOTIS
+  fits as a cross-cutting workstream alongside Phases 2-4.
+- [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md):
   the eight rider-impact detectors whose findings the route-diff
   filter applies to.
-- [BRouter project](https://brouter.de/brouter) — upstream OSM
+- [BRouter project](https://brouter.de/brouter): upstream OSM
   routing engine.
-- [MOTIS project](https://github.com/motis-project/motis) — upstream
+- [MOTIS project](https://github.com/motis-project/motis): upstream
   multi-modal routing engine.

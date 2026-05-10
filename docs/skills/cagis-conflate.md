@@ -18,7 +18,7 @@ Runs `osm.conflate.conflate()` against a scan's `all_ways`:
    never auto-submit.
 5. Attach a `cagis_match` dict to each way (or `None`).
 
-The conflation matcher is the *epistemic gate* of the project — only
+The conflation matcher is the *epistemic gate* of the project: only
 ways with `confidence ≥ HIGH_CONFIDENCE` (0.85) become eligible for
 mechanical auto-submission.
 
@@ -28,7 +28,7 @@ mechanical auto-submission.
 - "Validate this classification against ground truth"
 - "Run conflation on `<zone>`"
 - Mention of CAGIS, ODOT TIMS, "centerlines," "ground truth"
-- A specific way ID with "is this real?" framing — the skill loads
+- A specific way ID with "is this real?" framing: the skill loads
   CAGIS for the zone and reports the match.
 
 ## What it produces
@@ -42,11 +42,11 @@ mechanical auto-submission.
 
 ## Related skills
 
-- [`zone-audit`](zone-audit.md) — produces the input `scan-results.json`
+- [`zone-audit`](zone-audit.md): produces the input `scan-results.json`
   this skill annotates.
-- [`ground-truth-diff`](ground-truth-diff.md) — TIGER 2024 fallback
+- [`ground-truth-diff`](ground-truth-diff.md): TIGER 2024 fallback
   ground-truth when CAGIS has no candidate.
-- [`changeset-submit`](changeset-submit.md) — only consumes ways whose
+- [`changeset-submit`](changeset-submit.md): only consumes ways whose
   `cagis_match.confidence ≥ 0.85`.
 
 ## See also

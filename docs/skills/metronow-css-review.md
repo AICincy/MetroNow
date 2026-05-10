@@ -10,20 +10,20 @@ color-contrast (WCAG AA), and IBM Plex font usage.
 
 Applies the CSS-specific subset of standards:
 
-- **Design tokens via CSS custom properties** — colors, spacing, font
+- **Design tokens via CSS custom properties**: colors, spacing, font
   scale all defined as `--token-*` vars at the top of the inline
   `<style>` block. New rules MUST reuse them; no hardcoded hex /px
   values.
-- **IBM Plex font family** — `IBM Plex Sans` (UI), `IBM Plex Mono`
+- **IBM Plex font family**: `IBM Plex Sans` (UI), `IBM Plex Mono`
   (code), `IBM Plex Serif` (rarely). Loaded from `fonts.googleapis.com`.
-- **Warm-neutral editorial palette** — defined in tokens; new
+- **Warm-neutral editorial palette**: defined in tokens; new
   components inherit, don't introduce new color systems.
-- **Responsive breakpoints via media queries** — mobile-first; the
+- **Responsive breakpoints via media queries**: mobile-first; the
   three established breakpoints are documented in the inline
   `<style>` comments.
-- **Color contrast WCAG AA** — verified against the token palette.
+- **Color contrast WCAG AA**: verified against the token palette.
   Blocker-level when failing.
-- **No `!important` outside the design-token override layer** —
+- **No `!important` outside the design-token override layer**:
   Warning-level when used elsewhere.
 
 ## When to invoke
@@ -41,8 +41,8 @@ to the CSS under review.
 
 ## Related skills
 
-- [`metronow-code-review`](metronow-code-review.md) — umbrella.
-- [`metronow-html-review`](metronow-html-review.md) — paired since
+- [`metronow-code-review`](metronow-code-review.md): umbrella.
+- [`metronow-html-review`](metronow-html-review.md): paired since
   inline `<style>` lives in HTML.
 
 ## See also
