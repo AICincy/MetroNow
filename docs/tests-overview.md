@@ -1,6 +1,6 @@
 # Tests overview — what's tested, what isn't, how to run
 
-**Summary.** The test suite at `tests/` is **372 passing tests** across
+**Summary.** The test suite at `tests/` is a comprehensive pytest collection across
 **22 files**, one per `src/osm/` module. Pure pytest — no fixtures
 directory, no conftest.py, just hand-built minimal element dicts and
 inline assertions. Tests are deterministic by default; the few that
@@ -121,8 +121,7 @@ See `.github/workflows/ci.yml`.
 
 ## See also
 
-- [`CLAUDE.md` § Layout / `tests/`](../CLAUDE.md) — "pytest suite (372
-  passing as of `9836bb9`)."
+- [`CLAUDE.md` § Layout / `tests/`](../CLAUDE.md) — "pytest suite overview."
 - [`docs/explainers/preflight-checks.md`](explainers/preflight-checks.md)
   — `check_pytest_passes` is one of the 17 codified pre-flight checks.
 - [`docs/skills/metronow-code-review.md`](skills/metronow-code-review.md)

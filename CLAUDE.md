@@ -42,7 +42,7 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
   - `web/public/js/atlas-extras.js` — theme/density/accent/weight tweaks
   - `web/public/css/atlas-supplement.css` — components added by atlas.js
   - `web/public/.legacy/` — original UI preserved for rollback
-- `tests/` — pytest suite (**372 passing** as of `9836bb9`); see
+- `tests/` — pytest suite; see
   [`docs/tests-overview.md`](docs/tests-overview.md) for layout, what's
   tested vs deliberately not, and how to add a test.
 - `osm-audit-{zone}/` — generated outputs per zone (gitignored): raw Overpass

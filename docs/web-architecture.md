@@ -1,8 +1,8 @@
 # Web architecture — Express server + vanilla SPA + shell-out-to-Python
 
 **Summary.** The MetroNow Atlas frontend is **one HTML file** with
-inline `<style>` (`web/public/index.html`, ~1856 lines), backed by a
-**single Express.js REST API** at `web/server.js` (~965 lines) that
+inline `<style>` (`web/public/index.html`), backed by a
+**single Express.js REST API** at `web/server.js` that
 shells out to the Python `osm` CLI via `child_process`. No
 frontend framework, no bundler, no build step. The legacy pre-redesign
 UI is preserved at `web/public/.legacy/` for rollback. Strict CSP via
@@ -30,14 +30,14 @@ tags. atlas.js wraps everything in an IIFE; state lives on a global
 
 ## How it's organized
 
-| File | Lines | Role |
-|---|---|---|
-| `web/server.js` | 965 | Express REST API; helmet CSP; `zonePath()` guard; `runPython()` shell-out helper |
-| `web/public/index.html` | 1856 | Single-page UI shell; inline `<style>` block; loads atlas.js + atlas-extras.js |
-| `web/public/js/atlas.js` | 2129 | Main app logic; IIFE; global `state` object; Leaflet map; API calls; overlay panels |
-| `web/public/js/atlas-extras.js` | 134 | Theme / density / accent / weight tweaks; loaded after atlas.js |
-| `web/public/css/atlas-supplement.css` | 524 | CSS for components atlas.js adds at runtime |
-| `web/public/.legacy/` | — | Pre-redesign UI preserved for rollback |
+| File | Role |
+|---|---|
+| `web/server.js` | Express REST API; helmet CSP; `zonePath()` guard; `runPython()` shell-out helper |
+| `web/public/index.html` | Single-page UI shell; inline `<style>` block; loads atlas.js + atlas-extras.js |
+| `web/public/js/atlas.js` | Main app logic; IIFE; global `state` object; Leaflet map; API calls; overlay panels |
+| `web/public/js/atlas-extras.js` | Theme / density / accent / weight tweaks; loaded after atlas.js |
+| `web/public/css/atlas-supplement.css` | CSS for components atlas.js adds at runtime |
+| `web/public/.legacy/` | Pre-redesign UI preserved for rollback |
 
 Frontend conventions:
 
@@ -162,13 +162,13 @@ construct the OSM authorization URL, and the helmet CSP allow-list.*
 - [`web/server.js:158-169`](../web/server.js#L158-L169) — `runPython()`
   shell-out helper.
 - [`web/public/index.html`](../web/public/index.html) — single-page
-  UI shell (1856 lines).
+  UI shell.
 - [`web/public/js/atlas.js`](../web/public/js/atlas.js) — IIFE main
-  app (2129 lines).
+  app.
 - [`web/public/js/atlas-extras.js`](../web/public/js/atlas-extras.js) —
-  default-tweak loader (134 lines).
+  default-tweak loader.
 - [`web/public/css/atlas-supplement.css`](../web/public/css/atlas-supplement.css)
-  — runtime CSS (524 lines).
+  — runtime CSS.
 
 ## See also
 
