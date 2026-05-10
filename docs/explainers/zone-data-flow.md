@@ -144,7 +144,7 @@ crisply:
   Township along the south edge. Polygon trim removes ~5–10% of the
   bboxed ways.
 - **Forest Park / Pleasant Run** — bbox
-  `(39.26, -84.56, 39.34, -84.46)` extends ~1 km west of the Hamilton
+  `(39.26, -84.56, 39.34, -84.46)` extends ~1 km north of the Hamilton
   County line into Butler County. Pre-clip, **78% of Forest Park's ways
   classified as F1 (no CAGIS candidate)** simply because CAGIS coverage
   ends at the county line, not because the geometry was wrong. Adding
