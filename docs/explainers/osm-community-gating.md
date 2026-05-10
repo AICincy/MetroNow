@@ -40,7 +40,7 @@ features destroys 10,000 mappers' work. A bad mechanical edit that touches
 big enough that the CoC applies in full.
 
 The four required artifacts that gate Phase 1 are drafted in
-`docs/community-prep/01-05.md`. This explainer describes the *order*
+`docs/community-prep/01-04.md`. This explainer describes the *order*
 they go in and *why*.
 
 ## How it works
