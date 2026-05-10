@@ -130,7 +130,10 @@ class TestIncrementUsageLocking:
         barrier = threading.Barrier(N_THREADS)
 
         def worker():
-            barrier.wait()
+            # Bounded barrier wait — if any worker crashes before reaching
+            # the barrier, the survivors get BrokenBarrierError instead of
+            # hanging the test runner indefinitely.
+            barrier.wait(timeout=5)
             for _ in range(K_PER_THREAD):
                 isolated_transit._increment_usage()
 

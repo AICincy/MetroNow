@@ -67,7 +67,7 @@ Five rules that every feed module honors:
 
 ```mermaid
 ---
-title: Where each feed plugs into the audit pipeline
+title: "Where each feed plugs into the audit pipeline"
 ---
 flowchart LR
     Scan["osm.fetch.fetch_overpass()<br/>(zone bbox)"]
