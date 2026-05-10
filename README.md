@@ -191,23 +191,41 @@ of min-distance-to-CAGIS). The symmetric form blew up on the common
 topology where OSM has a long named street broken into shorter ways
 at intersections — see [`docs/explainers/conflation-matcher.md`](docs/explainers/conflation-matcher.md).
 
-Three confidence bands gate downstream behavior:
+```mermaid
+---
+title: Confidence bands → downstream treatment
+---
+flowchart LR
+    Score["confidence score<br/>0.5·name + 0.3·geom + 0.2·dir"]
 
-- `confidence ≥ 0.85` → **auto-submit eligible**: CAGIS `TRVL_DIR`
-  overrides OSM `oneway`, CAGIS `SPEEDLIMIT` supplies a missing
-  `maxspeed`, CAGIS `STRLABEL` flags a name mismatch (always queued
-  for human review — CAGIS uses postal abbreviations, OSM convention
-  is spelled-out names).
-- `0.6 ≤ confidence < 0.85` → **human-review queue**: surfaced as a
-  candidate, never auto-submitted.
-- `confidence < 0.6` → match dict still attached to the way but
-  filtered out of both submit and review queues; the
-  `diagnose_match()` baseline pass classifies these into F1–F4 /
-  MIXED_LOW for matcher tuning.
+    HIGH["MATCHED_HIGH<br/>≥ 0.85<br/>auto-submit eligible"]
+    REVIEW["MATCHED_REVIEW<br/>0.6 ≤ conf < 0.85<br/>human-review queue"]
+    LOW["confidence &lt; 0.6<br/>filtered out of submit + review<br/>diagnose_match → F1-F4 / MIXED_LOW"]
+    FALLBACK["MATCHED_FALLBACK_REVIEW<br/>fallback path (within 100m)<br/>capped at 0.6 — never auto-submits"]
 
-The nearest-neighbor fallback (when STRtree returns no candidates
-within 30 m) is hard-capped at `REVIEW_CONFIDENCE` — fallback hits
-populate human review but never auto-submit.
+    Score -- "in-buffer (≤30m), conf ≥ 0.85" --> HIGH
+    Score -- "in-buffer, 0.6 ≤ conf < 0.85" --> REVIEW
+    Score -- "in-buffer, conf < 0.6" --> LOW
+    Score -- "out-of-buffer fallback" --> FALLBACK
+
+    HIGH -- "set TRVL_DIR<br/>+ SPEEDLIMIT<br/>+ STRLABEL (review)" --> Submit(("changeset.py<br/>auto-submit"))
+    REVIEW --> Triage(("Atlas Fix panel<br/>human review"))
+    FALLBACK --> Triage
+    LOW --> Diagnostic(("baseline-diff<br/>tuning only"))
+
+    classDef safe fill:#1f4d2b,stroke:#3b8c5a,color:#e8f3ec
+    classDef judgment fill:#5b3a1c,stroke:#a06632,color:#f5ead7
+    classDef gate fill:#3a3a3a,stroke:#888,color:#eee
+    class HIGH,Submit safe
+    class REVIEW,FALLBACK,Triage judgment
+    class LOW,Diagnostic gate
+```
+
+The nearest-neighbor fallback (when STRtree returns no in-buffer
+candidates) is hard-capped at `REVIEW_CONFIDENCE` — fallback hits
+populate human review but **never** auto-submit. This is the
+project's epistemic gate: any edit submitted to OSM as a mechanical
+edit must clear 0.85 against an authoritative external source.
 
 ## Service zones
 
@@ -278,6 +296,52 @@ talk-us@ post + 14-day window) is documented in detail in
 paste-ready drafts live under [`docs/community-prep/`](docs/community-prep/).
 
 ## Project documentation
+
+```mermaid
+---
+title: Documentation surfaces — what's where, by reader
+---
+flowchart TD
+    Reader["Reader<br/>(future-you / fresh AI session /<br/>OSM admin / curious newcomer)"]
+
+    CLAUDE["CLAUDE.md<br/>dense context manifest<br/>(fast-loading for AI sessions)"]
+    Glossary["docs/glossary.md<br/>color-coded terms / tags /<br/>sources / workflow"]
+
+    subgraph Decompress["docs/explainers/ — 13 decompression docs"]
+        direction TB
+        DT["detector-taxonomy<br/>conflation-matcher<br/>osm-community-gating<br/>phase-status<br/>zone-data-flow<br/>routing-engine-dispatch<br/>conventions<br/>oauth-pkce-flow<br/>history-filter<br/>preflight-checks<br/>maproulette-tasks<br/>transit-quota<br/>external-feeds"]
+    end
+
+    subgraph Skills["docs/skills/ — 14 skill explainers"]
+        direction TB
+        SK["zone-audit / cagis-conflate /<br/>ground-truth-diff / tiger-history-deep /<br/>osmcha-monitor / community-prep /<br/>changeset-submit / maproulette-challenge /<br/>metronow-{code,javascript,html,css,dockerfile}-review /<br/>metronow-explainer"]
+    end
+
+    subgraph Codebase["docs/ — codebase-area overviews"]
+        direction TB
+        OV["cli-reference (17 osm subcommands)<br/>tests-overview (pytest layout)<br/>web-architecture (Express + SPA)<br/>sources (external-feed evaluation log)"]
+    end
+
+    subgraph Community["docs/community-prep/ — paste-ready drafts"]
+        direction TB
+        CP["00-README<br/>01-wiki-page<br/>02-talk-us-post<br/>03-minh-outreach<br/>04-pre-flight-checklist<br/>05-transit-api-compliance"]
+    end
+
+    Reader --> CLAUDE
+    Reader --> Glossary
+    CLAUDE -. "cross-links to" .-> Decompress
+    CLAUDE -. "cross-links to" .-> Codebase
+    Decompress -. "cross-links to" .-> Skills
+    Glossary -. "anchors terms in" .-> Decompress
+    Decompress -. "Phase 1 chain" .-> Community
+
+    classDef manifest fill:#3a3a3a,stroke:#888,color:#eee,font-weight:bold
+    classDef anchor fill:#5b3a1c,stroke:#a06632,color:#f5ead7
+    classDef detail fill:#1f4d2b,stroke:#3b8c5a,color:#e8f3ec
+    class CLAUDE manifest
+    class Glossary anchor
+    class Decompress,Skills,Codebase,Community,DT,SK,OV,CP detail
+```
 
 Three layered surfaces, each with its own template and audience:
 

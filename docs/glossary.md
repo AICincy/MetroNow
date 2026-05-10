@@ -7,10 +7,33 @@ the jargon here.
 
 ## Color-coding convention
 
-Terms are prefixed with an emoji marker so the category is visible
-at a glance (Markdown doesn't support inline text color reliably on
-GitHub; emoji do). Mermaid diagrams across the docs use the same
-semantic mapping via `classDef`:
+```mermaid
+---
+title: Five-color legend — used on every term and Mermaid node across the docs
+---
+flowchart LR
+    Critical["🔴 Critical<br/>blocks routing /<br/>load-bearing failure"]
+    Review["🟡 Review-warranting<br/>suspicious; never<br/>auto-submit"]
+    Ground["🟢 Ground truth<br/>authoritative data /<br/>attribution / verified"]
+    Declarative["🔵 Declarative<br/>declares behavior /<br/>process state"]
+    Neutral["⚪ Neutral<br/>names / IDs /<br/>technical terms"]
+
+    classDef critical fill:#5b1c1c,stroke:#a04040,color:#f8e0e0,font-weight:bold
+    classDef judgment fill:#5b3a1c,stroke:#a06632,color:#f5ead7
+    classDef safe fill:#1f4d2b,stroke:#3b8c5a,color:#e8f3ec
+    classDef declarative fill:#1c3a5b,stroke:#326b9c,color:#d7e6f5
+    classDef gate fill:#3a3a3a,stroke:#888,color:#eee
+    class Critical critical
+    class Review judgment
+    class Ground safe
+    class Declarative declarative
+    class Neutral gate
+```
+
+Terms are prefixed with one of the five emoji markers below so the
+category is visible at a glance. (Markdown doesn't support inline
+text color reliably on GitHub; emoji do, and Mermaid `classDef`
+covers the diagram side.)
 
 | Marker | Category | What it means |
 |---|---|---|
@@ -20,11 +43,9 @@ semantic mapping via `classDef`:
 | 🔵 | **Declarative / metadata** | Tags that declare behavior (mechanical=yes, bot=yes) or carry process state. |
 | ⚪ | **Neutral / informational** | Names, IDs, technical terms with no severity charge. |
 
-The same vocabulary maps onto Mermaid `classDef`:
-- `safe` (green) — auto-submit eligible / verified
-- `judgment` (orange) — human review required
-- `gate` (gray) — terminal / no signal / informational
-- `critical` (red) — blocks routing / load-bearing failure mode
+Mermaid diagrams across the docs use the same semantic mapping via
+`classDef`: `critical` (red) / `judgment` (orange) / `safe` (green) /
+`declarative` (blue) / `gate` (gray).
 
 ## OSM tags
 
