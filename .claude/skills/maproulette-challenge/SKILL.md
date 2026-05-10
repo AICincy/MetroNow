@@ -2,7 +2,7 @@
 name: maproulette-challenge
 description: Generate a MapRoulette challenge from scan results for defect classes with high false-positive rates. Creates GeoJSON tasks constrained to MetroNow zone polygons.
 when_to_use: "User mentions MapRoulette, crowdsource review, needs human review for defects, or discusses Class B defects that need manual verification"
-allowed-tools: Read Grep Glob Bash(python *) Bash(node *) Bash(curl *)
+allowed-tools: Read Grep Glob Bash(python *) Bash(curl *)
 argument-hint: "[zone] [defect-class]"
 arguments: [zone, defect_class]
 ---
@@ -20,7 +20,7 @@ Per RESEARCH-FINDINGS.md Item 17 and the OSM Automated Edits code of conduct: co
 
 ## Current scan results
 
-!`powershell -Command "$p = 'osm_audit_$zone\scan_results.json'; if (Test-Path $p) { python -c \"import json; d=json.load(open('$p')); s=d['summary_stats']; print(f'Total: {s[\"total\"]}, AB: {s[\"class_ab_count\"]}, A: {s[\"class_a_count\"]}, B ways: {s[\"class_b_way_count\"]}, Gaps: {s[\"gaps_found\"]}')\" } else { Write-Output 'No scan results found. Run /zone-audit first.' }"`
+!`p="osm-audit-$zone/scan-results.json"; if [ -f "$p" ]; then python -c "import json; d=json.load(open('$p')); s=d['summary_stats']; print(f'Total: {s[\"total\"]}, AB: {s[\"class_ab_count\"]}, A: {s[\"class_a_count\"]}, B ways: {s[\"class_b_way_count\"]}, Gaps: {s[\"gaps_found\"]}')"; else echo "No scan results found. Run /zone-audit first."; fi`
 
 ## MapRoulette API workflow
 

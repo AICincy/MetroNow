@@ -51,4 +51,4 @@ These edits do NOT count as human review:
 
 ## Current scan results
 
-!`powershell -Command "Get-ChildItem -Path 'osm_audit_*\scan_results.json' -ErrorAction SilentlyContinue | ForEach-Object { $d = python -c \"import json; d=json.load(open('$($_.FullName.Replace('\\','/'))')); print(f'{d[\"summary_stats\"][\"total\"]} ways')\"; Write-Output ('  ' + $_.Directory.Name + ': ' + $d) }"`
+!`for d in osm-audit-*/; do f="$d/scan-results.json"; [ -f "$f" ] && echo "  ${d%/}: $(python -c "import json; print(json.load(open('$f'))['summary_stats']['total'])") ways"; done 2>/dev/null || echo "  (no scans yet)"`
