@@ -14,8 +14,6 @@ XML-escape, tag composition) are exercised directly.
 
 from __future__ import annotations
 
-from unittest import mock
-
 import pytest
 
 from osm import changeset as cs
@@ -62,11 +60,15 @@ def test_has_cagis_evidence_treats_explicit_none_cagis_id_as_absent():
 
 def test_xml_escape_handles_ampersand_and_quotes():
     out = cs._xml_escape('Smith & Sons "Co." <pickup>')
-    assert "&" not in out.replace("&amp;", "").replace("&quot;", "").replace("&lt;", "").replace("&gt;", "")
-    assert "&amp;" in out
-    assert "&quot;" in out
-    assert "&lt;" in out
-    assert "&gt;" in out
+    assert out == 'Smith &amp; Sons &quot;Co.&quot; &lt;pickup&gt;'
+
+
+def test_xml_escape_handles_apostrophe():
+    # The escape table passed to xml.sax.saxutils.escape() includes
+    # ' → &apos;, so the OAuth changeset comment for "O'Toole Avenue"
+    # corrections renders safely even though the OSM way name carries
+    # a literal apostrophe.
+    assert cs._xml_escape("O'Toole") == "O&apos;Toole"
 
 
 def test_xml_escape_preserves_safe_text():
@@ -120,9 +122,14 @@ def test_create_changeset_emits_cagis_tag_when_verified(captured_put):
         wiki_url="",
         cagis_verified=True,
     )
-    assert 'k="cagis:attribution"' in captured_put["data"]
-    # The attribution payload itself is the constant from the module
-    assert cs.CAGIS_ATTRIBUTION.split(" ")[0] in captured_put["data"]
+    # The cagis:attribution tag must carry the exact licensed
+    # attribution string, properly XML-escaped, in its v="..."
+    # attribute. Partial-match assertions would let a regression
+    # to a wrong attribution slip through.
+    assert (
+        f'k="cagis:attribution" v="{cs._xml_escape(cs.CAGIS_ATTRIBUTION)}"'
+        in captured_put["data"]
+    )
 
 
 def test_create_changeset_emits_mechanical_and_bot_tags_by_default(captured_put):

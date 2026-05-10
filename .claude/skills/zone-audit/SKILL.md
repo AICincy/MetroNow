@@ -17,7 +17,7 @@ Run the full audit pipeline for MetroNow zone: **$zone**
 
 ## Current scan state
 
-!`for d in osm-audit-*/; do [ -f "$d/scan-results.json" ] && echo "  ${d%/} — last scan: $(date -r "$d/scan-results.json")"; done 2>/dev/null || echo "  (no zones scanned yet)"`
+!`found=0; for d in osm-audit-*/; do if [ -f "$d/scan-results.json" ]; then echo "  ${d%/} — last scan: $(date -r "$d/scan-results.json")"; found=1; fi; done; [ $found -eq 0 ] && echo "  (no zones scanned yet)"`
 
 ## Pipeline steps
 
