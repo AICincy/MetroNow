@@ -128,7 +128,7 @@ See [`docs/explainers/preflight-checks.md`](explainers/preflight-checks.md).
 
 ```
 osm fix --zone <key> [--dry-run] [other flags]
-osm maproulette --zone <key> --kind class-a-unverified [--out <path>]
+osm maproulette --zone <key> [--kind class-a|gaps|both] [--out <path>]
 ```
 
 **`osm fix`** is the only command that actually writes to OSM. Default
@@ -140,9 +140,10 @@ gating that must precede first-batch submission.
 
 **`osm maproulette`** writes a `.geojsonl` file under
 `osm-audit-<zone>/maproulette/` — one MapRoulette task per OSM way
-with a Markdown instruction. `--kind class-a-unverified` is the
-current canonical kind (Class A/AB ways below the auto-submit
-threshold). See
+with a Markdown instruction. `--kind` accepts `class-a` (default;
+Class A/AB ways below the auto-submit threshold), `gaps`
+(node-disconnect candidates), or `both` (writes two separate
+`.geojsonl` files plus two metadata payloads). See
 [`docs/explainers/maproulette-tasks.md`](explainers/maproulette-tasks.md).
 
 ### Status (read-only diagnostics)
