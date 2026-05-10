@@ -26,7 +26,7 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
     so the future swap is one dispatcher line). See
     [`docs/explainers/routing-engine-dispatch.md`](docs/explainers/routing-engine-dispatch.md).
   - Operational: `preflight.py` (codified first-changeset readiness
-    gate; 16 checks across 6 categories with PASS/FAIL/WARN/MANUAL;
+    gate; 17 checks across 6 categories with PASS/FAIL/WARN/MANUAL;
     see [`docs/explainers/preflight-checks.md`](docs/explainers/preflight-checks.md))
   - Zone polygons: `src/osm/zones/<zone-key>.geojson` (real MetroNow
     operational polygons from SORTA's web map) + `hamilton-county.geojson`
@@ -169,7 +169,7 @@ and where the cross-cutting workstreams fit.
   silently degrades to BRouter when MOTIS isn't reachable. Engine
   dispatcher in `route_diff.py` is the next-session item.
 - **Pre-flight automation** — ✅ `osm preflight --zone <key>` runs
-  16 checks; FAIL/WARN/MANUAL exit codes; `--strict` escalates WARN.
+  17 checks; FAIL/WARN/MANUAL exit codes; `--strict` escalates WARN.
 - **Transit App quota tooling** — ✅ `osm transit-status`,
   `osm transit-budget [--calls N]`. Concurrent-safe usage counter
   via `fcntl.flock`. The required attribution `"Powered by Transit"`

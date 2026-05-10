@@ -1,6 +1,6 @@
 # Pre-flight checks — codified Phase 1 readiness gate
 
-**Summary.** `osm preflight --zone <key>` runs 16 codified checks
+**Summary.** `osm preflight --zone <key>` runs 17 codified checks
 across 6 categories and prints a colored go/no-go table. Each check
 returns one of four statuses: **PASS** (green, automated), **FAIL**
 (red, blocks first changeset), **WARN** (yellow, soft block —
@@ -82,7 +82,7 @@ category and computes the exit code from the worst status seen.
 
 ```mermaid
 ---
-title: osm preflight — 16 checks across 6 categories, four status colors
+title: osm preflight — 17 checks across 6 categories, four status colors
 ---
 flowchart LR
     Run["osm preflight --zone <key>"]
@@ -111,20 +111,21 @@ flowchart LR
     subgraph CAT_SCAN["Scan freshness"]
         direction TB
         S1["check_scan_freshness"]
-        S2["check_cagis_baseline_recent"]
-        S3["check_baseline_diff_clean"]
+        S2["check_baseline_manifest_after_scan"]
+        S3["check_auto_submit_pool_size"]
     end
 
     subgraph CAT_FIX["Fix-batch readiness"]
         direction TB
-        F1["check_fix_batch_size"]
-        F2["check_dry_run_complete"]
+        F1["check_first_batch_curated<br/>(MANUAL)"]
+        F2["check_dry_run_was_inspected<br/>(MANUAL)"]
+        F3["check_route_impact_was_run"]
     end
 
     subgraph CAT_MONITORING["Monitoring + post-submission"]
         direction TB
-        M1["check_osmcha_dashboard_set<br/>(MANUAL)"]
-        M2["check_revert_plan_documented<br/>(MANUAL)"]
+        M1["check_osmcha_subscription<br/>(MANUAL)"]
+        M2["check_post_submission_window_planned<br/>(MANUAL)"]
     end
 
     Decide{"Aggregate worst status<br/>(FAIL > WARN > MANUAL > PASS)"}

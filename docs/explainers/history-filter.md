@@ -71,7 +71,7 @@ Tier 1 can't decide.
    - If *no* version has a non-import-bot editor → all edits are bots
      → `UNREVIEWED` at 0.9 confidence.
    - Otherwise, check whether any non-import edit introduced one of
-     the `TAGS_THAT_INDICATE_REVIEW` (24 tags including `surface`,
+     the `TAGS_THAT_INDICATE_REVIEW` (22 tags including `surface`,
      `maxspeed`, `sidewalk`, `cycleway`, `lit`, etc.
      [history_filter.py:32-55](../../src/osm/history_filter.py#L32-L55)).
      If yes → `LIKELY_REVIEWED` at 0.75. If no → `INCONCLUSIVE` at 0.5.
@@ -176,7 +176,7 @@ which is itself evidence of human attention.
   Cincinnati-area TIGER cleanup history. Do not add usernames here
   speculatively — false positives in this list label real human
   edits as bot edits, which lets real defects through.
-- **`TAGS_THAT_INDICATE_REVIEW` is 24 tags.** Adding a tag here lowers
+- **`TAGS_THAT_INDICATE_REVIEW` is 22 tags.** Adding a tag here lowers
   the bar for `LIKELY_REVIEWED`. Removing one raises the bar. Both
   shift the review-status distribution; baseline-diff (per
   `docs/explainers/conflation-matcher.md`) catches the operational
@@ -207,7 +207,7 @@ which is itself evidence of human attention.
 - [`src/osm/history_filter.py:22-30`](../../src/osm/history_filter.py#L22-L30) —
   `KNOWN_IMPORT_USERS` set + `KNOWN_BOT_PREFIXES` tuple.
 - [`src/osm/history_filter.py:32-55`](../../src/osm/history_filter.py#L32-L55) —
-  `TAGS_THAT_INDICATE_REVIEW` (24 tags).
+  `TAGS_THAT_INDICATE_REVIEW` (22 tags).
 - [`src/osm/history_filter.py:58-64`](../../src/osm/history_filter.py#L58-L64) —
   `_is_import_user()` three-layer matcher.
 - [`src/osm/history_filter.py:67-90`](../../src/osm/history_filter.py#L67-L90) —
