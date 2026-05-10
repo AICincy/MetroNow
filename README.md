@@ -330,6 +330,10 @@ defect detectors or the changeset submission path.
 ## See also
 
 - [`CLAUDE.md`](CLAUDE.md) — project context manifest.
+- [`docs/glossary.md`](docs/glossary.md) — every project-specific
+  term, OSM tag, authoritative source, and workflow concept,
+  color-coded by category (🔴 critical / 🟡 review / 🟢 ground-truth /
+  🔵 declarative / ⚪ informational).
 - [`docs/explainers/detector-taxonomy.md`](docs/explainers/detector-taxonomy.md) — the dual-track classifier vs detector design.
 - [`docs/explainers/conflation-matcher.md`](docs/explainers/conflation-matcher.md) — directed-Hausdorff scoring + asymmetric-promotion alert.
 - [`docs/explainers/osm-community-gating.md`](docs/explainers/osm-community-gating.md) — the four-step Phase 1 gating in dependency order.
