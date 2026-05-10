@@ -86,7 +86,7 @@ perimeter: see [`docs/explainers/detector-taxonomy.md`](docs/explainers/detector
 
 ```mermaid
 ---
-title: How an OSM way lands in Class A / AB / B / C
+title: "How an OSM way lands in Class A / AB / B / C"
 ---
 flowchart TD
     Way["OSM way<br/>(highway in residential / unclassified /<br/>tertiary / service)"]
@@ -132,7 +132,7 @@ in `classify.py`.
 
 ```mermaid
 ---
-title: Eight rider-impact detectors grouped by routing impact (5 = highest)
+title: "Eight rider-impact detectors grouped by routing impact (5 = highest)"
 ---
 flowchart LR
     subgraph Impact5["routing_impact = 5<br/>(blocks an arterial-class route)"]
@@ -194,7 +194,7 @@ at intersections: see [`docs/explainers/conflation-matcher.md`](docs/explainers/
 
 ```mermaid
 ---
-title: Confidence bands → downstream treatment
+title: "Confidence bands → downstream treatment"
 ---
 flowchart LR
     Score["confidence score<br/>0.5·name + 0.3·geom + 0.2·dir"]
@@ -303,7 +303,7 @@ paste-ready drafts live under [`docs/community-prep/`](docs/community-prep/).
 
 ```mermaid
 ---
-title: Documentation surfaces: what's where, by reader
+title: "Documentation surfaces — what's where, by reader"
 ---
 flowchart TD
     Reader["Reader<br/>(future-you / fresh AI session /<br/>OSM admin / curious newcomer)"]
