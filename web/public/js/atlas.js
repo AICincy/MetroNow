@@ -180,10 +180,15 @@
     state.results = null;
     state.pendingFixes = [];
     // If a scan was running on the previous zone, the user has navigated
-    // away from it; clear the in-progress flag so the new zone's scan
-    // button isn't blocked. The actual scan request will still complete
-    // in the background; this just unblocks the UI.
+    // away from it; clear the in-progress flag, stop the timer, and
+    // re-enable the Scan button so the new zone's scan isn't blocked.
+    // The in-flight scan request still completes in the background — its
+    // result lands on the old zone's disk path and only affects the UI
+    // if the user navigates back.
     state.scanInProgress = false;
+    stopScanTimer();
+    const scanBtn = $("#scanBtn");
+    if (scanBtn) scanBtn.disabled = false;
     // reset class filters so prior zone's toggles don't leak across
     state.classFilters = { AB: true, A: true, B: true, C: false, GAPS: true };
     state.tablePages = { ab: 1, a: 1 };
