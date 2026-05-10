@@ -9,7 +9,7 @@ the jargon here.
 
 ```mermaid
 ---
-title: Five-color legend: used on every term and Mermaid node across the docs
+title: "Five-color legend — used on every term and Mermaid node across the docs"
 ---
 flowchart LR
     Critical["🔴 Critical<br/>blocks routing /<br/>load-bearing failure"]
