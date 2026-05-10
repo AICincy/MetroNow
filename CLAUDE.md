@@ -12,12 +12,14 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
     `gaps.py`, `history.py`, `history_filter.py` (see
     [`docs/explainers/history-filter.md`](docs/explainers/history-filter.md)),
     `conflate.py`, `review.py`, `changeset.py`
-  - External feeds: `gtfs.py` (SORTA GTFS stops cross-check, with
-    Mobility Database catalog lookup mdb-366 for the feed URL),
-    `bus_routes.py` (CAGIS METRO Bus Routes — transit-corridor
-    corroboration for oneway_conflict findings), `transit.py`
-    (Transit App API client, rate-limit + monthly-quota aware,
-    `fcntl.flock`-guarded counter; see
+  - External feeds (see
+    [`docs/explainers/external-feeds.md`](docs/explainers/external-feeds.md)
+    for shared design + per-feed details): `gtfs.py` (SORTA GTFS
+    stops cross-check, with Mobility Database catalog lookup mdb-366
+    for the feed URL), `bus_routes.py` (CAGIS METRO Bus Routes —
+    transit-corridor corroboration for oneway_conflict findings),
+    `transit.py` (Transit App API client, rate-limit +
+    monthly-quota aware, `fcntl.flock`-guarded counter; see
     [`docs/explainers/transit-quota.md`](docs/explainers/transit-quota.md)),
     `notes.py` (OSM Notes), `osmose.py` (Osmose quality issues)
   - Routing: `route_diff.py` (BRouter, default), `motis.py`
@@ -33,8 +35,9 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
     (TIGER FIPS 39061 fallback). See
     [`docs/explainers/zone-data-flow.md`](docs/explainers/zone-data-flow.md).
   - Output: `xlsx.py`, `dashboard.py`, `csv_export.py`
-  - Plumbing: `cli.py` (Click), `config.py`, `zones.py`, `geo.py`,
-    `cache.py`, `auth.py` (OAuth 2.0 + PKCE; see
+  - Plumbing: `cli.py` (Click; see [`docs/cli-reference.md`](docs/cli-reference.md)),
+    `config.py`, `zones.py`, `geo.py`, `cache.py`, `auth.py`
+    (OAuth 2.0 + PKCE; see
     [`docs/explainers/oauth-pkce-flow.md`](docs/explainers/oauth-pkce-flow.md))
 - `web/` — Express.js server + vanilla HTML/CSS/JS frontend (MetroNow Atlas
   redesign). See [`docs/web-architecture.md`](docs/web-architecture.md).
