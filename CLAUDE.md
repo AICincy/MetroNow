@@ -21,12 +21,14 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
   - Routing: `route_diff.py` (BRouter, default), `motis.py`
     (MOTIS `/api/v5/plan` prototype, opt-in via `MOTIS_BASE` env;
     `is_available()` probe; matches `route_diff.fetch_route` shape
-    so the future swap is one dispatcher line)
+    so the future swap is one dispatcher line). See
+    [`docs/explainers/routing-engine-dispatch.md`](docs/explainers/routing-engine-dispatch.md).
   - Operational: `preflight.py` (codified first-changeset readiness
     gate; 16 checks across 6 categories with PASS/FAIL/WARN/MANUAL)
   - Zone polygons: `src/osm/zones/<zone-key>.geojson` (real MetroNow
     operational polygons from SORTA's web map) + `hamilton-county.geojson`
-    (TIGER FIPS 39061 fallback)
+    (TIGER FIPS 39061 fallback). See
+    [`docs/explainers/zone-data-flow.md`](docs/explainers/zone-data-flow.md).
   - Output: `xlsx.py`, `dashboard.py`, `csv_export.py`
   - Plumbing: `cli.py` (Click), `config.py`, `zones.py`, `geo.py`,
     `cache.py`, `auth.py` (OAuth 2.0 + PKCE)
@@ -135,6 +137,10 @@ that survived data-driven validation:
   ways
 
 ## Phase status (as of 2026-05-08 EOD, commit `9836bb9`)
+
+See [`docs/explainers/phase-status.md`](docs/explainers/phase-status.md)
+for the decompressed version with diagram, what each phase delivered,
+and where the cross-cutting workstreams fit.
 
 - **Phase 1 (community gating)** — ⏳ blocked on human action.
   All five `docs/community-prep/*.md` drafts ready; Transit-App ToS
