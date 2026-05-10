@@ -79,6 +79,10 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
 
 ## OSM community requirements
 
+See [`docs/explainers/osm-community-gating.md`](docs/explainers/osm-community-gating.md)
+for the decompressed version with diagram, the four-step dependency order,
+and what happens if you skip any step.
+
 - Mechanical edits require wiki documentation, `talk-us@` discussion, and
   `_cincyimport`-convention account
 - Changeset community norm is ~500 elements (CGImap hard limit 10,000)
