@@ -23,7 +23,7 @@ pipeline.
 | `osm notes` | Audit | Fetch OSM Notes for the zone bbox; cache locally |
 | `osm osmose` | Audit | Fetch Osmose-QA issues for the zone bbox |
 | `osm preflight` | Gate | Run the 17 codified pre-flight checks; PASS/FAIL/WARN/MANUAL |
-| `osm fix` | Submit | Apply CAGIS-verified fixes via OSM API v0.6 (`--dry-run` default-friendly) |
+| `osm fix` | Submit | Apply CAGIS-verified fixes via OSM API v0.6 (**NOT** default-dry-run; pass `--dry-run` explicitly to preview) |
 | `osm maproulette` | Submit | Generate per-zone MapRoulette challenge GeoJSON Lines |
 | `osm transit-status` | Status | Transit App quota + cache state |
 | `osm transit-budget` | Status | Per-day budget recommendation given remaining quota |
@@ -59,7 +59,7 @@ osm conflate-tiger --zone <key> [--force-refresh] [--all-ways]
 osm baseline-diff --zone <key> [--from <path>] [--to <path>]
 osm route-diff --zone <key> [--profile car-fast] [--limit N]
 osm fix-impact --zone <key> [--profile car-fast] [--limit N]
-osm notes --zone <key> [--force-refresh] [--status open|closed|all]
+osm notes --zone <key> [--force-refresh] [--status open|all]
 osm osmose --zone <key> [--force-refresh] [--item ITEM_CODE]...
 ```
 
@@ -131,9 +131,12 @@ osm fix --zone <key> [--dry-run] [other flags]
 osm maproulette --zone <key> [--kind class-a|gaps|both] [--out <path>]
 ```
 
-**`osm fix`** is the only command that actually writes to OSM. Default
-behavior is `--dry-run` friendly: print the changeset XML and stop.
-A live submission requires explicit confirmation. See
+**`osm fix`** is the only command that actually writes to OSM.
+**`--dry-run` is opt-in, not the default.** Without the flag, the
+command will open a real changeset and submit. Always pass
+`--dry-run` first to preview the changeset XML; only run without it
+once you've reviewed the dry-run output and the four-step community
+gating is complete. See
 [`docs/explainers/osm-community-gating.md`](explainers/osm-community-gating.md)
 for the seven changeset tags this command emits and the four-step
 gating that must precede first-batch submission.
