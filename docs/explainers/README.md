@@ -28,17 +28,32 @@ no static-site generator, no toolchain.
   account → wiki page → talk-us@ + 14-day window), what happens if
   you skip each step, and the seven changeset tags every mechanical
   edit must carry.
+- [`phase-status.md`](phase-status.md) — what each of the four phases
+  delivers, what gates the transitions, why Phase 1 is human-action-blocked,
+  and where the cross-cutting workstreams (MOTIS prototype, pre-flight
+  automation, Transit App quota tooling) fit.
+- [`zone-data-flow.md`](zone-data-flow.md) — SORTA's web map → `ZONES`
+  dict + per-zone GeoJSONs → Overpass bbox query → polygon clip →
+  classifier. Why the bbox-and-polygon split matters (Forest Park 78%
+  F1 → normal after the clip).
+- [`routing-engine-dispatch.md`](routing-engine-dispatch.md) — the
+  matched call shape between BRouter (default, OSM-only) and MOTIS
+  (opt-in, multi-modal), the `is_available()` probe, and the
+  next-session dispatcher line in `route_diff.py`.
+- [`conventions.md`](conventions.md) — the seven `CLAUDE.md`
+  conventions split into stylistic vs load-bearing, with the failure
+  mode each load-bearing rule closes (path traversal, quota
+  underrun, XSS, false "done" reports) and the code that implements
+  the defense.
 
-## Backlog (in priority of confusion-on-re-entry)
+## Candidate next topics
 
-- `phase-status.md` — what each Phase 1–4 delivers, what gates the
-  transitions, why Phase 1 is human-action-blocked.
-- `zone-data-flow.md` — SORTA web map → `src/osm/zones/*.geojson` →
-  Overpass query → audit. Why we keep both real operational polygons
-  and the TIGER FIPS 39061 fallback.
-- `routing-engine-dispatch.md` — BRouter default vs MOTIS opt-in,
-  the `is_available()` probe, the future single-dispatcher line in
-  `route_diff.py`.
+The original 6-item backlog from `metronow-explainer/SKILL.md` is
+fully shipped. See that skill's "Topic backlog" section for the
+running list of candidate next topics (oauth-pkce-flow,
+history-filter, maproulette-tasks, preflight-checks, transit-quota,
+etc.) when re-entry pain on a new subsystem makes another explainer
+worth writing.
 
 ## Style
 
