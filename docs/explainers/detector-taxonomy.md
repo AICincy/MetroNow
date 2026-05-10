@@ -193,7 +193,7 @@ admins inspecting a changeset.
   finding kind, lines 118 / 153 / 338 / 375 / 407 / 443 / 475 / 596).
 - [`src/osm/gaps.py:9`](../../src/osm/gaps.py#L9) —
   `detect_gaps()` haversine-endpoint detector for the classifier track.
-- [`src/osm/review.py:1-24`](../../src/osm/review.py#L1-L24) —
+- [`src/osm/review.py:112-325`](../../src/osm/review.py#L112-L325) —
   three-layer fix-proposal stack; reads classifier outputs and CAGIS
   matches, never reads `extra_findings`.
 - [`src/osm/conflate.py`](../../src/osm/conflate.py) — directed-Hausdorff
