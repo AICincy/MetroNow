@@ -140,8 +140,8 @@ detours a passenger several blocks around a phantom barrier.
 
 | Detector | Triggers on | Source |
 |---|---|---|
-| `oneway_conflicts` | Same-name parallel ways with same-direction `oneway`. A lateral-vs-longitudinal filter excludes divided carriageways where the parallel oneway is legitimate. | `detectors.py:153` |
-| `access_blocked_residential` | `access` in `{no, private}` on `highway=residential`. Excludes `motor_vehicle=destination` — the gated-community pattern is intentional. | `detectors.py:338` |
+| `oneway_conflicts` | Same-name parallel ways with same-direction `oneway`. A lateral-vs-longitudinal filter excludes divided carriageways where the parallel oneway is legitimate. | [`detectors.py:153`](src/osm/detectors.py#L153) |
+| `access_blocked_residential` | `access` in `{no, private}` on `highway=residential`. Excludes `motor_vehicle=destination` — the gated-community pattern is intentional. | [`detectors.py:338`](src/osm/detectors.py#L338) |
 
 ### Impact 4 — degrades routing materially
 
@@ -152,9 +152,9 @@ doesn't tell us which it uses.
 
 | Detector | Triggers on | Source |
 |---|---|---|
-| `oneway_minus_one` | `oneway=-1` on a Class A highway type. | `detectors.py:118` |
-| `barriers_without_access` | `barrier` in `{gate, bollard, lift_gate, swing_gate, cycle_barrier}` without an `access` qualifier. | `detectors.py:443` |
-| `broken_turn_restrictions` | `relation[type=restriction]` missing a `from`, `via`, or `to` member, or carrying an empty `restriction` tag. | `detectors.py:596` |
+| `oneway_minus_one` | `oneway=-1` on a Class A highway type. | [`detectors.py:118`](src/osm/detectors.py#L118) |
+| `barriers_without_access` | `barrier` in `{gate, bollard, lift_gate, swing_gate, cycle_barrier}` without any of `access` / `motor_vehicle` / `bicycle` / `foot` set on the node. | [`detectors.py:443`](src/osm/detectors.py#L443) |
+| `broken_turn_restrictions` | `relation[type=restriction]` missing a `from`, `via`, or `to` member, or carrying an empty `restriction` tag. | [`detectors.py:596`](src/osm/detectors.py#L596) |
 
 ### Impact 3 — misclassifies highway type
 
@@ -164,14 +164,14 @@ geofence accuracy. Both detectors are echoes of the TIGER import's
 
 | Detector | Triggers on | Source |
 |---|---|---|
-| `arterial_named_residential` | `highway=residential` whose name ends in Boulevard / Parkway / Expressway / Pike / Highway / Crossing / Memorial. | `detectors.py:375` |
-| `missing_maxspeed_arterial` | `highway` in `{tertiary, unclassified}` without a `maxspeed`. | `detectors.py:407` |
+| `arterial_named_residential` | `highway=residential` whose name ends in Boulevard / Parkway / Expressway / Pike / Highway / Crossing / Memorial. | [`detectors.py:375`](src/osm/detectors.py#L375) |
+| `missing_maxspeed_arterial` | `highway` in `{tertiary, unclassified}` without a `maxspeed`. | [`detectors.py:407`](src/osm/detectors.py#L407) |
 
 ### Impact 2 — rider-facing but soft
 
 | Detector | Triggers on | Source |
 |---|---|---|
-| `misplaced_bus_stops` | `highway=bus_stop` whose nearest drivable vertex is more than 20 m away. Cross-checked against SORTA GTFS stop positions before flagging. | `detectors.py:475` |
+| `misplaced_bus_stops` | `highway=bus_stop` whose nearest drivable vertex is more than 20 m away. Cross-checked against SORTA GTFS stop positions before flagging. | [`detectors.py:475`](src/osm/detectors.py#L475) |
 
 The Atlas UI sorts the combined finding stream by `routing_impact`
 descending, so the rider-visible failures rise to the top of the
@@ -307,7 +307,7 @@ Five surfaces, by audience.
 
 **[`CLAUDE.md`](CLAUDE.md)** is the dense context manifest — the
 source of truth for architecture, conventions, and phase status,
-optimised for fast loading by AI sessions on cold re-entry.
+optimized for fast loading by AI sessions on cold re-entry.
 
 **[`docs/glossary.md`](docs/glossary.md)** is the color-coded
 reference for every project-specific term, OSM tag, and
