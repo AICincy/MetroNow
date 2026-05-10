@@ -61,7 +61,8 @@ flowchart LR
     Review -- "auto-submit (verified)" --> Changeset
     Review -- "Class A/AB without HIGH" --> MapRoulette
     Classify -- "rider-impact track" --> Detectors
-    Detectors --> MapRoulette
+    UI["Atlas UI<br/>Rider-impact findings panel"]
+    Detectors --> UI
     Polygons & Classify & Detectors & Conflate & Review --> Reports
 
     classDef harvest fill:#3a3a3a,stroke:#888,color:#eee
@@ -240,7 +241,10 @@ Zone polygons are extracted from SORTA's published web map and stored
 under [`src/osm/zones/<zone-key>.geojson`](src/osm/zones/); see
 [`docs/explainers/zone-data-flow.md`](docs/explainers/zone-data-flow.md)
 for why the bbox-and-polygon split is load-bearing (Forest Park's bbox
-bleeds 1 km north into Butler County, producing 78% F1 pre-clip).
+bleeds 1 km north into Butler County, producing a 78%
+`F1_NO_CANDIDATE` rate pre-clip — these are ways with no CAGIS
+match because CAGIS coverage stops at the county line, not because
+the OSM geometry was wrong).
 
 ## Quickstart
 
@@ -402,7 +406,7 @@ defect detectors or the changeset submission path.
 - [`docs/explainers/conflation-matcher.md`](docs/explainers/conflation-matcher.md): directed-Hausdorff scoring + asymmetric-promotion alert.
 - [`docs/explainers/osm-community-gating.md`](docs/explainers/osm-community-gating.md): the four-step Phase 1 gating in dependency order.
 - [`docs/cli-reference.md`](docs/cli-reference.md): every `osm` subcommand.
-- [Open data attribution]: data © OpenStreetMap contributors (ODbL); data © Cincinnati Area GIS / Hamilton County, Ohio (Open Data Hub).
+- **Open data attribution:** data © OpenStreetMap contributors (ODbL); data © Cincinnati Area GIS / Hamilton County, Ohio (Open Data Hub).
 
 ## License
 
