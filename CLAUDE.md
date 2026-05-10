@@ -9,29 +9,33 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
 
 - `src/osm/` — Python package (pip-installable as `osm`)
   - Pipeline: `fetch.py`, `polygons.py`, `classify.py`, `detectors.py`,
-    `gaps.py`, `history.py`, `history_filter.py`, `conflate.py`,
-    `review.py`, `changeset.py`
+    `gaps.py`, `history.py`, `history_filter.py` (see
+    [`docs/explainers/history-filter.md`](docs/explainers/history-filter.md)),
+    `conflate.py`, `review.py`, `changeset.py`
   - External feeds: `gtfs.py` (SORTA GTFS stops cross-check, with
     Mobility Database catalog lookup mdb-366 for the feed URL),
     `bus_routes.py` (CAGIS METRO Bus Routes — transit-corridor
     corroboration for oneway_conflict findings), `transit.py`
     (Transit App API client, rate-limit + monthly-quota aware,
-    `fcntl.flock`-guarded counter), `notes.py` (OSM Notes),
-    `osmose.py` (Osmose quality issues)
+    `fcntl.flock`-guarded counter; see
+    [`docs/explainers/transit-quota.md`](docs/explainers/transit-quota.md)),
+    `notes.py` (OSM Notes), `osmose.py` (Osmose quality issues)
   - Routing: `route_diff.py` (BRouter, default), `motis.py`
     (MOTIS `/api/v5/plan` prototype, opt-in via `MOTIS_BASE` env;
     `is_available()` probe; matches `route_diff.fetch_route` shape
     so the future swap is one dispatcher line). See
     [`docs/explainers/routing-engine-dispatch.md`](docs/explainers/routing-engine-dispatch.md).
   - Operational: `preflight.py` (codified first-changeset readiness
-    gate; 16 checks across 6 categories with PASS/FAIL/WARN/MANUAL)
+    gate; 16 checks across 6 categories with PASS/FAIL/WARN/MANUAL;
+    see [`docs/explainers/preflight-checks.md`](docs/explainers/preflight-checks.md))
   - Zone polygons: `src/osm/zones/<zone-key>.geojson` (real MetroNow
     operational polygons from SORTA's web map) + `hamilton-county.geojson`
     (TIGER FIPS 39061 fallback). See
     [`docs/explainers/zone-data-flow.md`](docs/explainers/zone-data-flow.md).
   - Output: `xlsx.py`, `dashboard.py`, `csv_export.py`
   - Plumbing: `cli.py` (Click), `config.py`, `zones.py`, `geo.py`,
-    `cache.py`, `auth.py` (OAuth 2.0 + PKCE)
+    `cache.py`, `auth.py` (OAuth 2.0 + PKCE; see
+    [`docs/explainers/oauth-pkce-flow.md`](docs/explainers/oauth-pkce-flow.md))
 - `web/` — Express.js server + vanilla HTML/CSS/JS frontend (MetroNow Atlas
   redesign)
   - `web/server.js` — REST API on port 3000, shells out to Python via
@@ -95,6 +99,7 @@ and what happens if you skip any step.
   `_cincyimport`-convention account
 - Changeset community norm is ~500 elements (CGImap hard limit 10,000)
 - Use MapRoulette for corrections with >5% expected false-positive rate
+  (see [`docs/explainers/maproulette-tasks.md`](docs/explainers/maproulette-tasks.md))
 - Active ground truth: CAGIS quarterly centerlines (FeatureServer/26),
   TIGER/Line 2024 county roads as a fallback layer (`src/osm/tiger2024.py`)
 - Aspirational ground truth (not yet integrated; do not cite in `source=`
