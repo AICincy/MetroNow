@@ -54,7 +54,7 @@ read different keys:
    into a separate "Rider-impact findings" panel
    ([index.html:1521](../../web/public/index.html#L1521),
    [server.js:386](../../web/server.js#L386),
-   [server.js:633](../../web/server.js#L633)). There is no UI control
+   [server.js:453](../../web/server.js#L453)). There is no UI control
    that promotes a `extra_findings` row to the changeset queue.
 5. **CAGIS conflation supplements the classifier track only.** When
    `osm.conflate` annotates a way with `cagis_match`, that match is read by
