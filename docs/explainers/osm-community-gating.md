@@ -39,9 +39,12 @@ features destroys 10,000 mappers' work. A bad mechanical edit that touches
 2,043 features (MetroNow's pipeline) is small in OSM terms but still
 big enough that the CoC applies in full.
 
-The four required artifacts that gate Phase 1 are drafted in
-`docs/community-prep/01-04.md`. This explainer describes the *order*
-they go in and *why*.
+The four required artifacts that gate Phase 1 are drafted under
+`docs/community-prep/`: [`01-wiki-page.md`](../community-prep/01-wiki-page.md),
+[`02-talk-us-post.md`](../community-prep/02-talk-us-post.md),
+[`03-minh-outreach.md`](../community-prep/03-minh-outreach.md), and
+[`04-pre-flight-checklist.md`](../community-prep/04-pre-flight-checklist.md).
+This explainer describes the *order* they go in and *why*.
 
 ## How it works
 
@@ -235,8 +238,9 @@ attribution string itself lives at
   Minh respond? are there unresolved comments?) — the command can't
   introspect mailboxes.
 - **Phase 1 is currently human-action-blocked.** As of 2026-05-08,
-  the four `docs/community-prep/01-04.md` drafts are ready but none
-  have been published. The Transit-App ToS-compliance email was sent
+  the four numbered drafts under `docs/community-prep/`
+  (`01-wiki-page.md` through `04-pre-flight-checklist.md`) are ready
+  but none have been published. The Transit-App ToS-compliance email was sent
   (separate workstream); the OSM gating is still pending. See the
   Phase status section of `CLAUDE.md` for the current blocker list.
 
