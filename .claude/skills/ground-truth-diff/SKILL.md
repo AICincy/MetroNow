@@ -33,7 +33,7 @@ Roads in TIGER 2024 that have no OSM equivalent — genuinely new construction s
 The 2007 import introduced systematic name errors:
 - **USPS abbreviation spacing**: "Mac Donald St" → should be "MacDonald Street"
 - **Stripped apostrophes**: "O Toole Avenue" → should be "O'Toole Avenue"
-- **Stripped diacritics**: "Canada Road" for "Cananda Road"
+- **Stripped diacritics**: "Canada Road" for "Cañada Road" (the `ñ` was lost in the 2007 import)
 - **ALL CAPS remnants**: Some ways still have uppercase names from TIGER
 
 TIGER 2024 has corrected many of these. Diffing reveals which OSM ways still carry the 2005-era name.
@@ -51,7 +51,7 @@ Cross-referencing TIGER 2024 MTFCC against OSM `highway=*` reveals misclassifica
 
 1. Download `tl_2024_39061_roads.zip` from Census Bureau
 2. Extract and load into a spatial format (GeoJSON, PostGIS, or Shapefile)
-3. Clip to zone bbox from `src/osm/zones.py`
+3. Clip to zone bbox from `src/osm/zones/__init__.py` (the `ZONES` dict)
 4. For each TIGER 2024 road segment:
    - Find matching OSM way(s) by proximity + name similarity
    - Compare: geometry (Hausdorff distance), name, MTFCC vs highway tag

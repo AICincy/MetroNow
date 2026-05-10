@@ -124,56 +124,58 @@ for the full classifier-vs-detector decomposition.
 
 ## Rider-impact detectors
 
-Eight detectors operate over the harvested ways, nodes, and relations.
-Each finding carries a `routing_impact` score (1 = noise; 5 = blocks
-an arterial-class route). The detectors are independent: one broken
-detector cannot kill the audit run thanks to the `_safe_run` wrapper
-in `classify.py`.
+Eight detectors operate over the harvested ways, nodes, and
+relations. Each finding carries a `routing_impact` score; nothing
+on this track auto-submits. Findings land in the Atlas Fix panel
+for human triage, and — when expected false-positive rate exceeds
+5% — optionally a MapRoulette challenge for community review. The
+`_safe_run` wrapper in `classify.py` guarantees one broken
+detector cannot kill the audit run.
 
-```mermaid
----
-title: "Eight rider-impact detectors grouped by routing impact (5 = highest)"
----
-flowchart LR
-    subgraph Impact5["routing_impact = 5<br/>(blocks an arterial-class route)"]
-        direction TB
-        D5a["oneway_conflicts<br/>same-name parallel ways with<br/>same-direction oneway;<br/>lateral-vs-longitudinal filter<br/>excludes divided carriageways"]
-        D5b["access_blocked_residential<br/>access in {no, private} on<br/>highway=residential, excluding<br/>motor_vehicle=destination<br/>(gated communities)"]
-    end
+### Impact 5 — blocks an arterial-class route
 
-    subgraph Impact4["routing_impact = 4<br/>(degrades routing materially)"]
-        direction TB
-        D4a["oneway_minus_one<br/>oneway=-1 on a Class A<br/>highway type"]
-        D4b["barriers_without_access<br/>barrier in {gate, bollard,<br/>lift_gate, swing_gate,<br/>cycle_barrier} without<br/>access qualifier"]
-        D4c["broken_turn_restrictions<br/>relation[type=restriction]<br/>missing from / via / to<br/>member, or empty<br/>restriction tag"]
-    end
+These are the rider-visible failures. A routing engine that hits
+one returns *"no service available"* on a real public street, or
+detours a passenger several blocks around a phantom barrier.
 
-    subgraph Impact3["routing_impact = 3<br/>(misclassifies highway type)"]
-        direction TB
-        D3a["arterial_named_residential<br/>highway=residential whose<br/>name ends in Boulevard /<br/>Parkway / Expressway / Pike /<br/>Highway / Crossing / Memorial"]
-        D3b["missing_maxspeed_arterial<br/>highway in {tertiary,<br/>unclassified} without<br/>maxspeed"]
-    end
+| Detector | Triggers on | Source |
+|---|---|---|
+| `oneway_conflicts` | Same-name parallel ways with same-direction `oneway`. A lateral-vs-longitudinal filter excludes divided carriageways where the parallel `oneway` is legitimate. | [`detectors.py:153`](src/osm/detectors.py#L153) |
+| `access_blocked_residential` | `access` in `{no, private}` on `highway=residential`. Excludes `motor_vehicle=destination` — the gated-community pattern is intentional. | [`detectors.py:338`](src/osm/detectors.py#L338) |
 
-    subgraph Impact2["routing_impact = 2<br/>(rider-facing but soft)"]
-        direction TB
-        D2["misplaced_bus_stops<br/>highway=bus_stop whose<br/>nearest drivable vertex > 20 m,<br/>cross-checked against<br/>SORTA GTFS stop positions"]
-    end
+### Impact 4 — degrades routing materially
 
-    classDef sev5 fill:#5b1c1c,stroke:#a04040,color:#f8e0e0
-    classDef sev4 fill:#5b3a1c,stroke:#a06632,color:#f5ead7
-    classDef sev3 fill:#3a3a1c,stroke:#888866,color:#eeeec0
-    classDef sev2 fill:#1f4d2b,stroke:#3b8c5a,color:#e8f3ec
-    class Impact5,D5a,D5b sev5
-    class Impact4,D4a,D4b,D4c sev4
-    class Impact3,D3a,D3b sev3
-    class Impact2,D2 sev2
-```
+Routing still completes, but at unnecessary cost. The most common
+failure mode here is `oneway=-1` on suburban streets: modern
+engines route it correctly, older planners break, and Via's ingest
+doesn't tell us which it uses.
 
-The Atlas UI surfaces findings in an inventory panel sorted by
-`routing_impact` descending. None of these are auto-submitted: they
-require human review and (for findings exceeding 5% expected
-false-positive rate) optionally a MapRoulette challenge for
-community triage.
+| Detector | Triggers on | Source |
+|---|---|---|
+| `oneway_minus_one` | `oneway=-1` on a Class A highway type. | [`detectors.py:118`](src/osm/detectors.py#L118) |
+| `barriers_without_access` | `barrier` in `{gate, bollard, lift_gate, swing_gate, cycle_barrier}` without any of `access` / `motor_vehicle` / `bicycle` / `foot` set on the node. | [`detectors.py:443`](src/osm/detectors.py#L443) |
+| `broken_turn_restrictions` | `relation[type=restriction]` missing a `from`, `via`, or `to` member, or carrying an empty `restriction` tag. | [`detectors.py:596`](src/osm/detectors.py#L596) |
+
+### Impact 3 — misclassifies highway type
+
+These don't block routing but inflate ETAs and degrade Via's
+geofence accuracy. Both detectors are echoes of the TIGER import's
+`highway=residential` default.
+
+| Detector | Triggers on | Source |
+|---|---|---|
+| `arterial_named_residential` | `highway=residential` whose name ends in Boulevard / Parkway / Expressway / Pike / Highway / Crossing / Memorial. | [`detectors.py:375`](src/osm/detectors.py#L375) |
+| `missing_maxspeed_arterial` | `highway` in `{tertiary, unclassified}` without a `maxspeed`. | [`detectors.py:407`](src/osm/detectors.py#L407) |
+
+### Impact 2 — rider-facing but soft
+
+| Detector | Triggers on | Source |
+|---|---|---|
+| `misplaced_bus_stops` | `highway=bus_stop` whose nearest drivable vertex is more than 20 m away. Cross-checked against SORTA GTFS stop positions before flagging. | [`detectors.py:475`](src/osm/detectors.py#L475) |
+
+The Atlas UI sorts the combined finding stream by `routing_impact`
+descending, so the rider-visible failures rise to the top of the
+queue regardless of detector.
 
 ## Conflation against ground truth
 
@@ -301,79 +303,41 @@ paste-ready drafts live under [`docs/community-prep/`](docs/community-prep/).
 
 ## Project documentation
 
-```mermaid
----
-title: "Documentation surfaces — what's where, by reader"
----
-flowchart TD
-    Reader["Reader<br/>(future-you / fresh AI session /<br/>OSM admin / curious newcomer)"]
+Five surfaces, by audience.
 
-    CLAUDE["CLAUDE.md<br/>dense context manifest<br/>(fast-loading for AI sessions)"]
-    Glossary["docs/glossary.md<br/>color-coded terms / tags /<br/>sources / workflow"]
+**[`CLAUDE.md`](CLAUDE.md)** is the dense context manifest — the
+source of truth for architecture, conventions, and phase status,
+optimized for fast loading by AI sessions on cold re-entry.
 
-    subgraph Decompress["docs/explainers/: 13 decompression docs"]
-        direction TB
-        DT["detector-taxonomy<br/>conflation-matcher<br/>osm-community-gating<br/>phase-status<br/>zone-data-flow<br/>routing-engine-dispatch<br/>conventions<br/>oauth-pkce-flow<br/>history-filter<br/>preflight-checks<br/>maproulette-tasks<br/>transit-quota<br/>external-feeds"]
-    end
+**[`docs/glossary.md`](docs/glossary.md)** is the color-coded
+reference for every project-specific term, OSM tag, and
+authoritative source. Skim once after a long absence, then point
+at it whenever a section assumes you know the jargon.
 
-    subgraph Skills["docs/skills/: 14 skill explainers"]
-        direction TB
-        SK["zone-audit / cagis-conflate /<br/>ground-truth-diff / tiger-history-deep /<br/>osmcha-monitor / community-prep /<br/>changeset-submit / maproulette-challenge /<br/>metronow-{code,javascript,html,css,dockerfile}-review /<br/>metronow-explainer"]
-    end
+**[`docs/explainers/`](docs/explainers/)** holds 13 decompression
+docs that unpack the dense `CLAUDE.md` sections. One topic per
+file, each following the same template: summary → bridge steps →
+load-bearing diagram → `file:line` citations.
 
-    subgraph Codebase["docs/: codebase-area overviews"]
-        direction TB
-        OV["cli-reference (17 osm subcommands)<br/>tests-overview (pytest layout)<br/>web-architecture (Express + SPA)<br/>sources (external-feed evaluation log)"]
-    end
+> detector-taxonomy · conflation-matcher · osm-community-gating · phase-status · zone-data-flow · routing-engine-dispatch · conventions · oauth-pkce-flow · history-filter · preflight-checks · maproulette-tasks · transit-quota · external-feeds
 
-    subgraph Community["docs/community-prep/: paste-ready drafts"]
-        direction TB
-        CP["00-README<br/>01-wiki-page<br/>02-talk-us-post<br/>03-minh-outreach<br/>04-pre-flight-checklist<br/>05-transit-api-compliance"]
-    end
+**[`docs/skills/`](docs/skills/)** holds 14 short companions to
+`.claude/skills/`, sized for re-entry rather than first read.
 
-    Reader --> CLAUDE
-    Reader --> Glossary
-    CLAUDE -. "cross-links to" .-> Decompress
-    CLAUDE -. "cross-links to" .-> Codebase
-    Decompress -. "cross-links to" .-> Skills
-    Glossary -. "anchors terms in" .-> Decompress
-    Decompress -. "Phase 1 chain" .-> Community
+> zone-audit · cagis-conflate · ground-truth-diff · tiger-history-deep · osmcha-monitor · community-prep · changeset-submit · maproulette-challenge · metronow-{code,javascript,html,css,dockerfile}-review · metronow-explainer
 
-    classDef manifest fill:#3a3a3a,stroke:#888,color:#eee,font-weight:bold
-    classDef anchor fill:#5b3a1c,stroke:#a06632,color:#f5ead7
-    classDef detail fill:#1f4d2b,stroke:#3b8c5a,color:#e8f3ec
-    class CLAUDE manifest
-    class Glossary anchor
-    class Decompress,Skills,Codebase,Community,DT,SK,OV,CP detail
-```
+**Codebase-area overviews** sit alongside the explainers:
+[`docs/cli-reference.md`](docs/cli-reference.md) (17 `osm`
+subcommands by lifecycle stage),
+[`docs/tests-overview.md`](docs/tests-overview.md) (pytest layout,
+what's tested vs deliberately not),
+[`docs/web-architecture.md`](docs/web-architecture.md) (Express +
+vanilla SPA + shell-out-to-Python),
+[`docs/sources.md`](docs/sources.md) (external-source evaluation log).
 
-Three layered surfaces, each with its own template and audience:
-
-- **[`CLAUDE.md`](CLAUDE.md)**: dense context manifest. Source of
-  truth for architecture, conventions, phase status. Optimized for
-  fast loading by AI sessions.
-- **[`docs/explainers/`](docs/explainers/)**: 13 hand-written
-  decompression docs for the dense `CLAUDE.md` sections. Each follows
-  the same template (summary → bridge steps → load-bearing Mermaid →
-  `file:line` citations). Topics: detector taxonomy, conflation
-  matcher, OSM community gating, phase status, zone data flow,
-  routing engine dispatch, conventions, OAuth + PKCE flow, history
-  filter, pre-flight checks, MapRoulette tasks, Transit App quota,
-  external feeds.
-- **[`docs/skills/`](docs/skills/)**: 14 explainers for the
-  `.claude/skills/` directory. Short, skim-friendly companions to
-  each `SKILL.md` for re-entry.
-
-Plus codebase-area overviews:
-
-- [`docs/cli-reference.md`](docs/cli-reference.md): 17 `osm`
-  subcommands grouped by lifecycle stage.
-- [`docs/tests-overview.md`](docs/tests-overview.md): pytest layout,
-  what's tested vs deliberately not, how to add a test.
-- [`docs/web-architecture.md`](docs/web-architecture.md): Express
-  server + vanilla SPA + shell-out-to-Python design.
-- [`docs/sources.md`](docs/sources.md): external-source evaluation
-  log (active, defensive backups, bookmarks, ruled-out).
+The four-step Phase 1 community-gating sequence ships paste-ready
+in [`docs/community-prep/`](docs/community-prep/) (`00-README`
+through `05-transit-api-compliance`).
 
 ## Background
 
