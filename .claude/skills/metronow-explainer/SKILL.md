@@ -204,27 +204,44 @@ density.
 Track shipped explainers and what's next. When the user asks for "more
 explainers" without specifying a topic, take the next pending item.
 
-**Shipped:**
+**Shipped (initial backlog, complete as of 2026-05-10):**
 
 - ✅ `docs/explainers/detector-taxonomy.md` — why `classify()` emits two
   parallel tracks and why the split is the mechanical-edit safety
   perimeter.
+- ✅ `docs/explainers/conflation-matcher.md` — directed-Hausdorff
+  scoring, three-term confidence, eight buckets, fallback hard-cap,
+  baseline-diff asymmetric-promotion alert.
+- ✅ `docs/explainers/osm-community-gating.md` — four-step Phase 1
+  gating in dependency order; what each gate closes; the seven
+  changeset tags every mechanical edit must carry.
+- ✅ `docs/explainers/phase-status.md` — what each phase delivers,
+  what gates transitions, why Phase 1 is human-action-blocked, where
+  cross-cutting workstreams fit.
+- ✅ `docs/explainers/zone-data-flow.md` — SORTA web map → ZONES dict
+  + per-zone GeoJSONs → Overpass bbox → polygon clip → classifier;
+  why the bbox-and-polygon split was load-bearing.
+- ✅ `docs/explainers/routing-engine-dispatch.md` — BRouter default vs
+  MOTIS opt-in, matched call shape, `is_available()` probe, the
+  next-session dispatcher line in `route_diff.py`.
+- ✅ `docs/explainers/conventions.md` — seven CLAUDE.md conventions
+  split into stylistic vs load-bearing; failure mode each load-bearing
+  rule closes (path traversal, quota underrun, XSS, false "done").
 
-**Pending, in priority of confusion-on-re-entry:**
+**Backlog (no items pending — ready for new topics).**
 
-1. **Conflation matcher state** (`conflation-matcher.md`) — what
-   conflation is, what F1–F4 buckets mean, why directed-Hausdorff beat
-   symmetric, what the auto-submit vs review bands mean operationally.
-2. **OSM community requirements** (`osm-community-gating.md`) — what
-   mechanical edits are, why OSM treats them specially, what each of
-   the four required steps does, what happens if you skip one.
-3. **Phase status** (`phase-status.md`) — what each phase delivers,
-   what gates transitions, why Phase 1 is human-action-blocked.
-4. **Zone data flow** (`zone-data-flow.md`) — SORTA web map → zone
-   GeoJSON → Overpass query → audit; why we keep both real polygons
-   and the TIGER FIPS 39061 fallback.
-5. **Routing engine dispatch** (`routing-engine-dispatch.md`) —
-   BRouter default vs MOTIS opt-in, the `is_available()` probe.
-6. **Conventions** (`conventions.md`) — why no underscores, why auto
-   mode by default, why `zonePath()` containment guard, why
-   `fcntl.flock`.
+When the user asks for "more explainers" without specifying a topic,
+identify the next-densest CLAUDE.md section or the most-recently-added
+subsystem and propose it. Candidates that may emerge:
+
+- `oauth-pkce-flow.md` — `auth.py` OAuth 2.0 + PKCE OOB flow.
+- `history-filter.md` — how `history_filter` decides whether a way
+  has been "meaningfully reviewed since the TIGER import."
+- `maproulette-tasks.md` — task generation for findings exceeding the
+  5% false-positive threshold.
+- `preflight-checks.md` — the 16 codified checks across 6 categories
+  in `osm preflight --zone <key>`.
+- `transit-quota.md` — Transit App quota tooling and the
+  `fcntl.flock`-guarded counter (overlaps with `conventions.md`'s
+  load-bearing-rule treatment; a deeper version would also cover the
+  monthly-budget arithmetic and ToS attribution).

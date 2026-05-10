@@ -46,8 +46,14 @@ no static-site generator, no toolchain.
   underrun, XSS, false "done" reports) and the code that implements
   the defense.
 
-## Backlog (in priority of confusion-on-re-entry)
+## Candidate next topics
 
+The original 6-item backlog from `metronow-explainer/SKILL.md` is
+fully shipped. See that skill's "Topic backlog" section for the
+running list of candidate next topics (oauth-pkce-flow,
+history-filter, maproulette-tasks, preflight-checks, transit-quota,
+etc.) when re-entry pain on a new subsystem makes another explainer
+worth writing.
 
 ## Style
 
