@@ -37,13 +37,13 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ClerkProvider>
           <header className="flex justify-end items-center gap-4 p-4 h-16">
-            <Show when="signed-out">
+            <SignedOut>
               <SignInButton />
               <SignUpButton />
-            </Show>
-            <Show when="signed-in">
+            </SignedOut>
+            <SignedIn>
               <UserButton />
-            </Show>
+            </SignedIn>
           </header>
           {children}
         </ClerkProvider>
