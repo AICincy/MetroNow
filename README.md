@@ -140,7 +140,7 @@ detours a passenger several blocks around a phantom barrier.
 
 | Detector | Triggers on | Source |
 |---|---|---|
-| `oneway_conflicts` | Same-name parallel ways with same-direction `oneway`. A lateral-vs-longitudinal filter excludes divided carriageways where the parallel oneway is legitimate. | [`detectors.py:153`](src/osm/detectors.py#L153) |
+| `oneway_conflicts` | Same-name parallel ways with same-direction `oneway`. A lateral-vs-longitudinal filter excludes divided carriageways where the parallel `oneway` is legitimate. | [`detectors.py:153`](src/osm/detectors.py#L153) |
 | `access_blocked_residential` | `access` in `{no, private}` on `highway=residential`. Excludes `motor_vehicle=destination` — the gated-community pattern is intentional. | [`detectors.py:338`](src/osm/detectors.py#L338) |
 
 ### Impact 4 — degrades routing materially
