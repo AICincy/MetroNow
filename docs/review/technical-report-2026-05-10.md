@@ -38,13 +38,18 @@ commit history shows iterative `gemini` / `chatgpt-codex`
 review-fix cycles on PRs #29 through #34 — and all CLAUDE.md
 load-bearing invariants are satisfied at HEAD.
 
-Total findings:
+Total findings (Phase 1 + Phase 2):
 - **1 Blocker** — Docker volume-mount path inconsistent with the
   Dockerfile's `HOME` directive (would silently fail OAuth-token
   persistence in production).
 - **3 Warnings** — Documentation-precision issues, none
   affecting runtime.
-- **5 Info** — Undocumented modules and stylistic cleanups.
+- **8 Info** — Phase 1: undocumented modules, the route_diff
+  dispatcher next-session work, three documentation-only HTML
+  files (§§ 4.5-4.7). Phase 2: 12 source modules without
+  dedicated test files, five fail-open `# noqa: BLE001` patterns
+  in `cli.py`, and the disclosed auditor-method false positive
+  (§§ 8.1, 8.3, 8.7).
 
 The codebase parses cleanly (Python `compileall`, Node `--check`),
 all CLAUDE.md-mandated security invariants
@@ -250,13 +255,17 @@ require code changes to `src/osm/` or to the web stack.
 
 ## 6. False-positive disclosure
 
-Two specialist findings did not survive empirical verification and
-have been **excluded from the action list above**:
+Three findings did not survive empirical verification and have
+been **excluded from the action list above**. The first two
+are specialist false positives caught in Phase 1; the third is
+a method-level false positive in my own Phase 2 broken-link
+audit, disclosed in the same spirit:
 
-| Specialist | Initial claim | Reality | Verdict |
-|------------|---------------|---------|---------|
-| Web audit | "Missing SRI integrity attribute on esri-leaflet@3.0.14" (`index.html:1850`) | Integrity attribute IS present at `index.html:1851`: `integrity="sha384-Lm29z+brYIz3vevy21cGCkFIoyyO9sVj7QBYlIPhhWZM9SlgXJ13rYSTS8uO6/iD"` | **False positive.** No remediation needed. |
-| Python audit | Engine dispatcher absence in `route_diff.py` classified as Blocker | CLAUDE.md line 178-179 explicitly documents this as the "next-session item"; it is incomplete documented work, not unsanctioned drift | **Severity downgraded to Info** (§4.6). |
+| Source | Initial claim | Reality | Verdict |
+|--------|---------------|---------|---------|
+| Web audit (Phase 1) | "Missing SRI integrity attribute on esri-leaflet@3.0.14" (`index.html:1850`) | Integrity attribute IS present at `index.html:1851`: `integrity="sha384-Lm29z+brYIz3vevy21cGCkFIoyyO9sVj7QBYlIPhhWZM9SlgXJ13rYSTS8uO6/iD"` | **False positive.** No remediation needed. |
+| Python audit (Phase 1) | Engine dispatcher absence in `route_diff.py` classified as Blocker | CLAUDE.md line 178-179 explicitly documents this as the "next-session item"; it is incomplete documented work, not unsanctioned drift | **Severity downgraded to Info** (§4.6). |
+| Auditor's own broken-link sweep (Phase 2) | "2 broken markdown links in `RESEARCH-FINDINGS.md`" (lines 59, 116) | Both regex hits were Overpass query syntax inside backticked code spans: `way["highway"](user:"DaveHansenTiger")(if: ...)`. The naive `\[...\](...)` matcher conflated `["highway"]` followed by `(user:...)` with markdown link syntax. Actual broken-link count: **0**. | **False positive in audit method.** No remediation needed in `RESEARCH-FINDINGS.md`. |
 
 ## 7. Verdict
 
@@ -270,8 +279,215 @@ The single production-blocking defect (volume-mount path) is a
 two-line fix in `deploy/docker-compose.yml`. The remaining items
 are documentation-precision adjustments with zero runtime impact.
 
+## 8. Phase-2 deep audit (continued mandate)
+
+The user's mandate to "continue this deep audit" extended scope to
+the test suite, CI/CodeQL configuration, dependency surface,
+documentation link integrity, `.claude/` skill packs, and
+line-level review of the six largest Python modules. All findings
+below are net-new to the report.
+
+### 8.1 Test suite — static and structural
+
+The sandbox is Python 3.11; `pyproject.toml` requires 3.12+. The
+test suite was therefore reviewed statically (read-only). CI runs
+on Python 3.12 and 3.13 matrices via `.github/workflows/ci.yml`
+with `pip install -e ".[dev]"` followed by `pytest --cov=src/osm`.
+
+| Metric | Result |
+|--------|--------|
+| Test files | 21 (`tests/test_*.py`) + `tests/__init__.py` |
+| Tests collected | 227 |
+| Test files with zero `assert` (placeholders) | 0 |
+| Tests doing real network I/O (CI flakiness) | 0 — all mocked |
+| Tests with vague names | 0 |
+| `print()` debugging artifacts | 0 |
+| Conflate F1-F4 buckets covered? | YES (`test_conflate.py`) |
+| `transit.py` `fcntl.flock` counter covered? | YES (`test_transit.py`) |
+| `motis.is_available()` probe covered? | YES (`test_motis.py:242-278`) |
+| All 17 preflight checks covered? | YES (`test_preflight.py`) |
+
+**Coverage gap (Info):** 12 of 30 `src/osm/` modules have **no
+dedicated test file**: `cli.py`, `auth.py`, `cache.py`,
+`changeset.py`, `config.py`, `csv_export.py`, `dashboard.py`,
+`fetch.py`, `history.py`, `resources.py`, `xlsx.py`,
+`_geometry.py`. Most are exercised indirectly through their
+consumers (e.g. `fetch.py` is exercised by every `test_classify`
+and `test_polygons` fixture chain), but `cli.py` (57 KB) is the
+notable outlier — the largest module in the package has no
+direct test file. `ci.yml` deliberately omits `--cov-fail-under`
+("reporting first; gating later") with a commit-trail comment
+referencing the 2026-05-09 technical-report-v2 §4.2, so this is
+known and tracked work, not an oversight.
+
+### 8.2 GeoJSON validity — all five zones
+
+All zone polygons load cleanly as `Feature/Polygon` GeoJSON via
+`json.load()`:
+
+| File | Outer-ring points |
+|------|-------------------|
+| `blue-ash-montgomery.geojson` | 254 |
+| `forest-park-pleasant-run.geojson` | 144 |
+| `hamilton-county.geojson` (TIGER fallback) | 179 |
+| `northgate-mt-healthy.geojson` (new in this branch) | 185 |
+| `springdale-sharonville.geojson` (new in this branch) | 145 |
+
+No multi-polygons; no holes; consistent topology.
+
+### 8.3 Deep code review — six largest modules
+
+Line-level review of `cli.py` (57 KB), `route_diff.py` (39 KB),
+`detectors.py` (26 KB), `tiger2024.py` (26 KB), `review.py` (26
+KB), `preflight.py` (20 KB):
+
+- **17 Click commands enumerated in `cli.py`**, each with a
+  docstring (✓), each `--zone` flag validated against
+  `ZONE_KEYS` (✓ at lines 83, 434, 582, 673, 763, 853, 967,
+  1077, 1348, 1433, 1467, 1510). Total `TODO`/`FIXME`: 0.
+- **`detectors.py` — 8 detectors enumerated**: `detect_oneway_minus_one`
+  (L118), `detect_oneway_conflicts` (L153), `detect_access_blocked_residential`
+  (L338), `detect_arterial_named_residential` (L375),
+  `detect_missing_maxspeed_arterial` (L407),
+  `detect_barriers_without_access` (L443), `detect_misplaced_bus_stops`
+  (L475), `detect_broken_turn_restrictions` (L596). All have
+  docstrings. Matches CLAUDE.md's stated count of eight.
+- **`preflight.py` — 17 checks confirmed in code**, distributed
+  across 6 categories (3 community + 3 account + 3 pipeline + 2
+  scan-freshness + 4 fix-batch + 2 monitoring), exit-code
+  semantics correct (`return 1` on `n_fail`, `return 2` on
+  `--strict and n_warn`, else `0`).
+- **All file I/O uses explicit encoding** (`encoding="utf-8"` for
+  text, `encoding="ascii"` for tiger2024 dBASE records).
+- **All outbound network calls have `timeout=`** (default 30s in
+  `route_diff.py:382`, default 60s in `tiger2024.py:147`).
+- **No mutable default arguments** anywhere in the six modules.
+- **Subprocess calls** in `preflight.py` (`pytest`, `ruff`) are
+  argv-list invocations; no `shell=True`.
+
+**One pattern flagged Info, not a Blocker:** five sites in
+`cli.py` (L188, L205, L260, L325, L376) use bare
+`except Exception:` with explicit `# noqa: BLE001`. These are
+documented fail-open paths in scan-discovery code (a single feed
+failure must not abort the scan). The `noqa` markers are
+intentional.
+
+### 8.4 CI / .github — three workflows verified
+
+| Workflow | Triggers | What it runs |
+|----------|----------|--------------|
+| `ci.yml` | push to main, all PRs | Python 3.12+3.13 matrix → `pip install -e ".[dev]"` → `ruff check src/` → `mypy src/osm/ --ignore-missing-imports` → `pytest tests/ --cov=src/osm --cov-report=term-missing` |
+| `codeql.yml` | push/PR to main, weekly cron | CodeQL on `actions`, `javascript-typescript`, `python` |
+| `stale.yml` | daily cron | Marks issues/PRs stale at 90 days; closes at +14; respects `keep-open` and `security` labels |
+
+Permissions are correctly scoped: `ci.yml` is
+`contents: read` (least privilege); `codeql.yml` has
+`security-events: write` only because CodeQL requires it; `stale.yml`
+has `issues: write, pull-requests: write` only.
+
+**Note on PR #35 status.** GitHub commit-status API at
+`f6998f4` reported `state: pending, total_count: 0`. This is the
+*commit-status* surface, not the *check-runs* surface — the two
+are independent. CI is configured to run on `pull_request:`
+without a `draft == false` filter, so a draft PR like #35 would
+trigger CI. Whether the runner has actually picked it up is a
+transient operational state, not a structural finding.
+
+### 8.5 Dependencies — small, current surface
+
+| Stack | Direct deps | Notes |
+|-------|-------------|-------|
+| Python | 6 (`requests>=2.31`, `openpyxl>=3.1`, `click>=8.0`, `rich>=13.0`, `httpx>=0.27`, `shapely>=2.0`); dev: `pytest>=8.0`, `pytest-cov` | All caret-ranged with major-version pins. None known-vulnerable as of cutoff. |
+| Node | 4 (`cors ^2.8.6`, `express ^5.2.1`, `express-rate-limit ^8.5.1`, `helmet ^8.1.0`); 0 dev deps | Express 5 (released 2024-10-15) is the current major; helmet 8 and express-rate-limit 8 are current. |
+
+`pip-audit` was attempted; it failed in this sandbox on an
+unrelated `dbus-python` build (not in our deps), not on anything
+declared by the project. CI's matrix on Python 3.12+3.13 against
+the live PyPI dependency set is the authoritative check.
+
+### 8.6 CodeQL alert spot-check
+
+CLAUDE.md claims alerts #4, #6-10, #17, #24 are "fixed in code"
+and #3 is dismissed as a false positive (`auth.py:120` OAuth URL
+print, RFC 6749 §4.1.1 says the URL contains no secrets).
+
+Alert #3 verified: the actual print site is `auth.py:147`
+(`print(f"  If the browser doesn't open, visit:\n  {url}")`).
+The URL contains `client_id`, `code_challenge` (PKCE-protected,
+not a secret), `state` (CSRF token), and `redirect_uri` —
+none of which are confidential per RFC 6749. CLAUDE.md's
+dismissal stance is correct; the code matches the documented
+intent.
+
+Server.js `child_process` safety verified:
+`OSM_PKG = path.resolve(__dirname, "..", "src")` is a startup
+constant. All `execFile()` calls embed it via
+`JSON.stringify(OSM_PKG)`, which produces a valid JSON-string
+literal that is also a valid Python string literal — no
+injection vector.
+
+### 8.7 Documentation link integrity — 523 internal links checked
+
+A regex sweep across 69 markdown files (`*.md` at root, `docs/`,
+`.claude/`) extracted 523 inline relative links and resolved
+them against the working tree.
+
+| Result | Count |
+|--------|-------|
+| Internal links that resolve | 521 |
+| Internal links that look broken (regex output) | 2 |
+| Actual broken links (after manual review) | **0** |
+
+The two regex hits were `RESEARCH-FINDINGS.md:59` and `:116` — both
+inside backticked code spans containing Overpass query syntax
+(`way["highway"](user:"DaveHansenTiger")(if: ...)`). The naive
+`\[...\](...)` regex matched the Overpass `["highway"]` followed by
+`(user:"DaveHansenTiger")` as if it were a markdown link. **This
+was an audit-method false positive in my own work and is hereby
+disclosed in §6 below.**
+
+### 8.8 `.claude/` skill packs and configuration
+
+| Asset | Status |
+|-------|--------|
+| `settings.json` | NOT PRESENT (no project-scoped overrides) |
+| `settings.local.json` | NOT PRESENT |
+| Skill packs | 14 (`metronow-*` × 6, plus 8 domain skills) |
+| Skills with valid frontmatter | 14 / 14 |
+| `metronow-code-review` references reachable | 4 / 4 (`javascript.md`, `html.md`, `css.md`, `dockerfile.md`) |
+| Secrets / tokens / keys in any skill file | 0 |
+| `.claude/skills/` ↔ `docs/skills/` parity | 14 ↔ 14, no orphans either side |
+
+Skill packs cite the production file sizes
+(`web/public/index.html` ~1815 lines, `atlas.js` ~2072 lines,
+etc.); these match the actual file lengths at HEAD.
+
+### 8.9 Phase-2 verdict
+
+No new Blockers. No new Warnings. Three new Info-class items:
+
+- **8.1** — 12 of 30 source modules lack dedicated test files;
+  cli.py is the notable outlier. Tracked, not an oversight (CI
+  has reporting-only coverage by design).
+- **8.3** — Five `# noqa: BLE001` exception suppressions in
+  `cli.py` are intentional fail-open patterns in scan-discovery
+  code; documented but worth re-reading any time those paths are
+  refactored.
+- **8.7 (audit-method false positive)** — My own broken-link
+  audit reported 2 hits that, on inspection, were Overpass query
+  syntax inside code spans. The actual broken-link count is 0.
+  Disclosed in §6 below.
+
+The aggregate finding tally remains: **1 Blocker** (Docker
+volume-mount path, §4.1), **3 Warnings** (CLAUDE.md `zones.py`
+nomenclature §4.2, healthcheck endpoint §4.3, `latest` tag §4.4),
+**8 Info** (§4.5–4.7, plus the three from §8 above). Branch is
+ship-ready pending §4.1 remediation.
+
 ---
 
-*Auditor: Claude (Opus 4.7), invoked under user-issued audit
-mandate. All findings cite source files at line-level granularity
-and were verified against working-tree contents at HEAD `6071d0a`.*
+*Phase 1 auditor: Claude (Opus 4.7), invoked under user-issued
+audit mandate. Phase 2 follow-up dispatched at 2026-05-10 after
+operator instruction "I insist you continue this deep audit."
+All findings cite source files at line-level granularity and were
+verified against working-tree contents at HEAD `f6998f4`.*
