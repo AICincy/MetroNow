@@ -91,7 +91,7 @@ Tier 1 can't decide.
 
 ```mermaid
 ---
-title: Two-tier review-status decision
+title: "Two-tier review-status decision"
 ---
 flowchart TD
     Way["Way record (out meta payload)"]

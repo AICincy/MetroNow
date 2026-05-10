@@ -6,8 +6,8 @@ Montgomery, Springdale / Sharonville, Northgate / Mt. Healthy, and Forest
 Park / Pleasant Run. The pipeline ingests each zone as two artifacts: a
 bounding box (used by the Overpass API) and a polygon (used to clip the
 Overpass result down to the real spatial extent). Both come from SORTA's
-operational web map. Plus a fifth fallback polygon: Hamilton County's
-TIGER FIPS 39061 envelope: that exists to remove cross-county bleed when
+operational web map. Plus a fifth fallback polygon (Hamilton County's
+TIGER FIPS 39061 envelope) that exists to remove cross-county bleed when
 a zone's bbox extends past the Hamilton County line. This explainer walks
 the data flow from "SORTA web map" through to the clipped audit set the
 classifier sees.
@@ -81,7 +81,7 @@ classifier sees only ways genuinely inside the zone's operational area.
 
 ```mermaid
 ---
-title: Zone data flow: SORTA → bbox + polygon → clipped audit set
+title: "Zone data flow: SORTA → bbox + polygon → clipped audit set"
 ---
 flowchart LR
     subgraph Source["External source (one-time extraction)"]
@@ -139,10 +139,10 @@ A bbox is cheap to compute and cheap for Overpass to query, but it always
 overshoots a real-shape area. The four MetroNow zones illustrate this
 crisply:
 
-- **Blue Ash / Montgomery**: bbox `(39.16, -84.44, 39.24, -84.33)`:
-  rectangle ~9 km × 10 km that includes some of southwestern Sycamore
-  Township along the south edge. Polygon trim removes ~5-10% of the
-  bboxed ways.
+- **Blue Ash / Montgomery**: bbox `(39.16, -84.44, 39.24, -84.33)`,
+  a rectangle ~9 km × 10 km that includes some of southwestern
+  Sycamore Township along the south edge. Polygon trim removes
+  ~5-10% of the bboxed ways.
 - **Forest Park / Pleasant Run**: bbox
   `(39.26, -84.56, 39.34, -84.46)` extends ~1 km north of the Hamilton
   County line into Butler County. Pre-clip, **78% of Forest Park's ways

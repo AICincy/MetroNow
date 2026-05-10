@@ -49,8 +49,9 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
 - `tests/`: pytest suite; see
   [`docs/tests-overview.md`](docs/tests-overview.md) for layout, what's
   tested vs deliberately not, and how to add a test.
-- `osm-audit-{zone}/`: generated outputs per zone (gitignored): raw Overpass
-  cache under `data/`, `scan-results.json`, `reports/`, `csv/`
+- `osm-audit-{zone}/` (generated outputs per zone, gitignored): raw
+  Overpass cache under `data/`, plus `scan-results.json`, `reports/`,
+  and `csv/`
 - `docs/community-prep/`: paste-ready community-gating drafts:
   `00-README.md` (index), `01-wiki-page.md`, `02-talk-us-post.md`,
   `03-minh-outreach.md`, `04-pre-flight-checklist.md`,

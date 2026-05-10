@@ -97,7 +97,7 @@ because the return shape matches.
 
 ```mermaid
 ---
-title: Two engines, one shape: current state and the next-session dispatcher
+title: "Two engines, one shape: current state and the next-session dispatcher"
 ---
 flowchart TD
     Caller["route-diff caller<br/>(detector false-positive filter)"]

@@ -93,7 +93,7 @@ interactive
 
 ```mermaid
 ---
-title: OAuth 2.0 Authorization Code + PKCE with OOB redirect
+title: "OAuth 2.0 Authorization Code + PKCE with OOB redirect"
 ---
 sequenceDiagram
     participant U as User
@@ -109,7 +109,7 @@ sequenceDiagram
     B->>OSM: GET /oauth2/authorize<br/>?client_id&redirect_uri=urn:...:oob<br/>&code_challenge&code_challenge_method=S256
     OSM->>U: Login + consent screen
     U->>OSM: Approve
-    OSM->>B: Display authorization code<br/>(no redirect: OOB)
+    OSM->>B: Display authorization code<br/>(no redirect, OOB pattern)
     U->>CLI: Paste code at prompt<br/>auth.py:150
     CLI->>OSM: POST /oauth2/token<br/>grant_type=authorization_code<br/>code, code_verifier, redirect_uri<br/>auth.py:104
     Note over OSM: Verify sha256(verifier) ==<br/>previously-presented<br/>code_challenge
@@ -122,7 +122,7 @@ sequenceDiagram
     end
 ```
 
-*What this shows: the PKCE verifier never traverses the browser: it
+*What this shows: the PKCE verifier never traverses the browser. It
 goes directly from the CLI's first call (where it's hashed into the
 challenge) to the CLI's second call (where it's sent in clear to the
 token endpoint). An attacker who steals the auth code (e.g., from

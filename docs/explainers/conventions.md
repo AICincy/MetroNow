@@ -108,7 +108,7 @@ future-you doesn't accidentally relax the wrong one.
 
 ```mermaid
 ---
-title: Where each load-bearing convention closes a failure mode
+title: "Where each load-bearing convention closes a failure mode"
 ---
 flowchart LR
     subgraph Threat["Threat model"]
@@ -158,7 +158,7 @@ post-submission failures (different concern; see
 ## Why "verify at module boundaries" is load-bearing
 
 This one is tempting to dismiss as project process rather than a code
-defense: and it is process: but it has the same shape as the others:
+defense, and it is process. But it has the same shape as the others:
 a known failure mode (false "done" reports), a specific defense
 (end-to-end traces through the pipeline + spot-checks), a real
 consequence (wrong-fix mechanical edits, account ban).

@@ -86,7 +86,7 @@ The module produces one challenge per zone in five steps:
 
 ```mermaid
 ---
-title: Class A/AB way → MapRoulette task
+title: "Class A/AB way → MapRoulette task"
 ---
 flowchart TD
     Classified["classified['all_ways']<br/>(post-conflate, post-history-filter)"]

@@ -6,12 +6,12 @@ returns one of four statuses: **PASS** (green, automated), **FAIL**
 (red, blocks first changeset), **WARN** (yellow, soft block:
 `--strict` escalates to FAIL), or **MANUAL** (blue, requires human
 attestation). Exit codes are `0` clean, `1` on any FAIL, `2` on any
-WARN with `--strict`. The intent is *not* full automation: community
-publication and OSMCha-monitoring checks fundamentally require human
-inspection and surface as MANUAL: but to **remove the cognitive
-friction** of remembering which checklist items are codable, so the
-maintainer hits the human-attestation pass with everything
-auto-checkable already green.
+WARN with `--strict`. The intent is *not* full automation
+(community publication and OSMCha-monitoring checks fundamentally
+require human inspection and surface as MANUAL) but to **remove the
+cognitive friction** of remembering which checklist items are
+codable, so the maintainer hits the human-attestation pass with
+everything auto-checkable already green.
 
 ---
 
@@ -82,7 +82,7 @@ category and computes the exit code from the worst status seen.
 
 ```mermaid
 ---
-title: osm preflight: 17 checks across 6 categories, four status colors
+title: "osm preflight: 17 checks across 6 categories, four status colors"
 ---
 flowchart LR
     Run["osm preflight --zone <key>"]

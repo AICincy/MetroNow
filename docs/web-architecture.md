@@ -75,7 +75,7 @@ Backend conventions:
 
 ```mermaid
 ---
-title: Atlas request flow: UI → REST API → Python shell-out → disk
+title: "Atlas request flow: UI → REST API → Python shell-out → disk"
 ---
 flowchart LR
     Browser["Browser<br/>(operator)"]

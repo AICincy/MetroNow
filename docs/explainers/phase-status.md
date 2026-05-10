@@ -100,7 +100,7 @@ alongside:
 
 ```mermaid
 ---
-title: Phase dependency graph and current state
+title: "Phase dependency graph and current state"
 ---
 flowchart LR
     subgraph Done["Shipped (Phases 2-4)"]

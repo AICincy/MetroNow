@@ -100,7 +100,7 @@ elements, watched on OSMCha for 72 hours, then scaled gradually.
 
 ```mermaid
 ---
-title: Phase 1 community gating: dependency order
+title: "Phase 1 community gating: dependency order"
 ---
 flowchart TD
     Start(("Pipeline ready<br/>2,043 auto-submit candidates"))

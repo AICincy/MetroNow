@@ -88,7 +88,7 @@ specific way the project could lose quota or break ToS.
 
 ```mermaid
 ---
-title: One Transit API call: six guard layers + ToS obligations
+title: "One Transit API call: six guard layers + ToS obligations"
 ---
 flowchart TD
     Caller["caller wants Transit data<br/>(e.g. nearby_stops)"]

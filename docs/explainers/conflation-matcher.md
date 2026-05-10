@@ -70,8 +70,8 @@ Per-way matching, called once per scan from `web/server.js:419-431`
    ([conflate.py:525-526](../../src/osm/conflate.py#L525-L526)).
 4. **If no candidate cleared the Hausdorff filter, try the fallback.**
    This happens either when STRtree returns no candidates within
-   `BUFFER_M` or: rarely with the directed metric: when all in-buffer
-   candidates have `haus > BUFFER_M` ([conflate.py:497-508,
+   `BUFFER_M`, or (rarely with the directed metric) when all
+   in-buffer candidates have `haus > BUFFER_M` ([conflate.py:497-508,
    528-538](../../src/osm/conflate.py#L497-L538)).
    `_fallback_score()` ([conflate.py:545](../../src/osm/conflate.py#L545))
    samples three OSM vertices (first / middle / last), looks up each one's
@@ -117,7 +117,7 @@ diagnostic baselines emit all eight.
 
 ```mermaid
 ---
-title: One OSM way through the runtime matcher (match())
+title: "One OSM way through the runtime matcher (match())"
 ---
 flowchart TD
     Way["OSM way<br/>(name + geometry)"]
@@ -155,7 +155,7 @@ flowchart TD
     class NONE gate
 ```
 
-*What this shows: the runtime matcher's actual outcomes: every way ends
+*What this shows: the runtime matcher's actual outcomes. Every way ends
 up with either a `cagis_match` dict (with one of four downstream
 treatments based on `confidence` and `via_fallback`) or `cagis_match =
 None`. The only path to auto-submit is the in-buffer scoring path with
