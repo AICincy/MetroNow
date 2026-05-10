@@ -37,7 +37,7 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
     `cache.py`, `auth.py` (OAuth 2.0 + PKCE; see
     [`docs/explainers/oauth-pkce-flow.md`](docs/explainers/oauth-pkce-flow.md))
 - `web/` — Express.js server + vanilla HTML/CSS/JS frontend (MetroNow Atlas
-  redesign)
+  redesign). See [`docs/web-architecture.md`](docs/web-architecture.md).
   - `web/server.js` — REST API on port 3000, shells out to Python via
     `child_process`
   - `web/public/index.html` — single-page UI with overlay panels (Inventory,
@@ -46,7 +46,9 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
   - `web/public/js/atlas-extras.js` — theme/density/accent/weight tweaks
   - `web/public/css/atlas-supplement.css` — components added by atlas.js
   - `web/public/.legacy/` — original UI preserved for rollback
-- `tests/` — pytest suite (**372 passing** as of `9836bb9`)
+- `tests/` — pytest suite; see
+  [`docs/tests-overview.md`](docs/tests-overview.md) for layout, what's
+  tested vs deliberately not, and how to add a test.
 - `osm-audit-{zone}/` — generated outputs per zone (gitignored): raw Overpass
   cache under `data/`, `scan-results.json`, `reports/`, `csv/`
 - `docs/community-prep/` — paste-ready community-gating drafts:
