@@ -39,7 +39,7 @@ Seven pipeline stages, each implemented as a module under `src/osm/`:
 
 ```mermaid
 ---
-title: MetroNow audit pipeline
+title: "MetroNow audit pipeline"
 ---
 flowchart LR
     Overpass["Overpass API<br/>(harvest by zone bbox)"]

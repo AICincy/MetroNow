@@ -11,7 +11,7 @@ or dismiss each finding.
 
 Wraps `osm.maproulette`:
 
-1. Filter classified ways via `unverified_class_a_ways()` — keeps
+1. Filter classified ways via `unverified_class_a_ways()`: keeps
    Class A/AB ways whose `cagis_match.confidence < 0.85` (so they
    don't duplicate the auto-submit pool).
 2. Generate per-task Markdown instruction with three CAGIS branches
@@ -40,12 +40,12 @@ The output is uploaded via the MapRoulette web UI or `mr-cli`.
 
 ## Related skills
 
-- [`zone-audit`](zone-audit.md) — produces the input
+- [`zone-audit`](zone-audit.md): produces the input
   `scan-results.json`.
-- [`cagis-conflate`](cagis-conflate.md) — supplies the
+- [`cagis-conflate`](cagis-conflate.md): supplies the
   `cagis_match.confidence` filter that this skill uses to skip
   auto-submittable ways.
-- [`changeset-submit`](changeset-submit.md) — handles the OTHER half
+- [`changeset-submit`](changeset-submit.md): handles the OTHER half
   (auto-submittable ways at confidence ≥ 0.85). MapRoulette is the
   community-review channel; changeset-submit is the mechanical-fix
   channel.

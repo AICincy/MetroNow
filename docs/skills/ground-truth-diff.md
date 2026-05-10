@@ -7,19 +7,19 @@ TIGER residuals).
 
 ## What it does
 
-TIGER 2024 is the public-domain fallback ground-truth — less current
+TIGER 2024 is the public-domain fallback ground-truth: less current
 and coarser-class than CAGIS, but covers every road and every county.
 This skill runs `src/osm/tiger2024.py` to:
 
 1. Fetch the TIGER 2024 county features for the zone.
 2. Match each OSM way against TIGER linework via name + geometry.
 3. Surface drift cases:
-   - **Import drift** — OSM way has shifted from TIGER's geometry
+   - **Import drift**: OSM way has shifted from TIGER's geometry
      (real edits applied since import; usually fine, sometimes regressions).
-   - **New roads** — TIGER 2024 has a road OSM doesn't.
-   - **Name-field artifacts** — `Mac Donald` instead of `MacDonald`,
+   - **New roads**: TIGER 2024 has a road OSM doesn't.
+   - **Name-field artifacts**: `Mac Donald` instead of `MacDonald`,
      `O Toole` instead of `O'Toole`, etc.; TIGER's apostrophe-stripping
-     bugs preserved by the 2007–2008 import.
+     bugs preserved by the 2007-2008 import.
 
 Fixes from TIGER are always `requires_human_review=True` because TIGER
 is less current than CAGIS.
@@ -40,9 +40,9 @@ is less current than CAGIS.
 
 ## Related skills
 
-- [`cagis-conflate`](cagis-conflate.md) — the primary ground-truth
+- [`cagis-conflate`](cagis-conflate.md): the primary ground-truth
   layer; this skill is the fallback when CAGIS has no candidate.
-- [`zone-audit`](zone-audit.md) — produces the OSM side of the diff.
+- [`zone-audit`](zone-audit.md): produces the OSM side of the diff.
 
 ## See also
 

@@ -10,20 +10,20 @@ file in that directory.
 Diagnoses missing-middle gaps in MetroNow docs and rewrites sections
 using a fixed template:
 
-1. **Definition first** — every load-bearing term gets an inline
+1. **Definition first**: every load-bearing term gets an inline
    sentence on first use.
-2. **WHY before WHAT** — what would happen without this rule? what
+2. **WHY before WHAT**: what would happen without this rule? what
    problem does it solve?
-3. **Bridge steps** — numbered list with one-line rationale per step.
-4. **Load-bearing diagram** — Mermaid block when 3+ entities, a state
+3. **Bridge steps**: numbered list with one-line rationale per step.
+4. **Load-bearing diagram**: Mermaid block when 3+ entities, a state
    machine, a decision tree, or a time-ordered exchange. Rendered
    natively by GitHub.
-5. **`file:line` citations** — every behavioral claim links to code.
+5. **`file:line` citations**: every behavioral claim links to code.
 6. **Cap at one screen** of scrolling per concept; split if it grows.
 
 Audience is **future-you** picking the project back up cold and
 **fresh AI sessions** that need to bootstrap context without
-re-deriving from `src/osm/`. Not for new contributors (none exist) —
+re-deriving from `src/osm/`. Not for new contributors (none exist):
 skip the welcome-aboard tone.
 
 ## When to invoke
@@ -42,7 +42,7 @@ A new file at `docs/explainers/<topic>.md` with:
 - `## What this is`, `## How it works`, `## The flow, visually`,
   `## Edge cases and gotchas`, `## Code references`, `## See also`.
 - A Mermaid diagram (if topic warrants one).
-- 10–20 `file:line` citations.
+- 10-20 `file:line` citations.
 
 Plus a one-line cross-link added to `CLAUDE.md` from the corresponding
 dense section, and an entry added to `docs/explainers/README.md`'s
@@ -55,9 +55,9 @@ Index.
 
 ## See also
 
-- [`SKILL.md`](../../.claude/skills/metronow-explainer/SKILL.md) —
+- [`SKILL.md`](../../.claude/skills/metronow-explainer/SKILL.md):
   canonical source, including the "fix protocol" template, Mermaid
   house style, and topic-backlog tracking.
-- [`docs/explainers/`](../explainers/) — every output of this skill.
-- [`docs/explainers/README.md`](../explainers/README.md) — the Index
+- [`docs/explainers/`](../explainers/): every output of this skill.
+- [`docs/explainers/README.md`](../explainers/README.md): the Index
   this skill maintains.

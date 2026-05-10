@@ -1,4 +1,4 @@
-# Transit App quota — preserving 1,500 free calls/month against ToS
+# Transit App quota: preserving 1,500 free calls/month against ToS
 
 **Summary.** The Transit App API's free tier allows **1,500 calls per
 month** and **5 calls per minute**. The Transit client is built around
@@ -10,7 +10,7 @@ monthly counter, and a hard refusal at 80% quota
 brownouts at month-end. Three Terms-of-Service obligations are
 load-bearing: the **"Powered by Transit"** attribution string, the
 project User-Agent, and the 10-business-day pre-release notice email
-to `apis@transitapp.com`. Fail-open by design — any quota or network
+to `apis@transitapp.com`. Fail-open by design: any quota or network
 error returns `None` and the main scan/fix path keeps running.
 
 ---
@@ -34,11 +34,11 @@ month. Three implications drive the design:
 - **Concurrent processes can't share a counter naively.** The CLI
   and the web server can both invoke the client at the same time;
   unsynchronized counter writes would corrupt the count and lead to
-  *quota underruns* — calling more than the quota allows. That's a
+  *quota underruns*: calling more than the quota allows. That's a
   ToS violation, not just a bug.
 - **The maintainer should never see a "quota exceeded" error from
   Transit.** The client refuses internally at 80% so the project
-  builds in headroom for the unexpected — a busy day at month-end,
+  builds in headroom for the unexpected: a busy day at month-end,
   a script in a tight loop, anything that would otherwise spike
   usage to 100%+.
 
@@ -88,7 +88,7 @@ specific way the project could lose quota or break ToS.
 
 ```mermaid
 ---
-title: One Transit API call — six guard layers + ToS obligations
+title: "One Transit API call: six guard layers + ToS obligations"
 ---
 flowchart TD
     Caller["caller wants Transit data<br/>(e.g. nearby_stops)"]
@@ -162,7 +162,7 @@ exactly." Three reasons not to:
   generously beyond any reasonable disagreement.
 
 The 80% number is a conservative default. A future paid tier or quota
-uplift would reset the math — change `MONTHLY_QUOTA_FREE_TIER` and
+uplift would reset the math: change `MONTHLY_QUOTA_FREE_TIER` and
 `QUOTA_BUDGET_FRACTION` in `transit.py`; nothing else.
 
 ## Three ToS obligations the calling code MUST honor
@@ -201,7 +201,7 @@ The full obligation list and runbook are in
   the empirical sweet spot.
 - **The fail-open posture is intentional.** A scan with Transit
   unavailable produces a complete result without Transit-specific
-  enrichments. Don't add code that raises on Transit failures —
+  enrichments. Don't add code that raises on Transit failures:
   it'll cascade into scan failures.
 - **`_quota_exhausted()` is checked before EVERY call.** Not just
   the first one in a run. A long-running scan that crosses 80%
@@ -221,49 +221,49 @@ The full obligation list and runbook are in
 
 ## Code references
 
-- [`src/osm/transit.py:1-34`](../../src/osm/transit.py#L1-L34) —
+- [`src/osm/transit.py:1-34`](../../src/osm/transit.py#L1-L34):
   module docstring with quota numbers and the three ToS obligations.
-- [`src/osm/transit.py:56`](../../src/osm/transit.py#L56) —
+- [`src/osm/transit.py:56`](../../src/osm/transit.py#L56):
   `TRANSIT_BASE_URL`.
-- [`src/osm/transit.py:59-61`](../../src/osm/transit.py#L59-L61) —
+- [`src/osm/transit.py:59-61`](../../src/osm/transit.py#L59-L61):
   `RATE_LIMIT_PER_MINUTE = 5`, `MONTHLY_QUOTA_FREE_TIER = 1500`,
   `QUOTA_BUDGET_FRACTION = 0.80`.
-- [`src/osm/transit.py:64`](../../src/osm/transit.py#L64) —
+- [`src/osm/transit.py:64`](../../src/osm/transit.py#L64):
   `AUTH_HEADER = "apiKey"` (per Transit's API doc).
-- [`src/osm/transit.py:67-69`](../../src/osm/transit.py#L67-L69) —
-  `USER_AGENT` — required by ToS.
-- [`src/osm/transit.py:73`](../../src/osm/transit.py#L73) —
-  `POWERED_BY_TRANSIT_ATTRIBUTION` — required attribution string.
-- [`src/osm/transit.py:78-92`](../../src/osm/transit.py#L78-L92) —
+- [`src/osm/transit.py:67-69`](../../src/osm/transit.py#L67-L69):
+  `USER_AGENT`: required by ToS.
+- [`src/osm/transit.py:73`](../../src/osm/transit.py#L73):
+  `POWERED_BY_TRANSIT_ATTRIBUTION`: required attribution string.
+- [`src/osm/transit.py:78-92`](../../src/osm/transit.py#L78-L92):
   `TTL_BY_ENDPOINT` (13 endpoints, TTLs from 60s to 7 days).
-- [`src/osm/transit.py:95-97`](../../src/osm/transit.py#L95-L97) —
+- [`src/osm/transit.py:95-97`](../../src/osm/transit.py#L95-L97):
   `KEY_FILE`, `USAGE_FILE`, `CACHE_DIR` paths under `~/.config/osm/`.
-- [`src/osm/transit.py:104-110`](../../src/osm/transit.py#L104-L110) —
+- [`src/osm/transit.py:104-110`](../../src/osm/transit.py#L104-L110):
   `TransitClientStatus` dataclass.
-- [`src/osm/transit.py:116`](../../src/osm/transit.py#L116) —
+- [`src/osm/transit.py:116`](../../src/osm/transit.py#L116):
   `_load_api_key()`.
-- [`src/osm/transit.py:146`](../../src/osm/transit.py#L146) —
+- [`src/osm/transit.py:146`](../../src/osm/transit.py#L146):
   `_rate_limit_pace()`.
-- [`src/osm/transit.py:166`](../../src/osm/transit.py#L166) —
+- [`src/osm/transit.py:166`](../../src/osm/transit.py#L166):
   `_current_month_key()`.
-- [`src/osm/transit.py:194-201`](../../src/osm/transit.py#L194-L201) —
+- [`src/osm/transit.py:194-201`](../../src/osm/transit.py#L194-L201):
   `_budget_cap()`, `_quota_exhausted()`.
-- [`src/osm/transit.py:204-234`](../../src/osm/transit.py#L204-L234) —
-  `_increment_usage()` — `fcntl.flock`-guarded counter.
-- [`src/osm/transit.py:241`](../../src/osm/transit.py#L241) —
-  `status()` — public health check used by `osm transit-status`.
-- [`docs/community-prep/05-transit-api-compliance.md`](../community-prep/05-transit-api-compliance.md) —
+- [`src/osm/transit.py:204-234`](../../src/osm/transit.py#L204-L234):
+  `_increment_usage()`: `fcntl.flock`-guarded counter.
+- [`src/osm/transit.py:241`](../../src/osm/transit.py#L241):
+  `status()`: public health check used by `osm transit-status`.
+- [`docs/community-prep/05-transit-api-compliance.md`](../community-prep/05-transit-api-compliance.md):
   full ToS obligation list and maintainer's runbook.
 
 ## See also
 
-- [`CLAUDE.md` § Layout / External feeds](../../CLAUDE.md) —
+- [`CLAUDE.md` § Layout / External feeds](../../CLAUDE.md):
   `transit.py` is listed as the Transit App client.
-- [`docs/explainers/conventions.md`](conventions.md) — covers the
+- [`docs/explainers/conventions.md`](conventions.md): covers the
   `fcntl.flock` rule that makes the quota counter safe under
   concurrent access.
-- [`docs/explainers/phase-status.md`](phase-status.md) — the Transit
+- [`docs/explainers/phase-status.md`](phase-status.md): the Transit
   App quota tooling is shipped as a cross-cutting workstream; the
   ToS-compliance email is mentioned as awaiting reply.
-- [Transit App API docs](https://api-doc.transitapp.com/v4.html) —
+- [Transit App API docs](https://api-doc.transitapp.com/v4.html):
   the upstream reference.

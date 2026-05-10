@@ -1,7 +1,7 @@
 # Skill: `changeset-submit`
 
 **Summary.** Submit corrections to the OSM API v0.6 with full community
-compliance — proper changeset tags (mechanical=yes, bot=yes,
+compliance: proper changeset tags (mechanical=yes, bot=yes,
 description, cagis:attribution), size limits (≤500 elements per
 community norm, hard cap 10,000), rate-limit awareness, and
 `--dry-run` support that prints the exact changeset XML without
@@ -11,7 +11,7 @@ posting.
 
 Drives `osm.changeset.submit_fixes()`:
 
-1. Verify pre-flight — `osm preflight --zone <key>` must be clean
+1. Verify pre-flight: `osm preflight --zone <key>` must be clean
    (skill refuses to submit on FAIL; warns on WARN unless `--strict`).
 2. Open a new changeset with the seven canonical tags from
    `changeset.py:98-111` (comment, source, created_by,
@@ -30,7 +30,7 @@ scale gradually toward the ~500-element community norm.
 
 - "Submit" / "push corrections" / "fix" / "create changeset"
 - "Apply corrections to OpenStreetMap"
-- "Dry run" — explicit no-network invocation
+- "Dry run": explicit no-network invocation
 - After Phase 1 community gating is complete (per `community-prep`).
 
 ## What it produces
@@ -44,16 +44,16 @@ scale gradually toward the ~500-element community norm.
 
 ## Related skills
 
-- [`community-prep`](community-prep.md) — must be complete before this
+- [`community-prep`](community-prep.md): must be complete before this
   skill submits.
-- [`cagis-conflate`](cagis-conflate.md) — only ways with
+- [`cagis-conflate`](cagis-conflate.md): only ways with
   `cagis_match.confidence ≥ 0.85` are eligible for this skill's queue.
-- [`osmcha-monitor`](osmcha-monitor.md) — the post-submission watchdog.
+- [`osmcha-monitor`](osmcha-monitor.md): the post-submission watchdog.
 
 ## See also
 
 - [`SKILL.md`](../../.claude/skills/changeset-submit/SKILL.md)
 - [`docs/explainers/osm-community-gating.md`](../explainers/osm-community-gating.md)
-  — the seven changeset tags and what each does.
+ : the seven changeset tags and what each does.
 - [`docs/explainers/preflight-checks.md`](../explainers/preflight-checks.md)
-  — the gate this skill respects.
+ : the gate this skill respects.

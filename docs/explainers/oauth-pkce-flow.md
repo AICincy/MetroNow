@@ -1,9 +1,9 @@
-# OAuth 2.0 + PKCE flow — how the `_cincyimport` account authenticates to OSM
+# OAuth 2.0 + PKCE flow: how the `_cincyimport` account authenticates to OSM
 
 **Summary.** Submitting changesets to OpenStreetMap requires an OAuth
 2.0 access token. The MetroNow client uses the **Authorization Code
 flow with PKCE (RFC 7636)** and an **out-of-band (OOB) redirect URI**
-(`urn:ietf:wg:oauth:2.0:oob`) — the user authorizes in a browser, OSM
+(`urn:ietf:wg:oauth:2.0:oob`): the user authorizes in a browser, OSM
 displays a code, the user pastes it into the CLI, the client
 exchanges code+verifier for a token. PKCE is the actual security
 mechanism (binds the code exchange to a secret never sent to the
@@ -21,7 +21,7 @@ permission to act on OSM on their behalf, without giving the CLI
 their password. The "Authorization Code flow" is the standard OAuth
 sub-flow for confidential clients; the "+ PKCE" extension (Proof Key
 for Code Exchange, RFC 7636) makes it safe for clients that can't
-keep a `client_secret` truly secret — including CLI tools where the
+keep a `client_secret` truly secret: including CLI tools where the
 secret would have to ship in source.
 
 The **OOB redirect URI** (`urn:ietf:wg:oauth:2.0:oob`) is an OAuth
@@ -37,7 +37,7 @@ Why this combination:
   OSM password to touch the CLI, which is the thing OAuth exists to
   avoid.
 - **PKCE (not client_secret alone)**: a CLI's `client_secret` is not
-  actually secret — anyone with the source can read it. PKCE replaces
+  actually secret: anyone with the source can read it. PKCE replaces
   the secret with a per-flow verifier generated client-side and
   discarded after exchange. OSM accepts both PKCE and `client_secret`
   in parallel; we send both, and PKCE is the one doing real work.
@@ -48,10 +48,10 @@ Why this combination:
 
 ## How it works
 
-The flow has six steps. Steps 1–4 happen in
+The flow has six steps. Steps 1-4 happen in
 [`auth.py:build_auth_url()`](../../src/osm/auth.py#L70) and the
 interactive
-[`login()`](../../src/osm/auth.py#L130) wrapper; steps 5–6 happen in
+[`login()`](../../src/osm/auth.py#L130) wrapper; steps 5-6 happen in
 [`exchange_code()`](../../src/osm/auth.py#L104).
 
 1. **Generate the PKCE verifier and challenge.** `_generate_pkce()`
@@ -67,7 +67,7 @@ interactive
    ([auth.py:92-101](../../src/osm/auth.py#L92-L101)).
 3. **Open the browser for user consent.** `login()`
    ([auth.py:130-156](../../src/osm/auth.py#L130-L156)) calls
-   `webbrowser.open(url)` and *also* prints the URL to stdout — the
+   `webbrowser.open(url)` and *also* prints the URL to stdout: the
    print is required so that the user can fall back to manual paste
    when the browser doesn't auto-launch (headless servers, broken
    `BROWSER` env, WSL).
@@ -93,7 +93,7 @@ interactive
 
 ```mermaid
 ---
-title: OAuth 2.0 Authorization Code + PKCE with OOB redirect
+title: "OAuth 2.0 Authorization Code + PKCE with OOB redirect"
 ---
 sequenceDiagram
     participant U as User
@@ -109,7 +109,7 @@ sequenceDiagram
     B->>OSM: GET /oauth2/authorize<br/>?client_id&redirect_uri=urn:...:oob<br/>&code_challenge&code_challenge_method=S256
     OSM->>U: Login + consent screen
     U->>OSM: Approve
-    OSM->>B: Display authorization code<br/>(no redirect — OOB)
+    OSM->>B: Display authorization code<br/>(no redirect, OOB pattern)
     U->>CLI: Paste code at prompt<br/>auth.py:150
     CLI->>OSM: POST /oauth2/token<br/>grant_type=authorization_code<br/>code, code_verifier, redirect_uri<br/>auth.py:104
     Note over OSM: Verify sha256(verifier) ==<br/>previously-presented<br/>code_challenge
@@ -122,7 +122,7 @@ sequenceDiagram
     end
 ```
 
-*What this shows: the PKCE verifier never traverses the browser — it
+*What this shows: the PKCE verifier never traverses the browser. It
 goes directly from the CLI's first call (where it's hashed into the
 challenge) to the CLI's second call (where it's sent in clear to the
 token endpoint). An attacker who steals the auth code (e.g., from
@@ -133,7 +133,7 @@ expire tokens automatically; refresh is manual via
 suspenders; PKCE alone is sufficient), and the credentials.json
 file format.*
 
-## Why PKCE — and why `state` is unenforced
+## Why PKCE: and why `state` is unenforced
 
 The `state` parameter exists to prevent CSRF on redirect-based OAuth
 flows: the client generates a random `state`, the authorization
@@ -155,7 +155,7 @@ having intercepted the Python process's memory.
 
 A future migration to a localhost callback redirect URI would let
 the server validate `state` properly and add belt-and-suspenders
-protection. Until then, PKCE is sufficient — and it's already what
+protection. Until then, PKCE is sufficient: and it's already what
 RFC 7636 is for.
 
 ## Edge cases and gotchas
@@ -192,52 +192,52 @@ RFC 7636 is for.
   clone of the repo on a fresh machine requires `osm auth login`
   first.
 - **The OAuth scope `write_api read_prefs` is what changeset
-  submission needs.** `write_api` is the load-bearing scope —
+  submission needs.** `write_api` is the load-bearing scope:
   removing it makes the token submission-incapable. `read_prefs` is
   used by `osm auth status` to display the authenticated username.
   Don't widen the scope; don't narrow it.
 
 ## Code references
 
-- [`src/osm/auth.py:1`](../../src/osm/auth.py#L1) — module
+- [`src/osm/auth.py:1`](../../src/osm/auth.py#L1): module
   one-liner: "OAuth 2.0 Authorization Code + PKCE flow for
   OpenStreetMap API (OOB redirect)."
-- [`src/osm/auth.py:24-28`](../../src/osm/auth.py#L24-L28) —
+- [`src/osm/auth.py:24-28`](../../src/osm/auth.py#L24-L28):
   `_generate_pkce()`: verifier = `secrets.token_urlsafe(64)`,
   challenge = `base64url(sha256(verifier))`.
-- [`src/osm/auth.py:31-42`](../../src/osm/auth.py#L31-L42) —
+- [`src/osm/auth.py:31-42`](../../src/osm/auth.py#L31-L42):
   `load_credentials()`: reads `credentials.json`, validates
   `client_id` is present, raises with paste-ready template on
   missing-file.
-- [`src/osm/auth.py:55-60`](../../src/osm/auth.py#L55-L60) —
+- [`src/osm/auth.py:55-60`](../../src/osm/auth.py#L55-L60):
   `save_token()`: writes JSON, chmod 0600 on POSIX.
-- [`src/osm/auth.py:70-101`](../../src/osm/auth.py#L70-L101) —
+- [`src/osm/auth.py:70-101`](../../src/osm/auth.py#L70-L101):
   `build_auth_url()`: composes OAuth URL with all PKCE params; the
   docstring explains why `state` is unenforced.
-- [`src/osm/auth.py:104-127`](../../src/osm/auth.py#L104-L127) —
+- [`src/osm/auth.py:104-127`](../../src/osm/auth.py#L104-L127):
   `exchange_code()`: POSTs to token endpoint, calls `save_token()`.
-- [`src/osm/auth.py:130-156`](../../src/osm/auth.py#L130-L156) —
+- [`src/osm/auth.py:130-156`](../../src/osm/auth.py#L130-L156):
   `login()`: interactive CLI flow with `webbrowser.open()` plus
   manual-paste fallback.
-- [`src/osm/config.py`](../../src/osm/config.py) — `CREDENTIALS_PATH`,
+- [`src/osm/config.py`](../../src/osm/config.py): `CREDENTIALS_PATH`,
   `TOKEN_PATH`, `OAUTH_REDIRECT_URI` (the OOB URN), `OSM_AUTH_URL`,
   `OSM_TOKEN_URL`.
-- `.github/codeql/codeql-config.yml` — the suppression for alert #3
+- `.github/codeql/codeql-config.yml`: the suppression for alert #3
   (false-positive `py/clear-text-logging-sensitive-data` at
   auth.py:147).
 
 ## See also
 
-- [`CLAUDE.md` § Paths](../../CLAUDE.md) — `OAuth: OOB redirect
+- [`CLAUDE.md` § Paths](../../CLAUDE.md): `OAuth: OOB redirect
   (urn:ietf:wg:oauth:2.0:oob), credentials at
   ~/.config/osm/credentials.json, token at ~/.config/osm/token.json`.
-- [`docs/explainers/osm-community-gating.md`](osm-community-gating.md) —
+- [`docs/explainers/osm-community-gating.md`](osm-community-gating.md):
   why the `_cincyimport` account exists and what scope it needs.
-- [`docs/explainers/phase-status.md`](phase-status.md) — the OAuth
+- [`docs/explainers/phase-status.md`](phase-status.md): the OAuth
   token requirement is part of the Phase 1 pre-flight checklist.
-- [RFC 7636 — PKCE](https://datatracker.ietf.org/doc/html/rfc7636) —
+- [RFC 7636: PKCE](https://datatracker.ietf.org/doc/html/rfc7636):
   the PKCE specification.
-- [RFC 6749 — OAuth 2.0](https://datatracker.ietf.org/doc/html/rfc6749) —
+- [RFC 6749: OAuth 2.0](https://datatracker.ietf.org/doc/html/rfc6749):
   authorization code flow + OOB redirect convention.
-- [OSM OAuth 2.0 docs](https://wiki.openstreetmap.org/wiki/OAuth) —
+- [OSM OAuth 2.0 docs](https://wiki.openstreetmap.org/wiki/OAuth):
   OSM-specific endpoint information.

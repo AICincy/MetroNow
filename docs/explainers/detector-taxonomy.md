@@ -1,12 +1,12 @@
-# Detector taxonomy — why two parallel tracks
+# Detector taxonomy: why two parallel tracks
 
 **Summary.** MetroNow's `classify()` function emits two streams of defects
 from a single Overpass response. The **classifier track** (Class A / AB / B /
 C, plus node-disconnect gaps) produces candidates that may be auto-submitted
 to OSM as mechanical edits. The **detector track** (eight rider-impact
 checks) produces findings that ship to the UI for human triage and **never**
-flow into the auto-submit pool. The split is the project's safety perimeter
-— violating it is what gets a mechanical-edit account banned.
+flow into the auto-submit pool. The split is the project's safety
+perimeter, and violating it is what gets a mechanical-edit account banned.
 
 ---
 
@@ -17,11 +17,11 @@ graph: a missing road, a wrongly-tagged one-way, a misplaced bus stop, a
 broken turn restriction, a residential street that should be an arterial.
 Defects come in two flavors:
 
-1. **Mechanically correctable** — the OSM tags are demonstrably wrong
+1. **Mechanically correctable**: the OSM tags are demonstrably wrong
    against an authoritative external source (CAGIS centerlines, TIGER
    2024, OSM convention). A bot can propose the fix without judgment
    because the fix is literally "set tag X to value Y from source Z."
-2. **Rider-impact, requires human judgment** — the tags may be wrong, or
+2. **Rider-impact, requires human judgment**: the tags may be wrong, or
    may be intentional, or fixing them might require restructuring an OSM
    relation. The defect affects routing, but the *fix* is not mechanical.
 
@@ -51,7 +51,7 @@ read different keys:
    annotations to produce three layers of fixes (heuristic →
    CAGIS-verified → TIGER-verified). It is the only path to
    `osm.changeset` (the OSM API submitter). `gaps` does **not** flow
-   through this path — gap entries are topology issues without a
+   through this path: gap entries are topology issues without a
    single-way fix shape and ship to MapRoulette / human review only.
 3. **Detector outputs:** `extra_findings`, populated at
    [classify.py:269-323](../../src/osm/classify.py#L269-L323) via eight
@@ -76,7 +76,7 @@ read different keys:
 
 ```mermaid
 ---
-title: classify() dispatches one Overpass response into two tracks
+title: "classify() dispatches one Overpass response into two tracks"
 ---
 flowchart TD
     Overpass["Overpass API response<br/>(ways + nodes + relations)"]
@@ -138,9 +138,9 @@ flowchart TD
 *What this shows: every defect originates in `classify()`, but the two
 output streams pass through different downstream modules. The auto-submit
 edge from `Review` to `Changeset` only fires for CAGIS-verified
-classifier-track fixes — there is no path from `DetectorTrack` to
+classifier-track fixes: there is no path from `DetectorTrack` to
 `Changeset`. What this hides: the four-step CAGIS conflation matcher state
-(F1–F4 buckets, directed-Hausdorff scoring) — see
+(F1 through F4 buckets, directed-Hausdorff scoring): see
 `docs/explainers/conflation-matcher.md` once that exists.*
 
 ## Why this split is load-bearing
@@ -159,7 +159,7 @@ auto-submitted:
   be that the "Pike" suffix is historic and the road really is residential
   now. CAGIS centerlines won't tell you which.
 - `broken_turn_restrictions` operates on OSM relations. Editing relations
-  mechanically is a known footgun — a bot can corrupt the routing graph
+  mechanically is a known footgun: a bot can corrupt the routing graph
   for a wide area in one bad changeset.
 
 The classifier track avoids these traps because every Class A/AB/B fix is
@@ -171,11 +171,11 @@ admins inspecting a changeset.
 
 - **Class C is not "all clear."** Class C is "we found no immediate
   defect signal." It does not mean the way is correct. It means the
-  classifier had no signal — TIGER residuals tagged `highway=residential`
+  classifier had no signal: TIGER residuals tagged `highway=residential`
   with no oneway, no shared name, no gap. Spot-checks against CAGIS still
   catch defects in Class C ways.
 - **Gaps are classifier-track but never auto-submitted.** `gaps` are
-  proposed disconnects — they require a topology edit (move a node or
+  proposed disconnects: they require a topology edit (move a node or
   add a connection), and topology edits are not in the mechanical-fix
   shape. They surface in the UI for MapRoulette task generation.
 - **`extra_findings` can carry a `near_note` annotation.** When `osm_notes`
@@ -195,42 +195,42 @@ admins inspecting a changeset.
 
 ## Code references
 
-- [`src/osm/classify.py:99`](../../src/osm/classify.py#L99) —
+- [`src/osm/classify.py:99`](../../src/osm/classify.py#L99):
   `classify()` entry point; both tracks dispatched here.
-- [`src/osm/classify.py:88-96`](../../src/osm/classify.py#L88-L96) —
+- [`src/osm/classify.py:88-96`](../../src/osm/classify.py#L88-L96):
   `_safe_run` detector wrapper.
-- [`src/osm/classify.py:269-323`](../../src/osm/classify.py#L269-L323) —
+- [`src/osm/classify.py:269-323`](../../src/osm/classify.py#L269-L323):
   the eight `extra_findings.extend(_safe_run(...))` calls.
-- [`src/osm/detectors.py`](../../src/osm/detectors.py) — eight
+- [`src/osm/detectors.py`](../../src/osm/detectors.py): eight
   rider-impact detector implementations (one `def detect_*` per
   finding kind, lines 118 / 153 / 338 / 375 / 407 / 443 / 475 / 596).
-- [`src/osm/gaps.py:9`](../../src/osm/gaps.py#L9) —
+- [`src/osm/gaps.py:9`](../../src/osm/gaps.py#L9):
   `detect_gaps()` haversine-endpoint detector for the classifier track.
-- [`src/osm/review.py:1-24`](../../src/osm/review.py#L1-L24) — module
+- [`src/osm/review.py:1-24`](../../src/osm/review.py#L1-L24): module
   docstring describing the three-layer fix-proposal stack (heuristic /
   CAGIS-verified / TIGER-verified).
-- [`src/osm/review.py:112`](../../src/osm/review.py#L112) —
+- [`src/osm/review.py:112`](../../src/osm/review.py#L112):
   `proposed_fixes_for_way()` implementation; called per way over
   `all_ways`, reads each way's `cagis_match` / `tiger_match`
   annotations, never reads `extra_findings`.
-- [`src/osm/conflate.py`](../../src/osm/conflate.py) — directed-Hausdorff
+- [`src/osm/conflate.py`](../../src/osm/conflate.py): directed-Hausdorff
   matcher; supplements the classifier track only.
-- [`web/server.js:386`](../../web/server.js#L386) — `extra_findings`
+- [`web/server.js:386`](../../web/server.js#L386): `extra_findings`
   persisted to `scan-results.json` inside the `/api/scan` endpoint.
-- [`web/server.js:453`](../../web/server.js#L453) — `/api/results/:zone`
+- [`web/server.js:453`](../../web/server.js#L453): `/api/results/:zone`
   REST handler that returns the persisted JSON (including
   `extra_findings`) to the frontend.
-- [`web/public/index.html:1521`](../../web/public/index.html#L1521) —
-  "Rider-impact findings" panel — the UI surface for `extra_findings`.
+- [`web/public/index.html:1521`](../../web/public/index.html#L1521):
+  "Rider-impact findings" panel: the UI surface for `extra_findings`.
 
 ## See also
 
-- [`CLAUDE.md` § Detector taxonomy](../../CLAUDE.md) — the dense
+- [`CLAUDE.md` § Detector taxonomy](../../CLAUDE.md): the dense
   source statement this explainer decompresses.
-- `docs/community-prep/01-wiki-page.md` — the wiki page draft that
+- `docs/community-prep/01-wiki-page.md`: the wiki page draft that
   declares to OSM what mechanical edits this account performs (and,
   by omission, what it does not).
-- `.claude/skills/maproulette-challenge/SKILL.md` — how detector-track
+- `.claude/skills/maproulette-challenge/SKILL.md`: how detector-track
   findings get crowdsourced when their false-positive rate exceeds 5%.
 - [OSM Automated Edits code of conduct](https://wiki.openstreetmap.org/wiki/Automated_Edits_code_of_conduct)
-  — the OSM-side policy that the dual-track design implements.
+ : the OSM-side policy that the dual-track design implements.
