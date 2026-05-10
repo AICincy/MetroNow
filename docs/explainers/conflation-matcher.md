@@ -34,14 +34,22 @@ The matcher uses three signals, all normalized to [0.0, 1.0]:
 A match's `confidence` is the weighted sum. Two thresholds split the
 confidence range into three operational bands:
 
-- `confidence ≥ HIGH_CONFIDENCE (0.85)` → auto-submittable.
-- `REVIEW_CONFIDENCE (0.6) ≤ confidence < 0.85` → human-review queue.
-- `confidence < 0.6` → no match attached; bucketed for diagnostics.
+- `confidence ≥ HIGH_CONFIDENCE (0.85)` → auto-submittable by
+  `osm.review.proposed_fixes_for_way`.
+- `REVIEW_CONFIDENCE (0.6) ≤ confidence < 0.85` → surfaces in the
+  human-review queue.
+- `confidence < 0.6` → the `cagis_match` dict is still attached to the
+  way (the matcher emits a result for any candidate that clears
+  Hausdorff, regardless of weighted score), but downstream
+  `osm.review` filters it out of both the auto-submit and human-review
+  queues. The `diagnose_match()` baseline pass classifies these into
+  `F2_NAME_FAIL` / `F4_DIRECTION_DRAG` / `MIXED_LOW` for diff tracking.
 
-The bands are not arbitrary. They are the project's *epistemic gate*: any
-edit submitted to OSM as a mechanical edit must clear 0.85 against an
-authoritative external source. Anything weaker requires a human looking at
-it. This is what keeps the `_cincyimport` account defensible to OSM admins.
+The thresholds gate the *use* of the match, not whether the match is
+recorded. They are the project's *epistemic gate*: any edit submitted to
+OSM as a mechanical edit must clear 0.85 against an authoritative
+external source. Anything weaker requires a human looking at it. This
+is what keeps the `_cincyimport` account defensible to OSM admins.
 
 ## How it works
 
@@ -60,12 +68,16 @@ Per-way matching, called once per scan from `web/server.js:419-431`
    ([conflate.py:520-524](../../src/osm/conflate.py#L520-L524)).
 3. **Pick the best candidate.** Highest confidence wins
    ([conflate.py:525-526](../../src/osm/conflate.py#L525-L526)).
-4. **If no in-buffer candidates, try the fallback.**
+4. **If no candidate cleared the Hausdorff filter, try the fallback.**
+   This happens either when STRtree returns no candidates within
+   `BUFFER_M` or — rarely with the directed metric — when all in-buffer
+   candidates have `haus > BUFFER_M` ([conflate.py:497-508,
+   528-538](../../src/osm/conflate.py#L497-L538)).
    `_fallback_score()` ([conflate.py:545](../../src/osm/conflate.py#L545))
    samples three OSM vertices (first / middle / last), looks up each one's
-   absolute nearest CAGIS centerline via `STRtree.nearest`, and accepts any
-   candidate whose directed Hausdorff is within `FALLBACK_BUFFER_M = 100.0`
-   metres.
+   absolute nearest CAGIS centerline via `STRtree.nearest`, and accepts
+   any candidate whose directed Hausdorff is within
+   `FALLBACK_BUFFER_M = 100.0` metres.
 5. **Cap the fallback at REVIEW_CONFIDENCE.**
    ([conflate.py:605](../../src/osm/conflate.py#L605):
    `confidence = min(raw_confidence, REVIEW_CONFIDENCE)`). A fallback match
@@ -105,60 +117,55 @@ diagnostic baselines emit all eight.
 
 ```mermaid
 ---
-title: One OSM way through the conflation matcher
+title: One OSM way through the runtime matcher (match())
 ---
 flowchart TD
     Way["OSM way<br/>(name + geometry)"]
     STR["STRtree spatial query<br/>within BUFFER_M (30m)"]
-    Candidates{"any candidates<br/>in buffer?"}
-    Score["Score each candidate:<br/>0.5 × name_sim<br/>+ 0.3 × geom_overlap<br/>+ 0.2 × dir_align"]
-    Best["Pick highest confidence"]
+    PassedHaus{"any candidate<br/>passes Hausdorff filter<br/>(haus ≤ 30m)?"}
+    Score["Score the best candidate:<br/>0.5 × name_sim<br/>+ 0.3 × geom_overlap<br/>+ 0.2 × dir_align"]
 
     Fallback["Fallback path<br/>3-point sample → STRtree.nearest"]
-    FBHas{"any candidate<br/>within 100m?"}
-    FBScore["Score same way,<br/>cap at REVIEW_CONFIDENCE (0.6)"]
+    FBHas{"any candidate<br/>within FALLBACK_BUFFER_M<br/>(100m)?"}
+    FBScore["Score, then<br/>cap at REVIEW_CONFIDENCE (0.6)"]
 
-    HIGH["MATCHED_HIGH<br/>confidence ≥ 0.85<br/>→ auto-submit pool"]
-    REVIEW["MATCHED_REVIEW<br/>0.6 ≤ conf < 0.85<br/>→ human review"]
-    FBR["MATCHED_FALLBACK_REVIEW<br/>capped at 0.6<br/>→ human review only"]
-    F1["F1_NO_CANDIDATE<br/>(diagnostic only)"]
-    F2["F2_NAME_FAIL<br/>(diagnostic only)"]
-    F3["F3_GEOMETRY_FAIL<br/>(diagnostic only)"]
-    F4["F4_DIRECTION_DRAG<br/>(diagnostic only)"]
-    MIXED["MIXED_LOW<br/>(diagnostic only)"]
+    HIGH["cagis_match attached<br/>confidence ≥ 0.85<br/>→ auto-submit eligible"]
+    REVIEW["cagis_match attached<br/>0.6 ≤ confidence < 0.85<br/>→ human review queue"]
+    LOW["cagis_match attached<br/>confidence < 0.6<br/>→ filtered out by osm.review<br/>(diagnostic: F2 / F4 / MIXED_LOW)"]
+    FBR["cagis_match attached<br/>via_fallback=true<br/>capped at ≤ 0.6<br/>→ human review only<br/>(diagnostic: MATCHED_FALLBACK_REVIEW)"]
+    NONE["cagis_match = None<br/>(diagnostic: F1_NO_CANDIDATE<br/>or F3_GEOMETRY_FAIL)"]
 
     Way --> STR
-    STR --> Candidates
-    Candidates -- yes --> Score
-    Candidates -- no --> Fallback
-    Score --> Best
-    Best -- "conf ≥ 0.85" --> HIGH
-    Best -- "0.6 ≤ conf < 0.85" --> REVIEW
-    Best -- "conf < 0.6" --> F2
-    Best -- "haus > 30m on all" --> F3
-    Best -- "short + dir < 0.5" --> F4
-    Best -- "no single cause" --> MIXED
+    STR --> PassedHaus
+    PassedHaus -- yes --> Score
+    PassedHaus -- no --> Fallback
+    Score -- "conf ≥ 0.85" --> HIGH
+    Score -- "0.6 ≤ conf < 0.85" --> REVIEW
+    Score -- "conf < 0.6" --> LOW
     Fallback --> FBHas
     FBHas -- yes --> FBScore
-    FBHas -- no --> F1
+    FBHas -- no --> NONE
     FBScore --> FBR
 
     classDef safe fill:#1f4d2b,stroke:#3b8c5a,color:#e8f3ec
     classDef judgment fill:#5b3a1c,stroke:#a06632,color:#f5ead7
     classDef gate fill:#3a3a3a,stroke:#888,color:#eee,font-weight:bold
     class HIGH safe
-    class REVIEW,FBR,F2,F3,F4,MIXED judgment
-    class F1 gate
+    class REVIEW,FBR,LOW judgment
+    class NONE gate
 ```
 
-*What this shows: the only path to the auto-submit pool is the in-buffer
-scoring path with confidence ≥ 0.85. The fallback path exists to surface
-near-misses for human review without ever reaching auto-submit. F1–F4 and
-MIXED_LOW are diagnostic-only — the runtime matcher just emits `cagis_match
-= None` for these, and the bucket attribution is computed retrospectively
-by `diagnose_match()` for baseline manifests. What this hides: the
-nine-field `cagis_match` dict shape, the STRtree build cost, the
-shapely-optional graceful-degradation path.*
+*What this shows: the runtime matcher's actual outcomes — every way ends
+up with either a `cagis_match` dict (with one of four downstream
+treatments based on `confidence` and `via_fallback`) or `cagis_match =
+None`. The only path to auto-submit is the in-buffer scoring path with
+confidence ≥ 0.85. F1–F4 and MIXED_LOW are diagnostic-only buckets
+computed retrospectively by `diagnose_match()` during baseline runs;
+they are noted in parentheses on the runtime states they correspond to.
+What this hides: the nine-field `cagis_match` dict shape, the STRtree
+build cost, the rare in-buffer-but-all-fail-Hausdorff path that also
+falls through to fallback, and the shapely-optional graceful-degradation
+path.*
 
 ## Why directed Hausdorff was load-bearing
 
