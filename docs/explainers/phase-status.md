@@ -47,8 +47,10 @@ the project ships its first changeset.
    `docs/community-prep/04-pre-flight-checklist.md` says yes. Consumer:
    `osm.changeset.create_changeset()`
    ([changeset.py:82](../../src/osm/changeset.py#L82)). Status:
-   **⏳ blocked on human action**. The four `docs/community-prep/01-04.md`
-   drafts are ready; nothing has been published yet. See
+   **⏳ blocked on human action**. The four numbered drafts under
+   `docs/community-prep/` (`01-wiki-page.md`, `02-talk-us-post.md`,
+   `03-minh-outreach.md`, `04-pre-flight-checklist.md`) are ready;
+   nothing has been published yet. See
    `docs/explainers/osm-community-gating.md` for the dependency order.
 2. **Phase 2 — Conflation matcher.** Deliverable: `osm.conflate` module
    producing `cagis_match` annotations on every way; CAGIS centerline
@@ -159,7 +161,7 @@ log into OSM, paste the drafts, and start the comment window. The
 scripts can't help because the scripts don't have OSM credentials and
 shouldn't.
 
-The drafts in `docs/community-prep/01-04.md` are paste-ready precisely
+The four numbered drafts under `docs/community-prep/` are paste-ready precisely
 to keep this step short — when the maintainer has 30 minutes to do the
 publication, the work is "open four browser tabs, paste, save, send."
 But until that 30 minutes happens, the entire 2,043-way auto-submit

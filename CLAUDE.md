@@ -61,6 +61,12 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
 
 ## Conventions
 
+See [`docs/explainers/conventions.md`](docs/explainers/conventions.md)
+for the decompressed version that separates load-bearing rules
+(`zonePath()`, `fcntl.flock`, strict CSP, audit-before-done) from
+stylistic preferences and names the failure mode each load-bearing
+rule closes.
+
 - File names use hyphens, never underscores
 - No CLI instructions to the user — run everything directly
 - Auto mode is the default — make decisions, don't present menus

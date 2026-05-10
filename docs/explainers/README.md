@@ -40,6 +40,11 @@ no static-site generator, no toolchain.
   matched call shape between BRouter (default, OSM-only) and MOTIS
   (opt-in, multi-modal), the `is_available()` probe, and the
   next-session dispatcher line in `route_diff.py`.
+- [`conventions.md`](conventions.md) — the seven `CLAUDE.md`
+  conventions split into stylistic vs load-bearing, with the failure
+  mode each load-bearing rule closes (path traversal, quota
+  underrun, XSS, false "done" reports) and the code that implements
+  the defense.
 
 ## Backlog (in priority of confusion-on-re-entry)
 
