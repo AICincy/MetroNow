@@ -34,7 +34,7 @@ path of changeset submission.
 | Feed | Endpoint | Cache | TTL | Authoritative for |
 |---|---|---|---|---|
 | `bus_routes.py` | CAGIS ArcGIS Online item `af1e72d1373a4ceab400aa4fd2bc8173` (METRO Bus Routes) | `~/.config/osm/bus_routes_cache/` | 7 days | Transit-corridor corroboration for `oneway_conflicts` detector |
-| `gtfs.py` | `https://www.go-metro.com/uploads/GTFS/google_transit_info.zip` (resolved via Mobility Database `mdb-366`) | `~/.config/osm/gtfs_cache/` | (in-memory per-process; refresh on each scan) | `misplaced_bus_stops` detector — validates `highway=bus_stop` nodes against actual GTFS stop positions |
+| `gtfs.py` | `https://www.go-metro.com/uploads/GTFS/google_transit_info.zip` (resolved via Mobility Database `mdb-366`) | `~/.config/osm/gtfs_cache/sorta_stops.json` | 7 days | `misplaced_bus_stops` detector — validates `highway=bus_stop` nodes against actual GTFS stop positions |
 | `notes.py` | `GET https://api.openstreetmap.org/api/0.6/notes.json?bbox=...` | `~/.config/osm/notes_cache/` | 1 hour | Surfaces existing community-reported problems on the same ways the pipeline flags |
 | `osmose.py` | `GET https://osmose.openstreetmap.fr/api/0.3/issues?bbox=...&full=true` | `~/.config/osm/osmose_cache/` | 24 hours | Existing Osmose-QA issues on the same elements (avoid auto-submitting fixes the community already sees) |
 | `history.py` | `GET https://api.openstreetmap.org/api/0.6/way/<id>/history.json` | `~/.config/osm/history_cache/<2-char hash>/` | 7 days | Per-way revision history; consumed by `history_filter.analyse_way_history()` |
@@ -146,9 +146,10 @@ the OSM API, and the way `bus_routes` feeds JUST the
   `highway=bus_stop` node in OSM is *valid* if it's near a real
   GTFS stop position; otherwise the OSM-side "nearest drivable
   vertex > 20m" signal makes it look misplaced when it isn't.
-- **No persistent disk cache**: GTFS is parsed once per scan in
-  memory; the zip download IS cached temporarily but the parsed
-  stops aren't pickled.
+- **7-day disk cache for parsed stops**: `gtfs.py:60-61` defines
+  `GTFS_STOPS_CACHE = ~/.config/osm/gtfs_cache/sorta_stops.json`
+  with `GTFS_CACHE_TTL_DAYS = 7`. Re-runs within the week skip the
+  zip download and the parse.
 
 ### `notes.py` — OSM Notes
 
@@ -202,11 +203,12 @@ the OSM API, and the way `bus_routes` feeds JUST the
   detectors don't consult bus-routes data. If you write a new
   detector that benefits from transit-corridor context, plumb it
   in explicitly — there's no automatic cross-detector enrichment.
-- **`gtfs` doesn't cache the parsed stops to disk.** GTFS feeds
-  change frequently (schedule revisions, new stops, retired stops)
-  and the parsed stops occupy modest memory. Parsing on each scan
-  is the correct freshness/perf tradeoff. Don't add a disk-pickle
-  layer.
+- **`gtfs` caches parsed stops on disk for 7 days.** Stored as
+  JSON at `~/.config/osm/gtfs_cache/sorta_stops.json`. SORTA
+  schedule revisions are infrequent enough (typically quarterly
+  service-bid cycles) that a 7-day TTL is a comfortable freshness
+  margin. `osm scan --force-refresh` bypasses the cache when
+  investigating a fresh GTFS revision.
 - **`notes` returns CLOSED notes too unless filtered.** The
   `annotate_findings_with_notes` helper filters to `status=open`
   before matching. If you call `fetch_notes` directly, filter
@@ -215,11 +217,13 @@ the OSM API, and the way `bus_routes` feeds JUST the
   Treat osmose's "this looks wrong" as a signal that the community
   is aware of a possible issue, not as a verified defect. Skipping
   fixes on osmose-flagged elements is the right default.
-- **`history` rate-limits even cache hits.** The 0.5s sleep is
-  unconditional. A bulk re-run hits the cache for every way but
-  still pauses 0.5s between cache checks. This is intentional
-  defensive design — if the cache invalidates mid-run, the
-  half-second floor is already in place. Don't optimize this away.
+- **`history` rate-limits only on cache misses.** A cache hit
+  short-circuits early at `history.py:57` (`if cached is not
+  None: return cached`); the 0.5s `time.sleep(RATE_LIMIT_DELAY)`
+  only fires after a fresh fetch (`history.py:67`). Bulk re-runs
+  hit the cache and complete fast. The async batch fetcher
+  (`batch_fetch_way_histories`) uses an httpx semaphore for
+  concurrency control rather than per-request sleeps.
 - **All five feeds set the project User-Agent.** OSM's operational
   norms require it; anonymous calls get throttled or refused.
   Each feed module hardcodes the User-Agent string; if the
