@@ -110,7 +110,9 @@ not the detector track.
 
 ## Conflation matcher state
 
-CAGIS centerline conflation lives in `src/osm/conflate.py`. Tunings
+CAGIS centerline conflation lives in `src/osm/conflate.py`. See
+[`docs/explainers/conflation-matcher.md`](docs/explainers/conflation-matcher.md)
+for the decompressed version with diagram and code citations. Tunings
 that survived data-driven validation:
 
 - **Directed Hausdorff (OSM→CAGIS only)**, not symmetric — F3
