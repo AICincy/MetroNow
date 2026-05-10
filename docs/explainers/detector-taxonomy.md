@@ -100,7 +100,7 @@ flowchart TD
     Classify --> DetectorTrack
 
     Conflate["osm.conflate<br/>directed-Hausdorff against<br/>CAGIS centerlines"]
-    Review["osm.review.proposed_fixes_for_way<br/>review.py:9"]
+    Review["osm.review.proposed_fixes_for_way<br/>review.py:112"]
     Changeset["osm.changeset<br/>OSM API v0.6 submitter"]
     UIPanel["UI: 'Rider-impact findings' panel<br/>index.html:1521"]
     Triage(("Human triage<br/>OSM editor /<br/>MapRoulette"))
