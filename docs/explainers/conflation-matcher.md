@@ -1,11 +1,11 @@
-# Conflation matcher — directed-Hausdorff scoring against CAGIS
+# Conflation matcher: directed-Hausdorff scoring against CAGIS
 
 **Summary.** *Conflation* is the act of matching one geospatial dataset
 against another to attach authoritative attributes (here: matching each OSM
 way to its CAGIS centerline so we know the canonical name, oneway, functional
 class, and speed limit). MetroNow's matcher scores every OSM way against
-nearby CAGIS centerlines on three weighted signals — name (0.5), geometry
-(0.3), direction (0.2) — and lands each way in one of eight buckets. The two
+nearby CAGIS centerlines on three weighted signals: name (0.5), geometry
+(0.3), direction (0.2): and lands each way in one of eight buckets. The two
 load-bearing design choices are (a) the geometry term uses *directed* (not
 symmetric) Hausdorff distance, and (b) the nearest-neighbor fallback is
 hard-capped below the auto-submit threshold so it can populate human review
@@ -24,11 +24,11 @@ auto-submit pool (see `docs/explainers/detector-taxonomy.md`).
 
 The matcher uses three signals, all normalized to [0.0, 1.0]:
 
-- **Name similarity** — string similarity between the normalized OSM
+- **Name similarity**: string similarity between the normalized OSM
   `name` tag and the CAGIS `STRLABEL`. Weight: `W_NAME = 0.5`.
-- **Geometry overlap** — `1.0 − (directed_hausdorff_m / BUFFER_M)`,
+- **Geometry overlap**: `1.0 − (directed_hausdorff_m / BUFFER_M)`,
   clamped to [0, 1]. Weight: `W_GEOMETRY = 0.3`.
-- **Direction alignment** — cosine of the unit-vectors of the two lines.
+- **Direction alignment**: cosine of the unit-vectors of the two lines.
   Weight: `W_DIRECTION = 0.2`.
 
 A match's `confidence` is the weighted sum. Two thresholds split the
@@ -70,7 +70,7 @@ Per-way matching, called once per scan from `web/server.js:419-431`
    ([conflate.py:525-526](../../src/osm/conflate.py#L525-L526)).
 4. **If no candidate cleared the Hausdorff filter, try the fallback.**
    This happens either when STRtree returns no candidates within
-   `BUFFER_M` or — rarely with the directed metric — when all in-buffer
+   `BUFFER_M` or: rarely with the directed metric: when all in-buffer
    candidates have `haus > BUFFER_M` ([conflate.py:497-508,
    528-538](../../src/osm/conflate.py#L497-L538)).
    `_fallback_score()` ([conflate.py:545](../../src/osm/conflate.py#L545))
@@ -155,11 +155,11 @@ flowchart TD
     class NONE gate
 ```
 
-*What this shows: the runtime matcher's actual outcomes — every way ends
+*What this shows: the runtime matcher's actual outcomes: every way ends
 up with either a `cagis_match` dict (with one of four downstream
 treatments based on `confidence` and `via_fallback`) or `cagis_match =
 None`. The only path to auto-submit is the in-buffer scoring path with
-confidence ≥ 0.85. F1–F4 and MIXED_LOW are diagnostic-only buckets
+confidence ≥ 0.85. F1 through F4 and MIXED_LOW are diagnostic-only buckets
 computed retrospectively by `diagnose_match()` during baseline runs;
 they are noted in parentheses on the runtime states they correspond to.
 What this hides: the nine-field `cagis_match` dict shape, the STRtree
@@ -181,7 +181,7 @@ file embeds the rationale verbatim
 > *fragment* of a longer authoritative centerline (CAGIS street spans the
 > whole named street; OSM has it broken into several ways at
 > intersections). The symmetric metric blew up on the reverse direction in
-> that case — every CAGIS endpoint outside the OSM segment counted against
+> that case: every CAGIS endpoint outside the OSM segment counted against
 > the score even though the OSM way perfectly traced its part.
 >
 > Phase 2a baselines across all four MetroNow zones attributed 70.5% of
@@ -196,28 +196,28 @@ the centerline. Switching to directed (`d(OSM→CAGIS)` only) accepts these
 fragments as legitimate sub-segments, which they are.
 
 This is the kind of design decision that's easy to lose between sessions:
-the constants stay tuned, the function looks right, but the *insight* —
+the constants stay tuned, the function looks right, but the *insight*:
 that OSM topology and CAGIS topology disagree about what a "street" is, and
-the metric has to acknowledge that — is the load-bearing piece. If a future
+the metric has to acknowledge that: is the load-bearing piece. If a future
 session reverts to symmetric to "fix" something else, the auto-submit pool
 collapses without obvious cause.
 
-## Operational observability — baseline-diff
+## Operational observability: baseline-diff
 
 The matcher is tunable. A change to weights, thresholds, or the
 similarity function is supposed to *improve* the F3 (geometry-fail) bucket
-by recovering real matches — not to inflate `MATCHED_HIGH` by lowering the
+by recovering real matches: not to inflate `MATCHED_HIGH` by lowering the
 bar. To distinguish these, every conflation run can write a *baseline
 manifest* via `osm conflate --zone <key> --diagnose --write-baseline`,
 and the `osm baseline-diff` command compares two baselines:
 
-1. **Write baselines** — `diagnose_all()`
+1. **Write baselines**: `diagnose_all()`
    ([conflate.py:854](../../src/osm/conflate.py#L854)) walks every way and
    assigns one of the eight buckets via `diagnose_match()`. The result is
    serialized by `write_baseline_manifest()`
    ([conflate.py:923](../../src/osm/conflate.py#L923)) under
    `osm-audit-<zone>/data/baselines/`.
-2. **Compare two baselines** — `osm baseline-diff`
+2. **Compare two baselines**: `osm baseline-diff`
    ([cli.py:991](../../src/osm/cli.py#L991)) loads two manifests with
    `load_baseline_manifest()` and runs `diff_baselines()`
    ([conflate.py:986-1069](../../src/osm/conflate.py#L986-L1069)).
@@ -246,7 +246,7 @@ and the `osm baseline-diff` command compares two baselines:
   ([conflate.py:569-573](../../src/osm/conflate.py#L569-L573)). Single-vertex
   sampling missed valid matches on long curved ways where the first
   vertex's nearest centerline diverged from the rest of the way's
-  ([conflate.py:558-564](../../src/osm/conflate.py#L558-L564) — a fix
+  ([conflate.py:558-564](../../src/osm/conflate.py#L558-L564): a fix
   pointed out in a PR #11 review).
 - **Shapely is optional.** No shapely available → `build_index()` returns
   an empty stub, `match_way()` returns `None` for everything, and
@@ -277,55 +277,55 @@ and the `osm baseline-diff` command compares two baselines:
 
 ## Code references
 
-- [`src/osm/conflate.py:1-17`](../../src/osm/conflate.py#L1-L17) — module
+- [`src/osm/conflate.py:1-17`](../../src/osm/conflate.py#L1-L17): module
   docstring, including the shapely-optional graceful-degradation note.
-- [`src/osm/conflate.py:82-112`](../../src/osm/conflate.py#L82-L112) —
+- [`src/osm/conflate.py:82-112`](../../src/osm/conflate.py#L82-L112):
   threshold + weight constants, including the rationale comments for
   `FALLBACK_BUFFER_M` and `DIAG_*` thresholds.
-- [`src/osm/conflate.py:114-122`](../../src/osm/conflate.py#L114-L122) —
+- [`src/osm/conflate.py:114-122`](../../src/osm/conflate.py#L114-L122):
   the eight bucket constants.
-- [`src/osm/conflate.py:309`](../../src/osm/conflate.py#L309) —
+- [`src/osm/conflate.py:309`](../../src/osm/conflate.py#L309):
   `load_cagis_for_zone()` (public API; called from `web/server.js:348`
   and `cli.py:248`).
-- [`src/osm/conflate.py:497-508`](../../src/osm/conflate.py#L497-L508) —
+- [`src/osm/conflate.py:497-508`](../../src/osm/conflate.py#L497-L508):
   the in-buffer-vs-fallback dispatch.
-- [`src/osm/conflate.py:512`](../../src/osm/conflate.py#L512) —
+- [`src/osm/conflate.py:512`](../../src/osm/conflate.py#L512):
   directed-Hausdorff call (normal path).
-- [`src/osm/conflate.py:520-524`](../../src/osm/conflate.py#L520-L524) —
+- [`src/osm/conflate.py:520-524`](../../src/osm/conflate.py#L520-L524):
   three-term scoring (`W_NAME × name + W_GEOMETRY × geom + W_DIRECTION × dir`).
-- [`src/osm/conflate.py:545-608`](../../src/osm/conflate.py#L545-L608) —
+- [`src/osm/conflate.py:545-608`](../../src/osm/conflate.py#L545-L608):
   `_fallback_score()` (3-point sample, hard cap at 605).
-- [`src/osm/conflate.py:610-635`](../../src/osm/conflate.py#L610-L635) —
-  `_build_match_result()` — the dict shape attached to `cagis_match`.
-- [`src/osm/conflate.py:637-837`](../../src/osm/conflate.py#L637-L837) —
-  `diagnose_match()` — F1–F4 bucket assignment for baselines.
-- [`src/osm/conflate.py:854`](../../src/osm/conflate.py#L854) —
-  `diagnose_all()` — baseline driver.
-- [`src/osm/conflate.py:923`](../../src/osm/conflate.py#L923) —
+- [`src/osm/conflate.py:610-635`](../../src/osm/conflate.py#L610-L635):
+  `_build_match_result()`: the dict shape attached to `cagis_match`.
+- [`src/osm/conflate.py:637-837`](../../src/osm/conflate.py#L637-L837):
+  `diagnose_match()`: F1 through F4 bucket assignment for baselines.
+- [`src/osm/conflate.py:854`](../../src/osm/conflate.py#L854):
+  `diagnose_all()`: baseline driver.
+- [`src/osm/conflate.py:923`](../../src/osm/conflate.py#L923):
   `write_baseline_manifest()`.
-- [`src/osm/conflate.py:986-1069`](../../src/osm/conflate.py#L986-L1069) —
+- [`src/osm/conflate.py:986-1069`](../../src/osm/conflate.py#L986-L1069):
   `diff_baselines()`, including the asymmetric-promotion alert.
-- [`src/osm/conflate.py:1089`](../../src/osm/conflate.py#L1089) —
+- [`src/osm/conflate.py:1089`](../../src/osm/conflate.py#L1089):
   `build_index()` (public API).
-- [`src/osm/conflate.py:1113-1129`](../../src/osm/conflate.py#L1113-L1129) —
+- [`src/osm/conflate.py:1113-1129`](../../src/osm/conflate.py#L1113-L1129):
   `conflate()` (public API; line 1125 sets `cagis_match`).
-- [`src/osm/_geometry.py:214-237`](../../src/osm/_geometry.py#L214-L237) —
+- [`src/osm/_geometry.py:214-237`](../../src/osm/_geometry.py#L214-L237):
   `directed_hausdorff_meters()` and the docstring justifying it.
-- [`src/osm/cli.py:590-667`](../../src/osm/cli.py#L590-L667) — the
+- [`src/osm/cli.py:590-667`](../../src/osm/cli.py#L590-L667): the
   `osm conflate` CLI command.
-- [`src/osm/cli.py:991-1070`](../../src/osm/cli.py#L991-L1070) — the
+- [`src/osm/cli.py:991-1070`](../../src/osm/cli.py#L991-L1070): the
   `osm baseline-diff` CLI command.
-- [`web/server.js:419-431`](../../web/server.js#L419-L431) — the
+- [`web/server.js:419-431`](../../web/server.js#L419-L431): the
   `POST /api/conflate/:zone` handler.
 
 ## See also
 
-- [`CLAUDE.md` § Conflation matcher state](../../CLAUDE.md) — the dense
+- [`CLAUDE.md` § Conflation matcher state](../../CLAUDE.md): the dense
   source statement this explainer decompresses.
-- [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md) — where
+- [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md): where
   `cagis_match` is read by `proposed_fixes_for_way` to graduate Class A/AB
   fixes from heuristic to CAGIS-verified.
-- [CAGIS Open Data Hub](https://cagisonline.hamilton-co.org/cagisonline/) —
+- [CAGIS Open Data Hub](https://cagisonline.hamilton-co.org/cagisonline/):
   the source of the authoritative centerlines, with license terms.
-- [OSM wiki — Conflation](https://wiki.openstreetmap.org/wiki/Conflation) —
+- [OSM wiki: Conflation](https://wiki.openstreetmap.org/wiki/Conflation):
   general background on the practice.

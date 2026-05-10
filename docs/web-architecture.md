@@ -1,4 +1,4 @@
-# Web architecture — Express server + vanilla SPA + shell-out-to-Python
+# Web architecture: Express server + vanilla SPA + shell-out-to-Python
 
 **Summary.** The MetroNow Atlas frontend is **one HTML file** with
 inline `<style>` (`web/public/index.html`), backed by a
@@ -16,14 +16,14 @@ guard.
 When the maintainer runs `node web/server.js`, an Express server binds
 to port 3000 and serves two things:
 
-1. **The Atlas UI** — `web/public/index.html` plus `js/`, `css/`,
+1. **The Atlas UI**: `web/public/index.html` plus `js/`, `css/`,
    and tile assets. This is what the operator sees in their browser.
-2. **A REST API** — `/api/scan`, `/api/conflate/:zone`,
+2. **A REST API**: `/api/scan`, `/api/conflate/:zone`,
    `/api/results/:zone`, `/api/fix-impact/:zone`, etc. Each handler
    either reads pre-computed scan output from disk or shells out to a
    Python heredoc that imports `osm.*` modules and returns JSON.
 
-The Atlas is *not* a Single-Page App in the React/Vue sense — it's a
+The Atlas is *not* a Single-Page App in the React/Vue sense: it's a
 single HTML page with inline `<style>` and two external `<script>`
 tags. atlas.js wraps everything in an IIFE; state lives on a global
 `state` object that the IIFE closes over.
@@ -45,7 +45,7 @@ Frontend conventions:
   framework dependencies need explicit discussion.
 - **IIFE pattern.** `atlas.js` wraps in `(function () { ... })()`;
   module-level vars don't leak to global scope.
-- **Global `state` object.** The single source of UI truth — current
+- **Global `state` object.** The single source of UI truth: current
   zone, scan-results data, map handles, layer toggles. All UI
   reactivity goes through `state`.
 - **`escapeHtml()` is mandatory.** Every user-string-into-`innerHTML`
@@ -75,7 +75,7 @@ Backend conventions:
 
 ```mermaid
 ---
-title: Atlas request flow — UI → REST API → Python shell-out → disk
+title: Atlas request flow: UI → REST API → Python shell-out → disk
 ---
 flowchart LR
     Browser["Browser<br/>(operator)"]
@@ -112,7 +112,7 @@ flowchart LR
 *What this shows: two-tier dispatch. Reads (results / dashboard / fix-
 impact / route-diff) hit the disk via `zonePath()`; writes (scan /
 conflate / fix) shell out to Python which writes the JSON to disk and
-reports stats. The Python process is short-lived per request — no
+reports stats. The Python process is short-lived per request: no
 persistent Python worker. What this hides: the OAuth status endpoint
 that reads `~/.config/osm/token.json`, the auth endpoints that
 construct the OSM authorization URL, and the helmet CSP allow-list.*
@@ -137,7 +137,7 @@ construct the OSM authorization URL, and the helmet CSP allow-list.*
   breaks something fundamental, point Express at `.legacy/` instead of
   the current `public/` and the old UI returns. Don't delete `.legacy/`.
 - **The 5-minute Python timeout in `runPython` is intentional.** Long
-  scans (Forest Park, ~5,000 ways) approach 2–3 minutes. 5 minutes is
+  scans (Forest Park, ~5,000 ways) approach 2-3 minutes. 5 minutes is
   generous headroom; longer would mask hung Python runs.
 - **Helmet CSP allow-list mirrors the HTML.** When you add a new
   external origin to `index.html` (a new tile server, a new CDN), you
@@ -155,26 +155,26 @@ construct the OSM authorization URL, and the helmet CSP allow-list.*
 
 ## Code references
 
-- [`web/server.js:40-58`](../web/server.js#L40-L58) — helmet CSP
+- [`web/server.js:40-58`](../web/server.js#L40-L58): helmet CSP
   configuration.
-- [`web/server.js:140-149`](../web/server.js#L140-L149) — `zonePath()`
+- [`web/server.js:140-149`](../web/server.js#L140-L149): `zonePath()`
   containment guard.
-- [`web/server.js:158-169`](../web/server.js#L158-L169) — `runPython()`
+- [`web/server.js:158-169`](../web/server.js#L158-L169): `runPython()`
   shell-out helper.
-- [`web/public/index.html`](../web/public/index.html) — single-page
+- [`web/public/index.html`](../web/public/index.html): single-page
   UI shell.
-- [`web/public/js/atlas.js`](../web/public/js/atlas.js) — IIFE main
+- [`web/public/js/atlas.js`](../web/public/js/atlas.js): IIFE main
   app.
-- [`web/public/js/atlas-extras.js`](../web/public/js/atlas-extras.js) —
+- [`web/public/js/atlas-extras.js`](../web/public/js/atlas-extras.js):
   default-tweak loader.
 - [`web/public/css/atlas-supplement.css`](../web/public/css/atlas-supplement.css)
-  — runtime CSS.
+ : runtime CSS.
 
 ## See also
 
-- [`CLAUDE.md` § Layout / `web/`](../CLAUDE.md) — the dense reference
+- [`CLAUDE.md` § Layout / `web/`](../CLAUDE.md): the dense reference
   this overview decompresses.
-- [`docs/explainers/conventions.md`](explainers/conventions.md) —
+- [`docs/explainers/conventions.md`](explainers/conventions.md):
   `zonePath()` and strict CSP rationale.
 - [`docs/skills/metronow-javascript-review.md`](skills/metronow-javascript-review.md)
 - [`docs/skills/metronow-html-review.md`](skills/metronow-html-review.md)

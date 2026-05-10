@@ -1,7 +1,7 @@
-# Tests overview — what's tested, what isn't, how to run
+# Tests overview: what's tested, what isn't, how to run
 
 **Summary.** The test suite at `tests/` is a comprehensive pytest collection across
-**22 files**, one per `src/osm/` module. Pure pytest — no fixtures
+**22 files**, one per `src/osm/` module. Pure pytest: no fixtures
 directory, no conftest.py, just hand-built minimal element dicts and
 inline assertions. Tests are deterministic by default; the few that
 hit the network (history fetches, real CAGIS server) are either
@@ -12,7 +12,7 @@ in parallel.
 
 ## What's here
 
-The `tests/` directory layout mirrors `src/osm/` — one test file per
+The `tests/` directory layout mirrors `src/osm/`: one test file per
 module, named `test_<module>.py`. Test data is constructed inline via
 small helper functions like `_make_way()` and `_overpass_response()`
 that return minimal Overpass-shaped dicts with just the fields the
@@ -46,7 +46,7 @@ mocking a network call.
 
 - **Inline test data, not fixtures on disk.** Every test that needs a
   way builds one with `_make_way()`. The pattern is small enough that
-  test data lives next to the assertion — no jumping between fixture
+  test data lives next to the assertion: no jumping between fixture
   files and test logic.
 - **No real Overpass calls.** The classifier, detectors, and gap
   modules accept dict inputs, so tests pass synthetic responses
@@ -62,7 +62,7 @@ mocking a network call.
 
 - **Web frontend (`web/public/js/*.js`).** Vanilla JS with no test
   framework. Audits via `metronow-javascript-review` skill, not pytest.
-- **Express server (`web/server.js`).** Same — covered by Node lint
+- **Express server (`web/server.js`).** Same: covered by Node lint
   in CI, but no JS unit tests beyond that. Behavioral changes are
   caught by manual smoke against `node web/server.js` + the dashboard.
 - **Real OSM Notes / CAGIS / Transit-App network calls.** Mocked at
@@ -100,7 +100,7 @@ See `.github/workflows/ci.yml`.
 1. **One file per module.** `tests/test_<module>.py`; mirror the source
    tree.
 2. **Inline test data via small helpers.** Mimic `_make_way()` /
-   `_overpass_response()` — tiny dicts that look like Overpass output.
+   `_overpass_response()`: tiny dicts that look like Overpass output.
 3. **Use `tmp_path` for any disk I/O.** Cache dirs, output dirs,
    manifest files all point at pytest's `tmp_path` fixture.
 4. **Mock at the `requests` boundary.** Use `monkeypatch` to swap in a
@@ -112,18 +112,18 @@ See `.github/workflows/ci.yml`.
 
 ## Code references
 
-- [`tests/__init__.py`](../tests/__init__.py) — empty marker; exists
+- [`tests/__init__.py`](../tests/__init__.py): empty marker; exists
   so `pytest` can import `tests.*` without warnings.
-- [`tests/test_classify.py`](../tests/test_classify.py) — reference
+- [`tests/test_classify.py`](../tests/test_classify.py): reference
   example of the inline-data + helper pattern.
-- [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — CI
+- [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): CI
   configuration; pytest invocation + coverage flags.
 
 ## See also
 
-- [`CLAUDE.md` § Layout / `tests/`](../CLAUDE.md) — "pytest suite overview."
+- [`CLAUDE.md` § Layout / `tests/`](../CLAUDE.md): "pytest suite overview."
 - [`docs/explainers/preflight-checks.md`](explainers/preflight-checks.md)
-  — `check_pytest_passes` is one of the 17 codified pre-flight checks.
+ : `check_pytest_passes` is one of the 17 codified pre-flight checks.
 - [`docs/skills/metronow-code-review.md`](skills/metronow-code-review.md)
-  — code-review skill that complements the test suite for the
+ : code-review skill that complements the test suite for the
   non-pytest-tested surfaces (HTML / CSS / JS / Dockerfile).

@@ -1,14 +1,14 @@
-# Phase status — what each phase delivers and what gates it
+# Phase status: what each phase delivers and what gates it
 
 **Summary.** MetroNow's work is organized into four phases plus a small set
 of cross-cutting workstreams. **Phase 1** is community gating (the
 talk-us@ / wiki-page / `_cincyimport`-account artifacts that have to land
 before *any* mechanical edit submits). **Phase 2** is the conflation
-matcher and its diagnostics (CAGIS centerline matching, F1–F4 baseline
+matcher and its diagnostics (CAGIS centerline matching, F1 through F4 baseline
 attribution, asymmetric-promotion alerts). **Phase 3** is review tooling
 and MapRoulette task generation for findings that exceed the 5%
-false-positive threshold. **Phase 4** is hardening — polygon clipping,
-route-diff false-positive filtering, detector tuning. Phases 2–4 have all
+false-positive threshold. **Phase 4** is hardening: polygon clipping,
+route-diff false-positive filtering, detector tuning. Phases 2-4 have all
 shipped. Phase 1 is the only blocker on the first changeset. This
 explainer walks through what each phase actually delivered, what gates
 the transitions, and why "Phase 1 blocked on human action" is the
@@ -22,7 +22,7 @@ A *phase* in MetroNow is a sequenced workstream with a clear deliverable,
 not a calendar period. Phases run sequentially because each unlocks the
 next: Phase 2's matcher feeds Phase 3's auto-submit pool, which Phase 4
 hardens, which Phase 1 then publishes for community review before the
-first submission. The numbering is historical — Phase 2 came first
+first submission. The numbering is historical: Phase 2 came first
 chronologically (the matcher), but Phase 1 (community gating) is the
 last gate before submission and so claims position 1 in the dependency
 graph.
@@ -41,7 +41,7 @@ for the phase to be considered complete), and a *consumer* (which
 downstream phase depends on it). When all four phases' gates close,
 the project ships its first changeset.
 
-1. **Phase 1 — Community gating.** Deliverable: published OSM wiki page
+1. **Phase 1: Community gating.** Deliverable: published OSM wiki page
    + `talk-us@`/`community.osm.org` posts + `_cincyimport`-suffix account
    + 14-day comment window. Gate: every step in
    `docs/community-prep/04-pre-flight-checklist.md` says yes. Consumer:
@@ -52,16 +52,16 @@ the project ships its first changeset.
    `03-minh-outreach.md`, `04-pre-flight-checklist.md`) are ready;
    nothing has been published yet. See
    `docs/explainers/osm-community-gating.md` for the dependency order.
-2. **Phase 2 — Conflation matcher.** Deliverable: `osm.conflate` module
+2. **Phase 2: Conflation matcher.** Deliverable: `osm.conflate` module
    producing `cagis_match` annotations on every way; CAGIS centerline
-   load + STRtree index + directed-Hausdorff scoring + F1–F4 baseline
+   load + STRtree index + directed-Hausdorff scoring + F1 through F4 baseline
    attribution + `osm baseline-diff` asymmetric-promotion alert. Gate:
    2,043-way auto-submit pool stable across runs (no asymmetric
    promotions). Consumer:
    `osm.review.proposed_fixes_for_way`
    ([review.py:112](../../src/osm/review.py#L112)). Status: **✅ shipped**.
    See `docs/explainers/conflation-matcher.md`.
-3. **Phase 3 — Review and MapRoulette.** Deliverable: per-way fix
+3. **Phase 3: Review and MapRoulette.** Deliverable: per-way fix
    proposals with three-layer evidence stack (heuristic / CAGIS-verified
    / TIGER-verified) and MapRoulette-task generators for findings whose
    expected false-positive rate exceeds 5%. Gate: every fix carrying
@@ -70,7 +70,7 @@ the project ships its first changeset.
    `osm.changeset` (for auto-submittable fixes). Status: **✅ shipped**;
    `osm.maproulette` generates GeoJSON tasks constrained to MetroNow
    zone polygons.
-4. **Phase 4 — Hardening.** Deliverable: polygon clipping
+4. **Phase 4: Hardening.** Deliverable: polygon clipping
    ([polygons.py](../../src/osm/polygons.py)), route-diff false-positive
    filtering ([route_diff.py](../../src/osm/route_diff.py)), detector
    tuning. Gate: Forest Park's F1 rate dropped from 78% to a normal
@@ -81,19 +81,19 @@ the project ships its first changeset.
 In addition to the four phases, several cross-cutting workstreams sit
 alongside:
 
-- **MOTIS prototype** — opt-in second routing engine alongside BRouter.
+- **MOTIS prototype**: opt-in second routing engine alongside BRouter.
   Status: shipped at [`src/osm/motis.py`](../../src/osm/motis.py); engine
   dispatcher in `route_diff.py` is the next-session item. See
   `docs/explainers/routing-engine-dispatch.md`.
-- **Pre-flight automation** — `osm preflight --zone <key>` runs 16
+- **Pre-flight automation**: `osm preflight --zone <key>` runs 16
   codified checks across 6 categories with PASS/FAIL/WARN/MANUAL exit
   codes ([preflight.py](../../src/osm/preflight.py)). Status: shipped.
-- **Transit App quota tooling** — `osm transit-status`,
+- **Transit App quota tooling**: `osm transit-status`,
   `osm transit-budget`, `fcntl.flock`-guarded usage counter
   ([transit.py](../../src/osm/transit.py)). Status: shipped; quota
   uplift email sent, awaiting reply.
-- **CodeQL alerts** — security findings from GitHub's static analysis.
-  Status: alerts #4, #6–10, #17, #24 fixed; #3 (auth.py:120 OAuth URL
+- **CodeQL alerts**: security findings from GitHub's static analysis.
+  Status: alerts #4, #6-10, #17, #24 fixed; #3 (auth.py:120 OAuth URL
   print) flagged for "won't fix / false positive" UI dismissal.
 
 ## The flow, visually
@@ -103,7 +103,7 @@ alongside:
 title: Phase dependency graph and current state
 ---
 flowchart LR
-    subgraph Done["Shipped (Phases 2–4)"]
+    subgraph Done["Shipped (Phases 2-4)"]
         direction TB
         P2["Phase 2<br/>Conflation matcher<br/>2,043-way auto-submit pool"]
         P3["Phase 3<br/>Review + MapRoulette<br/>3-layer fix-proposal stack"]
@@ -162,7 +162,7 @@ scripts can't help because the scripts don't have OSM credentials and
 shouldn't.
 
 The four numbered drafts under `docs/community-prep/` are paste-ready precisely
-to keep this step short — when the maintainer has 30 minutes to do the
+to keep this step short: when the maintainer has 30 minutes to do the
 publication, the work is "open four browser tabs, paste, save, send."
 But until that 30 minutes happens, the entire 2,043-way auto-submit
 pool waits.
@@ -189,7 +189,7 @@ pool waits.
   comments?) because they require human attestation
   ([preflight.py:1-7](../../src/osm/preflight.py#L1-L7)).
 - **The dates in the CLAUDE.md Phase status header drift.** The header
-  reads "as of 2026-05-08 EOD, commit `9836bb9`" — these are pinned at
+  reads "as of 2026-05-08 EOD, commit `9836bb9`": these are pinned at
   the last update of that section, not the current commit. When phases
   change state, update the timestamp explicitly.
 - **CodeQL #3 is the only unresolved security alert.** Per RFC 6749 §4.1.1
@@ -199,36 +199,36 @@ pool waits.
 
 ## Code references
 
-- [`CLAUDE.md`](../../CLAUDE.md) § Phase status — the source-of-truth
+- [`CLAUDE.md`](../../CLAUDE.md) § Phase status: the source-of-truth
   status header.
-- [`src/osm/changeset.py:82`](../../src/osm/changeset.py#L82) —
+- [`src/osm/changeset.py:82`](../../src/osm/changeset.py#L82):
   `create_changeset()`, the function gated by Phase 1.
-- [`src/osm/conflate.py`](../../src/osm/conflate.py) — Phase 2 deliverable
+- [`src/osm/conflate.py`](../../src/osm/conflate.py): Phase 2 deliverable
   (the conflation matcher).
-- [`src/osm/review.py:112`](../../src/osm/review.py#L112) — Phase 3
+- [`src/osm/review.py:112`](../../src/osm/review.py#L112): Phase 3
   deliverable (`proposed_fixes_for_way`).
-- [`src/osm/maproulette.py`](../../src/osm/maproulette.py) — Phase 3
+- [`src/osm/maproulette.py`](../../src/osm/maproulette.py): Phase 3
   MapRoulette task generator.
-- [`src/osm/polygons.py`](../../src/osm/polygons.py) — Phase 4 polygon
+- [`src/osm/polygons.py`](../../src/osm/polygons.py): Phase 4 polygon
   clip.
-- [`src/osm/route_diff.py`](../../src/osm/route_diff.py) — Phase 4
+- [`src/osm/route_diff.py`](../../src/osm/route_diff.py): Phase 4
   route-diff false-positive filter.
-- [`src/osm/preflight.py`](../../src/osm/preflight.py) — pre-flight
+- [`src/osm/preflight.py`](../../src/osm/preflight.py): pre-flight
   automation (16 checks).
-- [`src/osm/motis.py:328`](../../src/osm/motis.py#L328) — `is_available()`
+- [`src/osm/motis.py:328`](../../src/osm/motis.py#L328): `is_available()`
   probe; MOTIS prototype's degrade-to-BRouter check.
-- [`src/osm/transit.py`](../../src/osm/transit.py) — Transit App quota
+- [`src/osm/transit.py`](../../src/osm/transit.py): Transit App quota
   tooling.
-- [`docs/community-prep/`](../community-prep/) — Phase 1 paste-ready
+- [`docs/community-prep/`](../community-prep/): Phase 1 paste-ready
   drafts.
 
 ## See also
 
-- [`CLAUDE.md` § Phase status](../../CLAUDE.md) — the dense status header
+- [`CLAUDE.md` § Phase status](../../CLAUDE.md): the dense status header
   this explainer decompresses.
-- [`docs/explainers/osm-community-gating.md`](osm-community-gating.md) —
+- [`docs/explainers/osm-community-gating.md`](osm-community-gating.md):
   what Phase 1 actually requires, in dependency order.
-- [`docs/explainers/conflation-matcher.md`](conflation-matcher.md) — the
+- [`docs/explainers/conflation-matcher.md`](conflation-matcher.md): the
   Phase 2 deliverable.
-- [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md) — how
+- [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md): how
   Phase 2 outputs feed Phase 3 review.

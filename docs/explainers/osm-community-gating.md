@@ -1,4 +1,4 @@
-# OSM community gating — why mechanical edits need permission first
+# OSM community gating: why mechanical edits need permission first
 
 **Summary.** A *mechanical edit* on OpenStreetMap is a batch change that
 applies the same rule across many features without per-element human
@@ -15,16 +15,16 @@ and points at the artifacts and code that implement them.
 
 ## What this is
 
-A **mechanical edit** is *not* defined by tooling — you can do mechanical
+A **mechanical edit** is *not* defined by tooling: you can do mechanical
 edits in iD or JOSM, just slowly. It is defined by *behavior*: applying
 the same rule across many features without inspecting each one. The
 canonical examples:
 
 - "Set `maxspeed=25 mph` on every residential street that doesn't have one"
-  — yes, mechanical.
-- "Fix the typo on Reading Road" — no, regular editing.
+ : yes, mechanical.
+- "Fix the typo on Reading Road": no, regular editing.
 - "Reclassify every Hamilton County `highway=residential` whose CAGIS
-  centerline is `Functional_Class=Arterial`" — yes, mechanical, even if
+  centerline is `Functional_Class=Arterial`": yes, mechanical, even if
   done one at a time.
 
 OSM's [Automated Edits Code of Conduct](https://wiki.openstreetmap.org/wiki/Automated_Edits_code_of_conduct)
@@ -49,7 +49,7 @@ This explainer describes the *order* they go in and *why*.
 ## How it works
 
 The gating runs in five steps. Each step depends on the previous one
-completing — skipping or reordering breaks the next step.
+completing: skipping or reordering breaks the next step.
 
 1. **Private outreach to the local OSM contact.** Email or OSM-message
    Minh Nguyễn ([User:Mxn](https://wiki.openstreetmap.org/wiki/User:Mxn))
@@ -70,7 +70,7 @@ completing — skipping or reordering breaks the next step.
    `wiki.openstreetmap.org/wiki/Automated_edits/<account-name>` and
    documents what edits the account performs, what evidence it uses
    (CAGIS centerlines, TIGER 2024), what it explicitly does *not* do
-   (no detector-track edits — see
+   (no detector-track edits: see
    `docs/explainers/detector-taxonomy.md`), and an opt-out contact.
    Draft: `docs/community-prep/01-wiki-page.md`. The published URL
    becomes the value of the `description` tag on every changeset
@@ -93,14 +93,14 @@ completing — skipping or reordering breaks the next step.
    state, scan freshness, and changeset constraints. If any item is
    No, stop.
 
-After the gates pass, the first changeset goes out — capped at 10
+After the gates pass, the first changeset goes out: capped at 10
 elements, watched on OSMCha for 72 hours, then scaled gradually.
 
 ## The flow, visually
 
 ```mermaid
 ---
-title: Phase 1 community gating — dependency order
+title: Phase 1 community gating: dependency order
 ---
 flowchart TD
     Start(("Pipeline ready<br/>2,043 auto-submit candidates"))
@@ -141,21 +141,21 @@ flowchart TD
 
 *What this shows: every step is a hard prerequisite for the next one.
 The two `Wait` nodes are real wall-clock pauses, not optional. Three
-edges lead to `Halt` — Minh objection, unresolved community concern, or
+edges lead to `Halt`: Minh objection, unresolved community concern, or
 any pre-flight No. What this hides: the changeset-tag composition (see
 "Changeset tags" below) and the `osm preflight --zone` automated check
 that codifies most of step 5.*
 
 ## What happens if you skip each step
 
-The four steps are not a checklist of polite gestures — each one closes
+The four steps are not a checklist of polite gestures: each one closes
 a specific failure mode. The clearest way to internalize them is to ask
 "what does it cost if I skip this one?"
 
 - **Skip Minh outreach.** A reasonable concern that Minh would have
   caught privately gets raised on `talk-us@` instead. The comment
   window resets while you address it; what was a 14-day delay becomes
-  4–6 weeks. Worse: if the concern is correct, your first public post
+  4-6 weeks. Worse: if the concern is correct, your first public post
   starts on the wrong foot, and the project has a credibility cost
   to pay back even after the issue is fixed.
 - **Skip the account convention.** OSMCha and DWG reviewers spot a
@@ -172,10 +172,10 @@ a specific failure mode. The clearest way to internalize them is to ask
   community that's harder to undo than a single revert.
 - **Skip the 14-day wait.** Even with all four artifacts published,
   the CoC explicitly requires a comment window. Submitting before
-  the window closes is treated as evidence of bad faith — the community
+  the window closes is treated as evidence of bad faith: the community
   will assume you knew about the rule and chose to ignore it.
 
-## Changeset tags — what gets emitted
+## Changeset tags: what gets emitted
 
 Every changeset opened by `osm.changeset.create_changeset()`
 ([changeset.py:82](../../src/osm/changeset.py#L82)) carries a fixed set
@@ -196,7 +196,7 @@ The `description` tag's value comes from
 ships as a placeholder
 (`https://wiki.openstreetmap.org/wiki/Hamilton_County_TIGER_Audit`).
 **This must be updated before the first submission** so the value
-exactly matches the published wiki page URL — the pre-flight checklist
+exactly matches the published wiki page URL: the pre-flight checklist
 ([04-pre-flight-checklist.md](../community-prep/04-pre-flight-checklist.md))
 calls this out explicitly.
 
@@ -213,7 +213,7 @@ attribution string itself lives at
 - **The DWG import-role request is *not* in Phase 1.** Default rate limit
   is 1,000 edits/hr, ramping to 100,000 over a week per OSM API policy.
   Phase 1's 10-element + ≤500-element pattern fits comfortably under
-  this. The DWG request is a Phase 5 (full-scale) prerequisite —
+  this. The DWG request is a Phase 5 (full-scale) prerequisite:
   noted in [`docs/community-prep/00-README.md`](../community-prep/00-README.md).
 - **The wiki page URL is sticky.** Once the first changeset goes out
   with a `description` value, every subsequent batch should use the
@@ -227,7 +227,7 @@ attribution string itself lives at
   [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md), only
   the classifier-track outputs (with CAGIS-verified confidence ≥ 0.85)
   flow through `osm.changeset`. The mechanical-edit account never
-  submits a fix derived from a rider-impact detector — those go to
+  submits a fix derived from a rider-impact detector: those go to
   MapRoulette / human review only. This is what allows the CoC
   declaration "we only do <these specific tag changes>" to be
   truthful, which is what allows the account to remain in good standing.
@@ -235,7 +235,7 @@ attribution string itself lives at
   pre-flight checklist.** It runs 16 checks across 6 categories with
   PASS/FAIL/WARN/MANUAL exit codes. `--strict` escalates WARN to FAIL.
   Some items remain MANUAL because they require human judgment (did
-  Minh respond? are there unresolved comments?) — the command can't
+  Minh respond? are there unresolved comments?): the command can't
   introspect mailboxes.
 - **Phase 1 is currently human-action-blocked.** As of 2026-05-08,
   the four numbered drafts under `docs/community-prep/`
@@ -246,44 +246,44 @@ attribution string itself lives at
 
 ## Code references
 
-- [`src/osm/changeset.py:82`](../../src/osm/changeset.py#L82) —
+- [`src/osm/changeset.py:82`](../../src/osm/changeset.py#L82):
   `create_changeset()` entry point.
-- [`src/osm/changeset.py:98-111`](../../src/osm/changeset.py#L98-L111) —
+- [`src/osm/changeset.py:98-111`](../../src/osm/changeset.py#L98-L111):
   the seven changeset tags emitted (the four mechanical-edit tags plus
   comment / source / created_by).
-- [`src/osm/config.py:69`](../../src/osm/config.py#L69) — `WIKI_URL`
+- [`src/osm/config.py:69`](../../src/osm/config.py#L69): `WIKI_URL`
   placeholder; must match the published wiki URL before first submission.
-- [`src/osm/conflate.py:76-79`](../../src/osm/conflate.py#L76-L79) —
+- [`src/osm/conflate.py:76-79`](../../src/osm/conflate.py#L76-L79):
   `CAGIS_ATTRIBUTION` string used as the `cagis:attribution` tag value.
-- [`src/osm/preflight.py`](../../src/osm/preflight.py) — `osm preflight
+- [`src/osm/preflight.py`](../../src/osm/preflight.py): `osm preflight
   --zone <key>` runs 16 codified checks across 6 categories.
-- [`docs/community-prep/00-README.md`](../community-prep/00-README.md) —
+- [`docs/community-prep/00-README.md`](../community-prep/00-README.md):
   the maintainer-facing README that orders the four artifacts and
   explains why the order matters.
-- [`docs/community-prep/01-wiki-page.md`](../community-prep/01-wiki-page.md) —
+- [`docs/community-prep/01-wiki-page.md`](../community-prep/01-wiki-page.md):
   draft wiki page content (paste into `Automated_edits/<account-name>`).
-- [`docs/community-prep/02-talk-us-post.md`](../community-prep/02-talk-us-post.md) —
+- [`docs/community-prep/02-talk-us-post.md`](../community-prep/02-talk-us-post.md):
   draft talk-us@ + community.osm.org post.
-- [`docs/community-prep/03-minh-outreach.md`](../community-prep/03-minh-outreach.md) —
+- [`docs/community-prep/03-minh-outreach.md`](../community-prep/03-minh-outreach.md):
   draft private outreach to Minh Nguyễn.
-- [`docs/community-prep/04-pre-flight-checklist.md`](../community-prep/04-pre-flight-checklist.md) —
+- [`docs/community-prep/04-pre-flight-checklist.md`](../community-prep/04-pre-flight-checklist.md):
   day-of submission checklist.
 
 ## See also
 
-- [`CLAUDE.md` § OSM community requirements](../../CLAUDE.md) — the
+- [`CLAUDE.md` § OSM community requirements](../../CLAUDE.md): the
   dense source statement this explainer decompresses, plus the current
   Phase 1 blocker list.
-- [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md) — why
+- [`docs/explainers/detector-taxonomy.md`](detector-taxonomy.md): why
   only classifier-track outputs reach the changeset queue (the truthful-CoC
   prerequisite).
-- [`docs/explainers/conflation-matcher.md`](conflation-matcher.md) — how
+- [`docs/explainers/conflation-matcher.md`](conflation-matcher.md): how
   fixes get the ≥ 0.85 confidence required to be CAGIS-verified and
   therefore eligible for `mechanical=yes` submission.
-- [OSM Automated Edits Code of Conduct](https://wiki.openstreetmap.org/wiki/Automated_Edits_code_of_conduct) —
+- [OSM Automated Edits Code of Conduct](https://wiki.openstreetmap.org/wiki/Automated_Edits_code_of_conduct):
   the canonical policy this explainer implements.
-- [OSM Import Guidelines](https://wiki.openstreetmap.org/wiki/Import/Guidelines) —
+- [OSM Import Guidelines](https://wiki.openstreetmap.org/wiki/Import/Guidelines):
   related policy; mechanical edits and imports overlap heavily, and DWG
   applies similar standards.
-- [OSMCha](https://osmcha.org/) — the changeset-review tool used by
+- [OSMCha](https://osmcha.org/): the changeset-review tool used by
   reviewers and the DWG to spot non-compliant edits.

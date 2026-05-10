@@ -18,11 +18,11 @@ review skill via the `references/` files bundled with this skill:
 
 Cross-cutting standards applied to every file:
 
-- **Security (Blocker)** — no secrets, all `innerHTML` user-input
+- **Security (Blocker)**: no secrets, all `innerHTML` user-input
   through `escapeHtml()`, no hardcoded production URLs.
-- **Consistency (Warning)** — IIFE scope, `$()` helpers, `state`
+- **Consistency (Warning)**: IIFE scope, `$()` helpers, `state`
   object, `el()` factory; no new frameworks/build tools.
-- **General (Warning)** — no commented-out code, no untracked
+- **General (Warning)**: no commented-out code, no untracked
   TODO/FIXME, no dead code.
 
 ## When to invoke
@@ -32,7 +32,7 @@ Cross-cutting standards applied to every file:
 - "Does this meet our standards"
 - "What's wrong with this file"
 
-For a multi-file PR, this is the entry point — it routes per file and
+For a multi-file PR, this is the entry point: it routes per file and
 produces one combined report.
 
 ## What it produces
@@ -58,5 +58,5 @@ invoked directly for targeted reviews.
 ## See also
 
 - [`SKILL.md`](../../.claude/skills/metronow-code-review/SKILL.md)
-- [`docs/explainers/conventions.md`](../explainers/conventions.md) —
+- [`docs/explainers/conventions.md`](../explainers/conventions.md):
   load-bearing rules vs stylistic preferences.

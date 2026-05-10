@@ -1,14 +1,14 @@
-# Pre-flight checks — codified Phase 1 readiness gate
+# Pre-flight checks: codified Phase 1 readiness gate
 
 **Summary.** `osm preflight --zone <key>` runs 17 codified checks
 across 6 categories and prints a colored go/no-go table. Each check
 returns one of four statuses: **PASS** (green, automated), **FAIL**
-(red, blocks first changeset), **WARN** (yellow, soft block —
+(red, blocks first changeset), **WARN** (yellow, soft block:
 `--strict` escalates to FAIL), or **MANUAL** (blue, requires human
 attestation). Exit codes are `0` clean, `1` on any FAIL, `2` on any
-WARN with `--strict`. The intent is *not* full automation — community
+WARN with `--strict`. The intent is *not* full automation: community
 publication and OSMCha-monitoring checks fundamentally require human
-inspection and surface as MANUAL — but to **remove the cognitive
+inspection and surface as MANUAL: but to **remove the cognitive
 friction** of remembering which checklist items are codable, so the
 maintainer hits the human-attestation pass with everything
 auto-checkable already green.
@@ -59,7 +59,7 @@ category and computes the exit code from the worst status seen.
    `Check` dataclass
    ([preflight.py:58-65](../../src/osm/preflight.py#L58-L65)). The
    pattern is: do the check, build the dict, return. No exceptions
-   leak — a check that errors internally returns `FAIL` with a
+   leak: a check that errors internally returns `FAIL` with a
    `detail` describing the error, so one broken check doesn't kill
    the run.
 4. **Path helpers are centralized.** `_output_dir(zone_key)` →
@@ -69,7 +69,7 @@ category and computes the exit code from the worst status seen.
    discovers the most recent CAGIS baseline manifest by mtime
    ([preflight.py:72-92](../../src/osm/preflight.py#L72-L92)).
 5. **`--strict` escalates WARN to FAIL.** Without `--strict`, exit
-   code 0 ships even with WARNs (some WARNs are advisory — e.g., a
+   code 0 ships even with WARNs (some WARNs are advisory: e.g., a
    scan that's 5 days old, still valid but stale-ish). With
    `--strict`, any WARN becomes a hard stop.
 6. **MANUAL items never auto-PASS.** A check that requires human
@@ -82,7 +82,7 @@ category and computes the exit code from the worst status seen.
 
 ```mermaid
 ---
-title: osm preflight — 17 checks across 6 categories, four status colors
+title: osm preflight: 17 checks across 6 categories, four status colors
 ---
 flowchart LR
     Run["osm preflight --zone <key>"]
@@ -158,7 +158,7 @@ JSON-export mode (`--json`) used by CI.*
 
 ## Why MANUAL exists as a separate status
 
-The most tempting design is binary — either a check passes or fails.
+The most tempting design is binary: either a check passes or fails.
 Pre-flight has a third reality: items where the *truth* of the check
 is fundamentally outside the program's introspection range.
 
@@ -200,7 +200,7 @@ mirroring the doc's intent.
   setup can still complete pre-flight.
 - **The CLI is single-zone.** `osm preflight --zone <key>` runs for
   one zone at a time. To run all four zones, the maintainer scripts
-  the loop. There is no `--all-zones` flag intentionally — the
+  the loop. There is no `--all-zones` flag intentionally: the
   pre-flight is per-batch, not per-project.
 - **MANUAL count never decreases on its own.** Every fresh run shows
   the same MANUAL items. Tracking which were attested is the
@@ -213,51 +213,51 @@ mirroring the doc's intent.
 
 ## Code references
 
-- [`src/osm/preflight.py:1-22`](../../src/osm/preflight.py#L1-L22) —
+- [`src/osm/preflight.py:1-22`](../../src/osm/preflight.py#L1-L22):
   module docstring, CLI invocation, exit code reference.
-- [`src/osm/preflight.py:43-46`](../../src/osm/preflight.py#L43-L46) —
+- [`src/osm/preflight.py:43-46`](../../src/osm/preflight.py#L43-L46):
   status constants (PASS/FAIL/WARN/MANUAL).
-- [`src/osm/preflight.py:50-55`](../../src/osm/preflight.py#L50-L55) —
+- [`src/osm/preflight.py:50-55`](../../src/osm/preflight.py#L50-L55):
   six category constants.
-- [`src/osm/preflight.py:58-65`](../../src/osm/preflight.py#L58-L65) —
+- [`src/osm/preflight.py:58-65`](../../src/osm/preflight.py#L58-L65):
   `Check` dataclass.
-- [`src/osm/preflight.py:72-98`](../../src/osm/preflight.py#L72-L98) —
+- [`src/osm/preflight.py:72-98`](../../src/osm/preflight.py#L72-L98):
   path helpers (`_output_dir`, `_scan_results_path`,
   `_zone_polygon_path`, `_newest_baseline_manifest`,
   `_file_age_seconds`).
-- [`src/osm/preflight.py:105`](../../src/osm/preflight.py#L105) —
+- [`src/osm/preflight.py:105`](../../src/osm/preflight.py#L105):
   `check_wiki_url_set()` (first community check; example of
   MANUAL-not-FAIL when the answer is "ambiguous").
-- [`src/osm/preflight.py:129`](../../src/osm/preflight.py#L129) —
+- [`src/osm/preflight.py:129`](../../src/osm/preflight.py#L129):
   `check_community_drafts_present()` (file-presence check).
-- [`src/osm/preflight.py:153`](../../src/osm/preflight.py#L153) —
+- [`src/osm/preflight.py:153`](../../src/osm/preflight.py#L153):
   `check_community_publication_attested()` (canonical MANUAL).
-- [`src/osm/preflight.py:167`](../../src/osm/preflight.py#L167) —
+- [`src/osm/preflight.py:167`](../../src/osm/preflight.py#L167):
   `check_oauth_token_present()` (reads `TOKEN_PATH`).
-- [`src/osm/preflight.py:197`](../../src/osm/preflight.py#L197) —
+- [`src/osm/preflight.py:197`](../../src/osm/preflight.py#L197):
   `check_oauth_scope_includes_write_api()` (parses the saved token).
-- [`src/osm/preflight.py:235`](../../src/osm/preflight.py#L235) —
+- [`src/osm/preflight.py:235`](../../src/osm/preflight.py#L235):
   `check_account_naming_convention()` (the `_cincyimport` suffix).
-- [`src/osm/preflight.py:277`](../../src/osm/preflight.py#L277) —
+- [`src/osm/preflight.py:277`](../../src/osm/preflight.py#L277):
   `check_pytest_passes()` (shells out to `pytest`).
-- [`src/osm/preflight.py:311`](../../src/osm/preflight.py#L311) —
+- [`src/osm/preflight.py:311`](../../src/osm/preflight.py#L311):
   `check_ruff_clean()`.
-- [`src/osm/preflight.py:342`](../../src/osm/preflight.py#L342) —
+- [`src/osm/preflight.py:342`](../../src/osm/preflight.py#L342):
   `check_scan_freshness()`.
-- [`docs/community-prep/04-pre-flight-checklist.md`](../community-prep/04-pre-flight-checklist.md) —
+- [`docs/community-prep/04-pre-flight-checklist.md`](../community-prep/04-pre-flight-checklist.md):
   the markdown source of truth that this module codifies.
 
 ## See also
 
-- [`CLAUDE.md` § Layout / Operational](../../CLAUDE.md) — `preflight.py`
+- [`CLAUDE.md` § Layout / Operational](../../CLAUDE.md): `preflight.py`
   is listed as the codified first-changeset readiness gate.
-- [`docs/explainers/osm-community-gating.md`](osm-community-gating.md) —
+- [`docs/explainers/osm-community-gating.md`](osm-community-gating.md):
   the four community-gating artifacts that the CAT_COMMUNITY checks
   validate.
-- [`docs/explainers/oauth-pkce-flow.md`](oauth-pkce-flow.md) — the
+- [`docs/explainers/oauth-pkce-flow.md`](oauth-pkce-flow.md): the
   OAuth flow that produces the token CAT_ACCOUNT checks.
-- [`docs/explainers/conventions.md`](conventions.md) — the
+- [`docs/explainers/conventions.md`](conventions.md): the
   audit-before-done convention is the "soft" version of pre-flight;
   pre-flight is the codified version.
-- [`docs/explainers/phase-status.md`](phase-status.md) — pre-flight
+- [`docs/explainers/phase-status.md`](phase-status.md): pre-flight
   is the gate between Phase 1 and the first changeset.

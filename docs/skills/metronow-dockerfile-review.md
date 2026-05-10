@@ -10,19 +10,19 @@ Python `osm` CLI.
 
 Applies the container-specific subset of standards:
 
-- **Multi-stage builds** — `python-deps` + `node-deps` + final
+- **Multi-stage builds**: `python-deps` + `node-deps` + final
   `python:3.12-slim` runtime; stages are layered, not flattened.
-- **Pinned base image** — `python:3.12-slim` with explicit version,
+- **Pinned base image**: `python:3.12-slim` with explicit version,
   not `latest`.
-- **No secrets in `ENV`** — Blocker-level if a key, token, or
+- **No secrets in `ENV`**: Blocker-level if a key, token, or
   credential ends up baked into the image.
-- **Minimal apt installs** — each `apt-get install` followed by
+- **Minimal apt installs**: each `apt-get install` followed by
   `rm -rf /var/lib/apt/lists/*` to keep layers small.
-- **Health check** — `HEALTHCHECK` against the Express `/health`
+- **Health check**: `HEALTHCHECK` against the Express `/health`
   endpoint at port 3000.
-- **Non-root user for runtime** — Warning-level if the final stage
+- **Non-root user for runtime**: Warning-level if the final stage
   runs as root.
-- **`COPY` layer ordering** — `requirements.txt` / `package.json`
+- **`COPY` layer ordering**: `requirements.txt` / `package.json`
   copied before the source so dependency layer is cacheable.
 
 ## When to invoke
@@ -40,11 +40,11 @@ to the container config under review.
 
 ## Related skills
 
-- [`metronow-code-review`](metronow-code-review.md) — umbrella that
+- [`metronow-code-review`](metronow-code-review.md): umbrella that
   invokes this skill for Dockerfile-shaped files.
 
 ## See also
 
 - [`SKILL.md`](../../.claude/skills/metronow-dockerfile-review/SKILL.md)
-- [`docs/web-architecture.md`](../web-architecture.md) — the runtime
+- [`docs/web-architecture.md`](../web-architecture.md): the runtime
   this Dockerfile builds.
