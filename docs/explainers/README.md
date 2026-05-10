@@ -17,12 +17,15 @@ no static-site generator, no toolchain.
   emits two parallel tracks (mechanical-fix candidates vs. rider-impact
   findings), and why the split is the project's mechanical-edit safety
   perimeter.
+- [`conflation-matcher.md`](conflation-matcher.md) — directed-Hausdorff
+  scoring against CAGIS centerlines, the three-term confidence score,
+  the eight buckets (`MATCHED_HIGH` / `MATCHED_REVIEW` /
+  `MATCHED_FALLBACK_REVIEW` / `MIXED_LOW` / F1–F4), the fallback
+  hard-cap at `REVIEW_CONFIDENCE`, and the `osm baseline-diff`
+  asymmetric-promotion alert.
 
 ## Backlog (in priority of confusion-on-re-entry)
 
-- `conflation-matcher.md` — directed-Hausdorff vs symmetric Hausdorff,
-  what F1–F4 buckets mean, REVIEW vs AUTO_SUBMIT bands, three-term
-  scoring weights (W_NAME=0.5, W_GEOMETRY=0.3, W_DIRECTION=0.2).
 - `osm-community-gating.md` — what mechanical edits are, why OSM
   treats them specially, what each of the four required steps does
   (wiki page, talk-us@, account convention, changeset tags), what
