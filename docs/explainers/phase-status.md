@@ -91,7 +91,11 @@ alongside:
 - **Transit App quota tooling**: `osm transit-status`,
   `osm transit-budget`, `fcntl.flock`-guarded usage counter
   ([transit.py](../../src/osm/transit.py)). Status: shipped; quota
-  uplift email sent, awaiting reply.
+  uplift granted 2026-05-11 (`MONTHLY_QUOTA_FREE_TIER` 1,500 → 5,000)
+  with a methodological caveat from Transit's CBO (the MetroNow feed
+  carries operator-supplied ETAs, not Via's confirmed routing — so
+  `/plan` is not a ViaAlgo proxy; see
+  `docs/community-prep/05-transit-api-compliance.md`).
 - **CodeQL alerts**: security findings from GitHub's static analysis.
   Status: alerts #4, #6-10, #17, #24 fixed; #3 (auth.py:120 OAuth URL
   print) flagged for "won't fix / false positive" UI dismissal.
@@ -126,7 +130,7 @@ flowchart LR
         direction TB
         MOTIS["MOTIS prototype<br/>(shipped, opt-in)"]
         Preflight["Pre-flight automation<br/>(shipped)"]
-        Transit["Transit App quota<br/>(uplift requested)"]
+        Transit["Transit App quota<br/>(uplift granted: 5,000/mo)"]
     end
 
     Done --> Blocked

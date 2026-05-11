@@ -46,7 +46,7 @@ class TestTransitStatusCmd:
         assert result.exit_code == 0
         assert "NO" in result.output
         assert "Powered by Transit" in result.output
-        assert "1,500" in result.output
+        assert "5,000" in result.output
 
     def test_key_present_reports_yes(self, isolated_transit):
         isolated_transit.KEY_FILE.write_text(json.dumps({"api_key": "x"}))
@@ -87,10 +87,10 @@ class TestTransitBudgetCmd:
         assert "Fits" in result.output
 
     def test_calls_exceeding_budget_exits_1(self, isolated_transit):
-        # Budget is 1,500 * 0.80 = 1,200 by default.
+        # Budget is 5,000 * 0.80 = 4,000 by default.
         from osm.cli import main
         runner = CliRunner()
-        result = runner.invoke(main, ["transit-budget", "--calls", "5000"])
+        result = runner.invoke(main, ["transit-budget", "--calls", "9000"])
         assert result.exit_code == 1
         assert "DOES NOT FIT" in result.output
 
@@ -101,8 +101,8 @@ class TestTransitBudgetCmd:
         assert result.exit_code == 2
 
     def test_budget_with_used_quota(self, isolated_transit):
-        # 1100 used, budget is 1200 → only 100 remaining
-        _write_usage(isolated_transit, 1100)
+        # 3900 used, budget is 4000 → only 100 remaining
+        _write_usage(isolated_transit, 3900)
         from osm.cli import main
         runner = CliRunner()
         result = runner.invoke(main, ["transit-budget", "--calls", "150"])

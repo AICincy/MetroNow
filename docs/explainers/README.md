@@ -62,10 +62,10 @@ no static-site generator, no toolchain.
   threshold; per-task Markdown instructions; the GeoJSON Lines
   output format and `[lat, lon] → [lon, lat]` conversion.
 - [`transit-quota.md`](transit-quota.md): Transit App quota
-  preservation under the 1,500 calls/month free tier; the 80%
-  budget cap; the three load-bearing ToS obligations
-  ("Powered by Transit", User-Agent, 10-business-day pre-release
-  notice).
+  preservation under the 5,000 calls/month allocation (uplifted
+  2026-05-11 from the 1,500 public tier); the 80% budget cap; the
+  three load-bearing ToS obligations ("Powered by Transit",
+  User-Agent, 10-business-day pre-release notice).
 
 ## Candidate next topics
 

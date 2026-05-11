@@ -306,7 +306,8 @@ class TestComplianceConstants:
         assert "github.com/AICincy/MetroNow" in isolated_transit.USER_AGENT
 
     def test_quota_constants_match_free_tier(self, isolated_transit):
-        # Locked to Transit's email at issuance (1,500/month + 5/min).
-        # If the maintainer raises these, double-check the new tier letter.
-        assert isolated_transit.MONTHLY_QUOTA_FREE_TIER == 1_500
+        # 5,000/month after the 2026-05-11 civic/accessibility uplift
+        # (default public tier is 1,500); rate cap unchanged at 5/min.
+        # If the maintainer changes these, confirm against Transit's email.
+        assert isolated_transit.MONTHLY_QUOTA_FREE_TIER == 5_000
         assert isolated_transit.RATE_LIMIT_PER_MINUTE == 5

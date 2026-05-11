@@ -1,7 +1,8 @@
-# Transit App quota: preserving 1,500 free calls/month against ToS
+# Transit App quota: preserving 5,000 free calls/month against ToS
 
-**Summary.** The Transit App API's free tier allows **1,500 calls per
-month** and **5 calls per minute**. The Transit client is built around
+**Summary.** Transit App granted this project a civic/accessibility
+uplift to **5,000 calls per month** (the default public tier is 1,500)
+and **5 calls per minute**. The Transit client is built around
 quota preservation: aggressive on-disk caching with per-endpoint TTLs
 (1 minute for real-time departures, 7 days for network-list metadata),
 token-bucket pacing at the 5/minute cap, a `fcntl.flock`-guarded local
@@ -19,9 +20,10 @@ error returns `None` and the main scan/fix path keeps running.
 
 Transit App provides operational transit data (real-time departures,
 trip planning, network metadata) that supplements the static GTFS
-data MetroNow already uses. The free-tier developer API has a hard
-quota: 1,500 calls per calendar month, with a 5-call-per-minute rate
-limit on top.
+data MetroNow already uses. The developer API has a hard quota: this
+project's allocation is 5,000 calls per calendar month (raised from
+the 1,500-call public tier by a 2026-05-11 civic/accessibility
+uplift), with a 5-call-per-minute rate limit on top.
 
 This client treats quota as a **non-renewable monthly resource**: each
 call consumes from a finite pool that doesn't refill until the next
@@ -73,10 +75,10 @@ specific way the project could lose quota or break ToS.
    Windows falls back to the unlocked path with a documented tradeoff
    (`docs/explainers/conventions.md` covers this rule in detail).
 5. **80% budget cap.** `_budget_cap()` returns
-   `int(MONTHLY_QUOTA_FREE_TIER * QUOTA_BUDGET_FRACTION)` = `1200`
+   `int(MONTHLY_QUOTA_FREE_TIER * QUOTA_BUDGET_FRACTION)` = `4000`
    ([transit.py:194-196](../../src/osm/transit.py#L194-L196)).
-   `_quota_exhausted()` returns `True` once the counter ≥ 1200, and
-   `_request()` refuses to send the HTTP call. The remaining 300
+   `_quota_exhausted()` returns `True` once the counter ≥ 4000, and
+   `_request()` refuses to send the HTTP call. The remaining 1,000
    calls/month are reserve.
 6. **Fail-open everywhere.** Any HTTP / JSON / quota / file error
    logs at warning level and returns `None` to the caller. The main
@@ -93,7 +95,7 @@ title: "One Transit API call: six guard layers + ToS obligations"
 flowchart TD
     Caller["caller wants Transit data<br/>(e.g. nearby_stops)"]
     Cache{"on-disk cache hit<br/>within TTL?"}
-    Quota{"_quota_exhausted()?<br/>(used ≥ 80% of 1500)"}
+    Quota{"_quota_exhausted()?<br/>(used ≥ 80% of 5000)"}
     Pace["_rate_limit_pace()<br/>(token-bucket, 5/min)"]
     Key["_load_api_key()<br/>~/.config/osm/transit_api.json<br/>chmod 600"]
     HTTP["GET https://external.transitapp.com/v4/public/...<br/>headers: apiKey, User-Agent"]
@@ -142,28 +144,30 @@ load-bearing for ToS but uninteresting visually).*
 
 ## Why 80%, not 100%
 
-The free tier is 1,500 calls/month. The naive cap is "refuse at 1,500
-exactly." Three reasons not to:
+This project's allocation is 5,000 calls/month. The naive cap is
+"refuse at 5,000 exactly." Three reasons not to:
 
 - **Counter drift on Windows.** The `fcntl.flock` guard is POSIX-only;
   Windows falls back to unlocked writes
   ([transit.py:204-234](../../src/osm/transit.py#L204-L234)). On
   Windows, the local counter can drift slightly under concurrent
-  load. A 1,500-cap with drift could submit calls Transit's
+  load. A 5,000-cap with drift could submit calls Transit's
   server-side counter has already rejected.
 - **Operational headroom.** Real-world usage is bursty. A scan run
   might be quota-cheap most days, then a tuning week pushes 200 calls
-  in 24 hours. With a 1,500 cap, that burst could exhaust the month
-  on the 28th. With a 1,200 cap, the burst still fits and there are
-  300 calls of reserve for a "quick check" later.
+  in 24 hours. With a 5,000 cap, that burst could exhaust the month
+  near the end. With a 4,000 cap, the burst still fits and there are
+  1,000 calls of reserve for a "quick check" later.
 - **Server-side discrepancy budget.** Transit's billing counter and
   this client's local counter can disagree by a few calls (network
-  retries, server-side counting differences). 300 calls is
+  retries, server-side counting differences). 1,000 calls is
   generously beyond any reasonable disagreement.
 
-The 80% number is a conservative default. A future paid tier or quota
-uplift would reset the math: change `MONTHLY_QUOTA_FREE_TIER` and
-`QUOTA_BUDGET_FRACTION` in `transit.py`; nothing else.
+The 80% number is a conservative default. A further quota uplift would
+reset the math: change `MONTHLY_QUOTA_FREE_TIER` (and, if desired,
+`QUOTA_BUDGET_FRACTION`) in `transit.py`; nothing else. The
+2026-05-11 uplift from 1,500 to 5,000 was exactly this one-line
+change.
 
 ## Three ToS obligations the calling code MUST honor
 
@@ -182,8 +186,8 @@ Service ([transit.py:24-30](../../src/osm/transit.py#L24-L30)):
 3. **10-business-day pre-release notice.** Before any public release
    of a tool using this client, email `apis@transitapp.com`. The
    compliance email referenced in `CLAUDE.md` (sent to Richard at
-   Transit App, awaiting reply on quota uplift) is exactly this
-   obligation in action.
+   Transit App; reply from Transit's CBO on 2026-05-11 granted the
+   5,000-call/month uplift) is exactly this obligation in action.
 
 The full obligation list and runbook are in
 [`docs/community-prep/05-transit-api-compliance.md`](../community-prep/05-transit-api-compliance.md).
@@ -226,8 +230,8 @@ The full obligation list and runbook are in
 - [`src/osm/transit.py:56`](../../src/osm/transit.py#L56):
   `TRANSIT_BASE_URL`.
 - [`src/osm/transit.py:59-61`](../../src/osm/transit.py#L59-L61):
-  `RATE_LIMIT_PER_MINUTE = 5`, `MONTHLY_QUOTA_FREE_TIER = 1500`,
-  `QUOTA_BUDGET_FRACTION = 0.80`.
+  `RATE_LIMIT_PER_MINUTE = 5`, `MONTHLY_QUOTA_FREE_TIER = 5000`
+  (post-2026-05-11 uplift), `QUOTA_BUDGET_FRACTION = 0.80`.
 - [`src/osm/transit.py:64`](../../src/osm/transit.py#L64):
   `AUTH_HEADER = "apiKey"` (per Transit's API doc).
 - [`src/osm/transit.py:67-69`](../../src/osm/transit.py#L67-L69):
@@ -264,6 +268,6 @@ The full obligation list and runbook are in
   concurrent access.
 - [`docs/explainers/phase-status.md`](phase-status.md): the Transit
   App quota tooling is shipped as a cross-cutting workstream; the
-  ToS-compliance email is mentioned as awaiting reply.
+  2026-05-11 quota uplift is recorded there.
 - [Transit App API docs](https://api-doc.transitapp.com/v4.html):
   the upstream reference.

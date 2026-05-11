@@ -1,9 +1,9 @@
 """Transit App API v4 client (rate-limited, quota-tracked, fail-open).
 
 Phase 4c follow-up: a defensive client for the Transit App developer
-API (https://api-doc.transitapp.com/v4.html). The public/free tier
-allocates 1,500 calls/month and 5 calls/minute — so this client is
-designed around quota preservation:
+API (https://api-doc.transitapp.com/v4.html). The tier here is
+5,000 calls/month (uplifted from the 1,500 public tier) and 5
+calls/minute — so this client is designed around quota preservation:
 
 * Aggressive on-disk caching keyed by endpoint + query, with TTLs
   matched to each endpoint class (24 h for static metadata, 30 s
@@ -55,9 +55,9 @@ log = logging.getLogger(__name__)
 
 TRANSIT_BASE_URL = "https://external.transitapp.com/v4/public"
 
-# Per Transit's email at API key issuance.
+# Per Transit's email at API key issuance, plus the 2026-05-11 uplift.
 RATE_LIMIT_PER_MINUTE = 5
-MONTHLY_QUOTA_FREE_TIER = 1_500
+MONTHLY_QUOTA_FREE_TIER = 5_000  # 1,500 public tier + civic uplift
 QUOTA_BUDGET_FRACTION = 0.80  # refuse calls past 80 % of quota
 
 # Header name from api-doc.transitapp.com/v4.html (securitySchemes.apiKey).

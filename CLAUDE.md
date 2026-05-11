@@ -172,12 +172,18 @@ and where the cross-cutting workstreams fit.
 
 - **Phase 1 (community gating)**: ⏳ blocked on human action.
   All five `docs/community-prep/*.md` drafts ready; Transit-App ToS
-  compliance email **sent** to Richard at Transit App (awaiting
-  reply on quota uplift). Wiki / talk-us@ / community.osm.org
-  publication still pending. Minh Nguyễn outreach is now warm via
-  direct technical correspondence (directed-Hausdorff matcher,
-  MOTIS prototype). `_cincyimport`-convention account not yet
-  created.
+  compliance email sent to Richard at Transit App — reply from
+  Transit's CBO (David Block-Schachter) on 2026-05-11 granted the
+  requested monthly-quota uplift (`MONTHLY_QUOTA_FREE_TIER` now
+  5,000, up from the 1,500 public tier), with a methodological
+  caveat: Transit's MetroNow feed carries operator-supplied
+  pickup/drop-off/ETA, not Via's confirmed routing, so the `/plan`
+  endpoint is not a ViaAlgo proxy (see
+  `docs/community-prep/05-transit-api-compliance.md`). Wiki /
+  talk-us@ / community.osm.org publication still pending. Minh Nguyễn
+  outreach is now warm via direct technical correspondence
+  (directed-Hausdorff matcher, MOTIS prototype).
+  `_cincyimport`-convention account not yet created.
 - **Phase 2, 3, 4**: ✅ complete; matcher fixes shipped, MapRoulette
   generators shipped, polygon-clip / route-diff / detector hardening
   shipped.
