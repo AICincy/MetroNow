@@ -137,8 +137,10 @@ class TestVehiclePositionsParsing:
         r = out[0]
         assert r["vehicle_id"] == "BUS-204"
         assert r["trip_id"] == "T1" and r["route_id"] == "4"
-        assert abs(r["lat"] - 39.232) < 1e-6 and abs(r["lon"] + 84.378) < 1e-6
-        assert abs(r["bearing"] - 270.0) < 1e-6
+        # GTFS-RT Position lat/lon/bearing are 32-bit `float`, so values
+        # round-trip to ~1e-6 precision — don't assert tighter than that.
+        assert abs(r["lat"] - 39.232) < 1e-4 and abs(r["lon"] + 84.378) < 1e-4
+        assert abs(r["bearing"] - 270.0) < 1e-4
         assert r["timestamp"] == 1_700_000_000
         assert r["current_status"] == int(pb.VehiclePosition.IN_TRANSIT_TO)
         assert r["stop_id"] == "S9"
