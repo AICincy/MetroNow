@@ -311,3 +311,121 @@ class TestComplianceConstants:
         # If the maintainer changes these, confirm against Transit's email.
         assert isolated_transit.MONTHLY_QUOTA_FREE_TIER == 5_000
         assert isolated_transit.RATE_LIMIT_PER_MINUTE == 5
+
+
+# ---------------------------------------------------------------------------
+# Pipeline integration — cross_check_bus_stop_findings()
+# ---------------------------------------------------------------------------
+
+class TestBusStopCrossCheck:
+
+    @staticmethod
+    def _finding(lat=39.30, lon=-84.45, **kw):
+        f = {"kind": "bus_stop_misplaced", "id": 1, "lat": lat, "lon": lon}
+        f.update(kw)
+        return f
+
+    def test_empty_findings_returns_empty(self, isolated_transit):
+        kept, n = isolated_transit.cross_check_bus_stop_findings([])
+        assert kept == [] and n == 0
+
+    def test_nearby_transit_stop_suppresses_finding(self, isolated_transit):
+        t = isolated_transit
+        f = self._finding()
+        with mock.patch.object(
+            t, "nearby_stops", autospec=True,
+            return_value={"stops": [
+                {"stop_lat": 39.30001, "stop_lon": -84.45, "global_stop_id": "x"},
+            ]},
+        ):
+            kept, n = t.cross_check_bus_stop_findings([f])
+        assert kept == [] and n == 1
+
+    def test_far_transit_stop_keeps_finding(self, isolated_transit):
+        t = isolated_transit
+        f = self._finding()
+        with mock.patch.object(
+            t, "nearby_stops", autospec=True,
+            return_value={"stops": [
+                {"stop_lat": 39.40, "stop_lon": -84.45, "global_stop_id": "x"},
+            ]},
+        ):
+            kept, n = t.cross_check_bus_stop_findings([f])
+        assert kept == [f] and n == 0
+
+    def test_no_transit_data_keeps_finding(self, isolated_transit):
+        # nearby_stops returns None (no key / quota-exhausted / error) → fail-open
+        t = isolated_transit
+        f = self._finding()
+        with mock.patch.object(t, "nearby_stops", autospec=True, return_value=None):
+            kept, n = t.cross_check_bus_stop_findings([f])
+        assert kept == [f] and n == 0
+
+    def test_empty_stops_list_keeps_finding(self, isolated_transit):
+        t = isolated_transit
+        f = self._finding()
+        with mock.patch.object(
+            t, "nearby_stops", autospec=True, return_value={"stops": []},
+        ):
+            kept, n = t.cross_check_bus_stop_findings([f])
+        assert kept == [f] and n == 0
+
+    def test_non_bus_stop_findings_pass_through_without_api_call(self, isolated_transit):
+        t = isolated_transit
+        other = {"kind": "oneway_conflict", "id": 9}
+        with mock.patch.object(t, "nearby_stops", autospec=True) as m:
+            kept, n = t.cross_check_bus_stop_findings([other])
+        assert kept == [other] and n == 0
+        m.assert_not_called()
+
+    def test_finding_without_coords_skipped_without_api_call(self, isolated_transit):
+        t = isolated_transit
+        f = {"kind": "bus_stop_misplaced", "id": 2}  # no lat/lon
+        with mock.patch.object(t, "nearby_stops", autospec=True) as m:
+            kept, n = t.cross_check_bus_stop_findings([f])
+        assert kept == [f] and n == 0
+        m.assert_not_called()
+
+    def test_tolerates_bare_lat_lon_field_names(self, isolated_transit):
+        # Payload-shape robustness: accept {"lat":, "lon":} as well as
+        # {"stop_lat":, "stop_lon":}.
+        t = isolated_transit
+        f = self._finding()
+        with mock.patch.object(
+            t, "nearby_stops", autospec=True,
+            return_value={"stops": [{"lat": 39.30001, "lon": -84.45}]},
+        ):
+            kept, n = t.cross_check_bus_stop_findings([f])
+        assert kept == [] and n == 1
+
+    def test_mixed_findings_partition_correctly(self, isolated_transit):
+        t = isolated_transit
+        near = self._finding(lat=39.30, lon=-84.45, id=1)
+        far = self._finding(lat=39.31, lon=-84.46, id=2)
+        other = {"kind": "oneway_conflict", "id": 3}
+
+        def _fake_nearby(lat, lon, *, max_distance=500, force_refresh=False):
+            # Only the first finding has a stop right next to it.
+            if abs(lat - 39.30) < 1e-4:
+                return {"stops": [{"stop_lat": lat, "stop_lon": lon}]}
+            return {"stops": [{"stop_lat": 39.99, "stop_lon": -84.99}]}
+
+        with mock.patch.object(t, "nearby_stops", side_effect=_fake_nearby):
+            kept, n = t.cross_check_bus_stop_findings([near, far, other])
+        assert n == 1
+        assert kept == [far, other]
+
+    def test_malformed_stop_records_are_ignored(self, isolated_transit):
+        t = isolated_transit
+        f = self._finding()
+        with mock.patch.object(
+            t, "nearby_stops", autospec=True,
+            return_value={"stops": [
+                "not-a-dict",
+                {"stop_lat": "nope", "stop_lon": "nope"},
+                {"stop_lat": 999.0, "stop_lon": 999.0},  # out of range
+                {"stop_lat": 39.30001, "stop_lon": -84.45},  # the real match
+            ]},
+        ):
+            kept, n = t.cross_check_bus_stop_findings([f])
+        assert kept == [] and n == 1

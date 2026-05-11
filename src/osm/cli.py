@@ -132,12 +132,25 @@ def auth_status():
         "skips the fetch."
     ),
 )
+@click.option(
+    "--with-transit-cross-check/--no-transit-cross-check",
+    default=True,
+    help=(
+        "Cross-check misplaced_bus_stops findings against Transit App's "
+        "nearby-stops data — one API call per flagged stop. A finding "
+        "Transit corroborates within 50 m is suppressed as a valid "
+        "off-curb placement (same false-positive class as the GTFS "
+        "cross-check). On by default; no-ops without a Transit API key "
+        "at ~/.config/osm/transit_api.json. Consumes Transit quota."
+    ),
+)
 def scan(
     zone: str, from_cache: bool, skip_history: bool, import_only: bool,
     with_conflation: bool, tiger_only: bool, with_route_diff: bool,
     route_diff_profile: str, include_unnamed_service: bool,
     with_gtfs_cross_check: bool,
     with_bus_route_corroboration: bool,
+    with_transit_cross_check: bool,
 ):
     """Fetch OSM data, analyse history, classify defects, and generate reports."""
     from rich.progress import Progress
@@ -374,6 +387,43 @@ def scan(
                 )
             except Exception as exc:  # noqa: BLE001
                 click.echo(f"  Route-diff failed: {exc}")
+
+        # Phase 2f: Transit App cross-check on misplaced_bus_stops findings.
+        # One nearby-stops call per flagged stop; a finding Transit
+        # corroborates within 50 m is dropped as a valid off-curb shelter.
+        # Fail-open: no API key / quota-exhausted / network error → no-op.
+        if with_transit_cross_check:
+            from . import transit as _transit
+            if not _transit.status().has_key:
+                click.echo(
+                    "\nPhase 2f: Transit cross-check SKIPPED "
+                    "(no Transit API key at ~/.config/osm/transit_api.json)"
+                )
+            else:
+                click.echo(
+                    "\nPhase 2f: Transit App cross-check (misplaced_bus_stops)..."
+                )
+                try:
+                    findings = classified.get("extra_findings") or []
+                    before = sum(
+                        1 for f in findings
+                        if f.get("kind") == "bus_stop_misplaced"
+                    )
+                    kept, n_suppressed = _transit.cross_check_bus_stop_findings(
+                        findings
+                    )
+                    classified["extra_findings"] = kept
+                    classified.setdefault("summary_stats", {})
+                    classified["summary_stats"]["transit_bus_stop_suppressed"] = (
+                        n_suppressed
+                    )
+                    click.echo(
+                        f"  Misplaced-bus-stop findings: {before:,} before, "
+                        f"{n_suppressed:,} suppressed by Transit, "
+                        f"{before - n_suppressed:,} kept"
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    click.echo(f"  Transit cross-check failed: {exc}", err=True)
 
         # Phase 3: Reports
         click.echo("\nPhase 3: Generating reports...")

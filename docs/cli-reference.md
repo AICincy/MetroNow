@@ -76,8 +76,9 @@ flags:
 | `--with-conflation` | Run `osm.conflate` inline (otherwise call `osm conflate` after) |
 | `--tiger-only` | Skip CAGIS, use TIGER 2024 only (for incomplete CAGIS coverage) |
 | `--with-route-diff` | Run BRouter false-positive filtering inline |
-| `--with-gtfs-cross-check` | Validate `highway=bus_stop` nodes against SORTA GTFS |
+| `--with-gtfs-cross-check` (default on) | Validate `highway=bus_stop` nodes against SORTA GTFS |
 | `--with-bus-route-corroboration` (default on) | Annotate `oneway_conflicts` findings with `transit_corridor=True` when on a CAGIS bus-route corridor |
+| `--with-transit-cross-check` (default on) | Cross-check `misplaced_bus_stops` findings against Transit App's nearby-stops data (one API call per flagged stop); a finding Transit corroborates within 50 m is suppressed. No-ops without a Transit API key; consumes Transit monthly quota |
 | `--include-unnamed-service` | Include unnamed `highway=service` ways (off by default to reduce noise) |
 
 **`osm conflate`** annotates an existing scan's `all_ways` with

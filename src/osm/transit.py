@@ -436,6 +436,99 @@ def trip_plan(
     )
 
 
+# ---------------------------------------------------------------------------
+# Pipeline integration — cross-checks that consume the endpoint helpers
+# ---------------------------------------------------------------------------
+
+def _stop_latlon(stop: dict) -> tuple[float, float] | None:
+    """Pull (lat, lon) from a Transit ``nearby_stops`` stop record.
+
+    The v4 payload uses ``stop_lat`` / ``stop_lon``; tolerate the bare
+    ``lat`` / ``lon`` spelling too so a payload-shape tweak upstream
+    doesn't silently disable the cross-check.
+    """
+    raw_lat = stop.get("stop_lat")
+    if raw_lat is None:
+        raw_lat = stop.get("lat")
+    raw_lon = stop.get("stop_lon")
+    if raw_lon is None:
+        raw_lon = stop.get("lon")
+    if raw_lat is None or raw_lon is None:
+        return None
+    try:
+        return float(raw_lat), float(raw_lon)
+    except (TypeError, ValueError):
+        return None
+
+
+def cross_check_bus_stop_findings(
+    findings: list[dict],
+    *,
+    match_threshold_m: float = 50.0,
+    max_distance_m: int = 200,
+) -> tuple[list[dict], int]:
+    """Suppress ``bus_stop_misplaced`` findings that Transit corroborates.
+
+    For each ``kind == "bus_stop_misplaced"`` finding with usable
+    coordinates, query Transit's ``nearby_stops`` around it. If Transit
+    knows a stop within ``match_threshold_m``, the OSM placement is a
+    valid off-curb shelter — the same false-positive class the GTFS
+    cross-check in :func:`osm.detectors.detect_misplaced_bus_stops`
+    suppresses — so the finding is dropped.
+
+    Returns ``(kept_findings, n_suppressed)``. One ``nearby_stops`` call
+    per flagged candidate; flagged stops are a small subset of all stops
+    in a zone, so this stays well inside the monthly quota. Fail-open:
+    when the client has no key, is quota-exhausted, or errors,
+    ``nearby_stops`` returns ``None`` and the finding is kept untouched.
+    Non-``bus_stop_misplaced`` findings and findings without a usable
+    coordinate pass through without an API call.
+    """
+    if not findings:
+        return findings, 0
+
+    from .geo import haversine_m, valid_latlon
+
+    kept: list[dict] = []
+    n_suppressed = 0
+    for f in findings:
+        if f.get("kind") != "bus_stop_misplaced":
+            kept.append(f)
+            continue
+        lat = f.get("lat")
+        lon = f.get("lon")
+        if lat is None or lon is None:
+            kept.append(f)
+            continue
+        try:
+            flat, flon = float(lat), float(lon)
+        except (TypeError, ValueError):
+            kept.append(f)
+            continue
+        if not valid_latlon(flat, flon):
+            kept.append(f)
+            continue
+
+        resp = nearby_stops(flat, flon, max_distance=max_distance_m)
+        if not resp:
+            kept.append(f)
+            continue
+
+        best: float | None = None
+        for stop in resp.get("stops") or []:
+            sll = _stop_latlon(stop) if isinstance(stop, dict) else None
+            if sll is None or not valid_latlon(*sll):
+                continue
+            d = haversine_m(flat, flon, sll[0], sll[1])
+            if best is None or d < best:
+                best = d
+        if best is not None and best <= match_threshold_m:
+            n_suppressed += 1
+            continue
+        kept.append(f)
+    return kept, n_suppressed
+
+
 __all__ = [
     "AUTH_HEADER",
     "CACHE_DIR",
@@ -451,6 +544,7 @@ __all__ = [
     "TransitClientStatus",
     "alerts_for_networks",
     "available_networks",
+    "cross_check_bus_stop_findings",
     "nearby_stops",
     "status",
     "stop_departures",
