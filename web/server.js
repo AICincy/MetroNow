@@ -736,6 +736,33 @@ app.get("/api/osmose/:zone/by-way/:wayId", async (req, res) => {
   }
 });
 
+// ---- Transit App service alerts ----
+
+// SORTA service alerts via the Transit App API. Not zone-scoped — Transit
+// alerts attach to the network, not a bbox. Returns
+// { has_key, count, alerts: [{id, title, description, severity, effect, url}] }.
+// Fail-open in the Python layer: no API key / quota exhausted / SORTA
+// network unresolved all yield []. Cheap on the monthly quota — the
+// client caches available_networks 7 days and alerts 5 minutes.
+app.get("/api/transit-alerts", async (_req, res) => {
+  try {
+    const pyCode = [
+      "import json, sys, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "sys.stdout = open(os.devnull, 'w')",
+      "from osm.transit import fetch_sorta_alerts, status",
+      "has_key = status().has_key",
+      "alerts = fetch_sorta_alerts() if has_key else []",
+      "sys.stdout = sys.__stdout__",
+      "print(json.dumps({'has_key': has_key, 'count': len(alerts), 'alerts': alerts}))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    res.json(JSON.parse(out.trim()));
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
 // ---- history ----
 
 app.get("/api/history", (_req, res) => {

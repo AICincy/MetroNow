@@ -95,11 +95,12 @@ corroborates a stop within 50 m (the same off-curb-shelter false
 positive the GTFS cross-check suppresses). `fetch_sorta_alerts()` —
 via `resolve_sorta_network_id()` over the 7-day-cached
 `available_networks` catalog — backs `osm transit-alerts` (and
-`osm transit-networks` dumps the catalog for verifying the resolver).
-Both fail open without an API key. The `/plan` endpoint deliberately
-has no consumer: per Transit's CBO the MetroNow feed relays
-operator-supplied ETAs, not Via's routing, so it can't proxy ViaAlgo's
-dispatch — see
+`osm transit-networks` dumps the catalog for verifying the resolver);
+the Atlas web UI also exposes it at `GET /api/transit-alerts` and
+shows a boot-time toast + console line for any active alert. All fail
+open without an API key. The `/plan` endpoint deliberately has no
+consumer: per Transit's CBO the MetroNow feed relays operator-supplied
+ETAs, not Via's routing, so it can't proxy ViaAlgo's dispatch — see
 [`docs/community-prep/05-transit-api-compliance.md`](../community-prep/05-transit-api-compliance.md).
 
 ## The flow, visually

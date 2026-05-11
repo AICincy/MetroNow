@@ -535,13 +535,19 @@ def cross_check_bus_stop_findings(
 # `osm transit-networks` dumps the full catalog if the heuristic misses.
 # Kept conservative on purpose — a wrong match would fetch some other
 # agency's alerts. SORTA = Southwest Ohio Regional Transit Authority,
-# brand "Metro" (go-metro.com), Onestop o-dngy-southwestohioregionaltransitauthority.
+# brand "Cincinnati Metro" (go-metro.com). Catalog IDs that should
+# match: Transitland operator `o-dngy-southwestohioregionaltransitauthority`
+# (geohash prefix `dngy` = the Cincinnati cell) and feed
+# `f-cincinnatimetro` / `f-cincinnatimetro~rt`; Mobility Database
+# `mdb-366`. Bare "metro" is deliberately excluded — far too broad.
 SORTA_NETWORK_HINTS: tuple[str, ...] = (
     "sorta",
+    "cincinnatimetro",
+    "cincinnati metro",
     "southwest ohio regional transit",
     "go-metro",
     "gometro",
-    "o-dngy-southwestohioregionaltransitauthority",
+    "dngy",
 )
 
 

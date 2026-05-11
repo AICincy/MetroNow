@@ -207,8 +207,11 @@ and where the cross-cutting workstreams fit.
   `--with-transit-cross-check`, default on); (2) `osm transit-alerts`
   surfaces SORTA service alerts via `fetch_sorta_alerts()` (network id
   auto-resolved by a conservative name/onestop-ID heuristic over
-  `available_networks`; override with `--network`). Both fail-open
-  without an API key. Not yet wired: alerts → reports/Atlas UI,
+  `available_networks`; override with `--network`); (3) the Atlas web
+  UI fetches `GET /api/transit-alerts` on boot and shows a toast +
+  console line if any alert is active (server caches the alerts feed
+  5 min, the network catalog 7 days). All fail-open without an API
+  key. Not yet wired: alerts → static dashboard/XLSX reports,
   real-time positions. The `/plan` "fix-impact sampling" line is
   dropped per the CBO's caveat (see
   `docs/community-prep/05-transit-api-compliance.md`).
