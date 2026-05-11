@@ -1345,6 +1345,93 @@ def transit_budget_cmd(calls: int | None, per_day: bool):
             raise SystemExit(1)
 
 
+# --- transit-networks / transit-alerts ---
+
+@main.command(name="transit-networks")
+def transit_networks_cmd():
+    """List the transit networks Transit App knows about (discovery/debug).
+
+    Use this to find SORTA's global_network_id when the auto-resolver in
+    osm.transit can't match it (or matches the wrong one). One API call,
+    cached 7 days. Exits 1 without a Transit API key.
+    """
+    from . import transit as _transit
+
+    if not _transit.status().has_key:
+        click.echo(
+            "No Transit API key at ~/.config/osm/transit_api.json.", err=True,
+        )
+        raise SystemExit(1)
+    payload = _transit.available_networks()
+    if not payload:
+        click.echo(
+            "Transit available_networks returned nothing "
+            "(network error or quota exhausted).",
+            err=True,
+        )
+        raise SystemExit(1)
+    networks = payload.get("networks") or []
+    resolved = _transit.resolve_sorta_network_id()
+    click.echo(f"Transit networks: {len(networks):,}")
+    for net in networks:
+        if not isinstance(net, dict):
+            continue
+        nid = (
+            net.get("global_network_id")
+            or net.get("network_id")
+            or net.get("id")
+            or "?"
+        )
+        name = net.get("network_name") or net.get("name") or ""
+        marker = "  <-- matched as SORTA" if nid == resolved else ""
+        click.echo(f"  {nid}\t{name}{marker}")
+    click.echo("")
+    if resolved:
+        click.echo(f"Auto-resolved SORTA network id: {resolved}")
+    else:
+        click.echo(
+            "Auto-resolver did not match SORTA. Pass --network to "
+            "'osm transit-alerts' explicitly with the id above."
+        )
+
+
+@main.command(name="transit-alerts")
+@click.option(
+    "--network", "network_id", default=None,
+    help="Transit global_network_id to query (default: auto-resolve SORTA)",
+)
+def transit_alerts_cmd(network_id: str | None):
+    """Print current SORTA (or --network) service alerts from Transit App.
+
+    Resolves SORTA's network automatically unless --network is given.
+    One API call, cached 5 minutes. No-ops (prints a note, exits 0)
+    without a Transit API key, so it is safe to run from cron.
+    """
+    from . import transit as _transit
+
+    if not _transit.status().has_key:
+        click.echo("Transit API key not configured; no alerts fetched.")
+        return
+    alerts = _transit.fetch_sorta_alerts(network_id=network_id)
+    if not alerts:
+        click.echo(
+            "No service alerts (or Transit unavailable / SORTA network "
+            "unresolved — try 'osm transit-networks')."
+        )
+        return
+    click.echo(f"{len(alerts):,} service alert(s):")
+    for a in alerts:
+        title = a.get("title") or "(untitled)"
+        sev = a.get("severity")
+        click.echo(f"  - {title}" + (f"  [{sev}]" if sev else ""))
+        desc = a.get("description")
+        if desc:
+            click.echo(f"      {desc}")
+        url = a.get("url")
+        if url:
+            click.echo(f"      {url}")
+
+
 # --- motis-status ---
 
 @main.command(name="motis-status")

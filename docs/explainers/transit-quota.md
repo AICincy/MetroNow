@@ -86,6 +86,22 @@ specific way the project could lose quota or break ToS.
    call" and continues without it. There's no scenario where a
    Transit failure stops a scan.
 
+## Pipeline consumers
+
+The client is no longer dormant. `cross_check_bus_stop_findings()`
+runs in `osm scan` (Phase 2f) — one `nearby_stops` call per flagged
+`misplaced_bus_stops` finding, dropping the finding when Transit
+corroborates a stop within 50 m (the same off-curb-shelter false
+positive the GTFS cross-check suppresses). `fetch_sorta_alerts()` —
+via `resolve_sorta_network_id()` over the 7-day-cached
+`available_networks` catalog — backs `osm transit-alerts` (and
+`osm transit-networks` dumps the catalog for verifying the resolver).
+Both fail open without an API key. The `/plan` endpoint deliberately
+has no consumer: per Transit's CBO the MetroNow feed relays
+operator-supplied ETAs, not Via's routing, so it can't proxy ViaAlgo's
+dispatch — see
+[`docs/community-prep/05-transit-api-compliance.md`](../community-prep/05-transit-api-compliance.md).
+
 ## The flow, visually
 
 ```mermaid
@@ -256,6 +272,12 @@ The full obligation list and runbook are in
   `_increment_usage()`: `fcntl.flock`-guarded counter.
 - [`src/osm/transit.py:241`](../../src/osm/transit.py#L241):
   `status()`: public health check used by `osm transit-status`.
+- [`src/osm/transit.py:464`](../../src/osm/transit.py#L464):
+  `cross_check_bus_stop_findings()`: `osm scan` Phase 2f hook.
+- [`src/osm/transit.py:539`](../../src/osm/transit.py#L539):
+  `SORTA_NETWORK_HINTS` + `resolve_sorta_network_id()` (575) +
+  `fetch_sorta_alerts()` (638): back `osm transit-networks` /
+  `osm transit-alerts`.
 - [`docs/community-prep/05-transit-api-compliance.md`](../community-prep/05-transit-api-compliance.md):
   full ToS obligation list and maintainer's runbook.
 

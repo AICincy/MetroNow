@@ -19,10 +19,12 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
     for the feed URL), `bus_routes.py` (CAGIS METRO Bus Routes,
     transit-corridor corroboration for oneway_conflict findings),
     `transit.py` (Transit App API client, rate-limit +
-    monthly-quota aware, `fcntl.flock`-guarded counter; pipeline hook
+    monthly-quota aware, `fcntl.flock`-guarded counter; pipeline hooks:
     `cross_check_bus_stop_findings()` suppresses `misplaced_bus_stops`
-    findings Transit corroborates, called from `osm scan` Phase 2f;
-    see [`docs/explainers/transit-quota.md`](docs/explainers/transit-quota.md)),
+    findings Transit corroborates (`osm scan` Phase 2f),
+    `fetch_sorta_alerts()` + `resolve_sorta_network_id()` back
+    `osm transit-alerts` / `osm transit-networks`; see
+    [`docs/explainers/transit-quota.md`](docs/explainers/transit-quota.md)),
     `notes.py` (OSM Notes), `osmose.py` (Osmose quality issues)
   - Routing: `route_diff.py` (BRouter, default), `motis.py`
     (MOTIS `/api/v5/plan` prototype, opt-in via `MOTIS_BASE` env;
@@ -196,15 +198,20 @@ and where the cross-cutting workstreams fit.
 - **Pre-flight automation**: ✅ `osm preflight --zone <key>` runs
   17 checks; FAIL/WARN/MANUAL exit codes; `--strict` escalates WARN.
 - **Transit App quota tooling**: ✅ `osm transit-status`,
-  `osm transit-budget [--calls N]`. Concurrent-safe usage counter
+  `osm transit-budget [--calls N]`, `osm transit-networks`,
+  `osm transit-alerts [--network ID]`. Concurrent-safe usage counter
   via `fcntl.flock`. The required attribution `"Powered by Transit"`
-  ships verbatim in the Atlas footer. First pipeline consumer is
-  live: `osm scan` Phase 2f cross-checks `misplaced_bus_stops`
-  findings against Transit's `nearby_stops` (one call per flagged
-  stop, `--with-transit-cross-check`, default on, fail-open without a
-  key). Remaining quota-table use cases (alerts, real-time positions)
-  not yet wired; the `/plan` "fix-impact sampling" line is dropped
-  per the CBO's caveat (see `docs/community-prep/05-transit-api-compliance.md`).
+  ships verbatim in the Atlas footer. Pipeline consumers live:
+  (1) `osm scan` Phase 2f cross-checks `misplaced_bus_stops` findings
+  against Transit's `nearby_stops` (one call per flagged stop,
+  `--with-transit-cross-check`, default on); (2) `osm transit-alerts`
+  surfaces SORTA service alerts via `fetch_sorta_alerts()` (network id
+  auto-resolved by a conservative name/onestop-ID heuristic over
+  `available_networks`; override with `--network`). Both fail-open
+  without an API key. Not yet wired: alerts → reports/Atlas UI,
+  real-time positions. The `/plan` "fix-impact sampling" line is
+  dropped per the CBO's caveat (see
+  `docs/community-prep/05-transit-api-compliance.md`).
 - **CodeQL alerts**: #4, #6-10, #17, #24 fixed in code; #3
   (auth.py:120 OAuth URL print) flagged for "won't fix / false
   positive" UI dismissal: by RFC 6749 §4.1.1 the URL contains no

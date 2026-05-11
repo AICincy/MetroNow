@@ -27,6 +27,8 @@ pipeline.
 | `osm maproulette` | Submit | Generate per-zone MapRoulette challenge GeoJSON Lines |
 | `osm transit-status` | Status | Transit App quota + cache state |
 | `osm transit-budget` | Status | Per-day budget recommendation given remaining quota |
+| `osm transit-networks` | Status | List Transit App's network catalog; auto-resolve SORTA's `global_network_id` |
+| `osm transit-alerts` | Status | Print current SORTA (or `--network`) service alerts; cron-safe (no-ops without a key) |
 | `osm motis-status` | Status | MOTIS instance reachability probe |
 | `osm report` | Output | Re-render the dashboard / XLSX / CSVs from existing scan results |
 
@@ -155,6 +157,8 @@ Class A/AB ways below the auto-submit threshold), `gaps`
 ```
 osm transit-status
 osm transit-budget [--calls N] [--per-day]
+osm transit-networks
+osm transit-alerts [--network <global_network_id>]
 osm motis-status [--probe]
 ```
 
@@ -164,6 +168,15 @@ present? this month's usage so far? remaining within the 80% budget?
 the rest of the month, given the remaining quota and days left.
 `--calls N` overrides the assumed per-day demand; `--per-day` formats
 output as a daily allocation.
+
+**`osm transit-networks`** dumps Transit's network catalog (one API
+call, 7-day-cached) and marks whichever entry the heuristic in
+`osm.transit.resolve_sorta_network_id()` picks as SORTA — use it to
+find the right `global_network_id` if the heuristic misses.
+**`osm transit-alerts`** prints SORTA's current service alerts (one
+API call, 5-minute-cached); pass `--network` to override the
+auto-resolved network. Both no-op cleanly without a Transit API key,
+so `transit-alerts` is safe to run from cron.
 
 **`osm motis-status`** reads `MOTIS_BASE` (default
 `http://localhost:8080`) and reports configuration; with `--probe`,
@@ -220,20 +233,22 @@ console-script entry point depends on a clean install).
 - [`src/osm/cli.py:37`](../src/osm/cli.py#L37): `main()` Click group
   root.
 - [`src/osm/cli.py:49`](../src/osm/cli.py#L49): `auth` subgroup.
-- [`src/osm/cli.py:135`](../src/osm/cli.py#L135): `scan` (workhorse).
-- [`src/osm/cli.py:459`](../src/osm/cli.py#L459): `fix` (only OSM
+- [`src/osm/cli.py:147`](../src/osm/cli.py#L147): `scan` (workhorse).
+- [`src/osm/cli.py:509`](../src/osm/cli.py#L509): `fix` (only OSM
   writer).
-- [`src/osm/cli.py:590`](../src/osm/cli.py#L590): `conflate`.
-- [`src/osm/cli.py:685`](../src/osm/cli.py#L685): `conflate-tiger`.
-- [`src/osm/cli.py:782`](../src/osm/cli.py#L782): `route-diff`.
-- [`src/osm/cli.py:873`](../src/osm/cli.py#L873): `fix-impact`.
-- [`src/osm/cli.py:991`](../src/osm/cli.py#L991): `baseline-diff`.
-- [`src/osm/cli.py:1101`](../src/osm/cli.py#L1101): `maproulette`.
-- [`src/osm/cli.py:1193`](../src/osm/cli.py#L1193): `transit-status`.
-- [`src/osm/cli.py:1241`](../src/osm/cli.py#L1241): `transit-budget`.
-- [`src/osm/cli.py:1307`](../src/osm/cli.py#L1307): `motis-status`.
-- [`src/osm/cli.py:1361`](../src/osm/cli.py#L1361): `preflight`.
-- [`src/osm/cli.py:1434`](../src/osm/cli.py#L1434): `report`.
+- [`src/osm/cli.py:640`](../src/osm/cli.py#L640): `conflate`.
+- [`src/osm/cli.py:735`](../src/osm/cli.py#L735): `conflate-tiger`.
+- [`src/osm/cli.py:832`](../src/osm/cli.py#L832): `route-diff`.
+- [`src/osm/cli.py:923`](../src/osm/cli.py#L923): `fix-impact`.
+- [`src/osm/cli.py:1041`](../src/osm/cli.py#L1041): `baseline-diff`.
+- [`src/osm/cli.py:1151`](../src/osm/cli.py#L1151): `maproulette`.
+- [`src/osm/cli.py:1243`](../src/osm/cli.py#L1243): `transit-status`.
+- [`src/osm/cli.py:1291`](../src/osm/cli.py#L1291): `transit-budget`.
+- [`src/osm/cli.py:1351`](../src/osm/cli.py#L1351): `transit-networks`.
+- [`src/osm/cli.py:1403`](../src/osm/cli.py#L1403): `transit-alerts`.
+- [`src/osm/cli.py:1444`](../src/osm/cli.py#L1444): `motis-status`.
+- [`src/osm/cli.py:1498`](../src/osm/cli.py#L1498): `preflight`.
+- [`src/osm/cli.py:1571`](../src/osm/cli.py#L1571): `report`.
 
 ## See also
 

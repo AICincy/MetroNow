@@ -429,3 +429,139 @@ class TestBusStopCrossCheck:
         ):
             kept, n = t.cross_check_bus_stop_findings([f])
         assert kept == [] and n == 1
+
+
+# ---------------------------------------------------------------------------
+# Network resolution — resolve_sorta_network_id()
+# ---------------------------------------------------------------------------
+
+class TestNetworkResolution:
+
+    def test_matches_full_agency_name(self, isolated_transit):
+        t = isolated_transit
+        payload = {"networks": [
+            {"global_network_id": "MSP", "network_name": "Metro Transit"},
+            {"global_network_id": "SORTA-1",
+             "network_name": "Metro (Southwest Ohio Regional Transit Authority)"},
+        ]}
+        with mock.patch.object(t, "available_networks", autospec=True, return_value=payload):
+            assert t.resolve_sorta_network_id() == "SORTA-1"
+
+    def test_matches_sorta_token_anywhere(self, isolated_transit):
+        t = isolated_transit
+        payload = {"networks": [{"id": "x", "name": "SORTA"}]}
+        with mock.patch.object(t, "available_networks", autospec=True, return_value=payload):
+            assert t.resolve_sorta_network_id() == "x"
+
+    def test_matches_onestop_id(self, isolated_transit):
+        t = isolated_transit
+        payload = {"networks": [
+            {"global_network_id": "o-dngy-southwestohioregionaltransitauthority",
+             "name": "Metro"},
+        ]}
+        with mock.patch.object(t, "available_networks", autospec=True, return_value=payload):
+            assert t.resolve_sorta_network_id() == (
+                "o-dngy-southwestohioregionaltransitauthority"
+            )
+
+    def test_matches_nested_agency_name(self, isolated_transit):
+        t = isolated_transit
+        payload = {"networks": [
+            {"global_network_id": "n7",
+             "agencies": [{"agency_name": "Southwest Ohio Regional Transit Authority"}]},
+        ]}
+        with mock.patch.object(t, "available_networks", autospec=True, return_value=payload):
+            assert t.resolve_sorta_network_id() == "n7"
+
+    def test_no_match_returns_none(self, isolated_transit):
+        t = isolated_transit
+        payload = {"networks": [
+            {"global_network_id": "a", "network_name": "TriMet"},
+            {"global_network_id": "b", "network_name": "WMATA"},
+        ]}
+        with mock.patch.object(t, "available_networks", autospec=True, return_value=payload):
+            assert t.resolve_sorta_network_id() is None
+
+    def test_transit_unavailable_returns_none(self, isolated_transit):
+        t = isolated_transit
+        with mock.patch.object(t, "available_networks", autospec=True, return_value=None):
+            assert t.resolve_sorta_network_id() is None
+
+    def test_malformed_payload_returns_none(self, isolated_transit):
+        t = isolated_transit
+        with mock.patch.object(t, "available_networks", autospec=True, return_value={"foo": 1}):
+            assert t.resolve_sorta_network_id() is None
+        with mock.patch.object(
+            t, "available_networks", autospec=True,
+            return_value={"networks": ["not-a-dict", 7]},
+        ):
+            assert t.resolve_sorta_network_id() is None
+
+    def test_hints_constant_is_conservative(self, isolated_transit):
+        # A bare "metro" must NOT be in the hint set — it would false-match
+        # half the agencies in the catalog.
+        assert "metro" not in isolated_transit.SORTA_NETWORK_HINTS
+        assert "sorta" in isolated_transit.SORTA_NETWORK_HINTS
+
+
+# ---------------------------------------------------------------------------
+# Service alerts — fetch_sorta_alerts() / _normalize_alerts()
+# ---------------------------------------------------------------------------
+
+class TestAlerts:
+
+    def test_normalize_flat_shape(self, isolated_transit):
+        out = isolated_transit._normalize_alerts({"alerts": [
+            {"alert_id": "a1", "title": "Detour on Rt 4",
+             "severity": "WARNING", "description": "Closed for repaving",
+             "url": "https://x"},
+        ]})
+        assert out == [{
+            "id": "a1", "title": "Detour on Rt 4", "description": "Closed for repaving",
+            "severity": "WARNING", "effect": None, "url": "https://x",
+        }]
+
+    def test_normalize_nested_networks_shape(self, isolated_transit):
+        out = isolated_transit._normalize_alerts({"networks": [
+            {"alerts": [{"id": "b", "header_text": "Stop relocated"}]},
+            {"alerts": [{"global_alert_id": "c", "header": "Snow routing"}]},
+        ]})
+        assert [a["id"] for a in out] == ["b", "c"]
+        assert out[0]["title"] == "Stop relocated"
+
+    def test_normalize_ignores_non_dict_and_junk(self, isolated_transit):
+        assert isolated_transit._normalize_alerts({"foo": 1}) == []
+        assert isolated_transit._normalize_alerts({"alerts": ["x", 3, None]}) == []
+
+    def test_fetch_auto_resolves_then_fetches(self, isolated_transit):
+        t = isolated_transit
+        with mock.patch.object(t, "resolve_sorta_network_id", autospec=True, return_value="SORTA"), \
+             mock.patch.object(t, "alerts_for_networks", autospec=True,
+                               return_value={"alerts": [{"alert_id": "a", "title": "T"}]}) as m_alerts:
+            out = t.fetch_sorta_alerts()
+        m_alerts.assert_called_once_with(["SORTA"], force_refresh=False)
+        assert out == [{"id": "a", "title": "T", "description": None,
+                        "severity": None, "effect": None, "url": None}]
+
+    def test_fetch_with_explicit_network_skips_resolution(self, isolated_transit):
+        t = isolated_transit
+        with mock.patch.object(t, "resolve_sorta_network_id", autospec=True) as m_resolve, \
+             mock.patch.object(t, "alerts_for_networks", autospec=True,
+                               return_value={"alerts": []}):
+            out = t.fetch_sorta_alerts(network_id="EXPLICIT")
+        m_resolve.assert_not_called()
+        assert out == []
+
+    def test_fetch_returns_empty_when_network_unresolved(self, isolated_transit):
+        t = isolated_transit
+        with mock.patch.object(t, "resolve_sorta_network_id", autospec=True, return_value=None), \
+             mock.patch.object(t, "alerts_for_networks", autospec=True) as m_alerts:
+            out = t.fetch_sorta_alerts()
+        m_alerts.assert_not_called()
+        assert out == []
+
+    def test_fetch_returns_empty_when_alerts_call_fails(self, isolated_transit):
+        t = isolated_transit
+        with mock.patch.object(t, "resolve_sorta_network_id", autospec=True, return_value="SORTA"), \
+             mock.patch.object(t, "alerts_for_networks", autospec=True, return_value=None):
+            assert t.fetch_sorta_alerts() == []

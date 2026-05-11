@@ -529,6 +529,134 @@ def cross_check_bus_stop_findings(
     return kept, n_suppressed
 
 
+# SORTA's identity in Transit's network catalog. Transit's v4 docs don't
+# publish the per-agency global_network_id, so resolve_sorta_network_id()
+# matches network metadata against these (case-insensitive) substrings;
+# `osm transit-networks` dumps the full catalog if the heuristic misses.
+# Kept conservative on purpose — a wrong match would fetch some other
+# agency's alerts. SORTA = Southwest Ohio Regional Transit Authority,
+# brand "Metro" (go-metro.com), Onestop o-dngy-southwestohioregionaltransitauthority.
+SORTA_NETWORK_HINTS: tuple[str, ...] = (
+    "sorta",
+    "southwest ohio regional transit",
+    "go-metro",
+    "gometro",
+    "o-dngy-southwestohioregionaltransitauthority",
+)
+
+
+def _network_id(net: dict) -> str | None:
+    """First non-empty network-id-shaped field in a catalog record."""
+    for key in ("global_network_id", "network_id", "id"):
+        v = net.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
+def _network_match_fields(net: dict) -> list[str]:
+    """Lowercased strings from a network record to match SORTA against."""
+    out: list[str] = []
+    for key in (
+        "global_network_id", "network_id", "id",
+        "network_name", "name", "network_short_name", "short_name",
+    ):
+        v = net.get(key)
+        if isinstance(v, str) and v.strip():
+            out.append(v.strip().lower())
+    for agency in net.get("agencies") or []:
+        if isinstance(agency, dict):
+            v = agency.get("agency_name") or agency.get("name")
+            if isinstance(v, str) and v.strip():
+                out.append(v.strip().lower())
+    return out
+
+
+def resolve_sorta_network_id(*, force_refresh: bool = False) -> str | None:
+    """Best-effort lookup of SORTA's ``global_network_id`` in Transit's catalog.
+
+    Calls ``available_networks`` (itself 7-day-cached, so this is cheap)
+    and returns the id of the first network whose metadata matches a
+    :data:`SORTA_NETWORK_HINTS` substring. Returns ``None`` when Transit
+    is unavailable or nothing matched — callers treat that as "alerts
+    unavailable" and degrade. Run ``osm transit-networks`` to inspect
+    the catalog if the heuristic picks the wrong network or nothing.
+    """
+    payload = available_networks(force_refresh=force_refresh)
+    if not payload:
+        return None
+    networks = payload.get("networks")
+    if not isinstance(networks, list):
+        return None
+    for net in networks:
+        if not isinstance(net, dict):
+            continue
+        fields = _network_match_fields(net)
+        if any(hint in field for field in fields for hint in SORTA_NETWORK_HINTS):
+            nid = _network_id(net)
+            if nid:
+                log.info("Transit: resolved SORTA network id to %s", nid)
+                return nid
+    log.warning(
+        "Transit: no network matched SORTA hints in available_networks; "
+        "run 'osm transit-networks' to inspect the catalog.",
+    )
+    return None
+
+
+def _normalize_alerts(payload: dict) -> list[dict]:
+    """Flatten a Transit ``alerts_for_networks`` payload to plain dicts.
+
+    Tolerates the top-level ``{"alerts": [...]}`` shape and the nested
+    ``{"networks": [{"alerts": [...]}, ...]}`` shape, and several field
+    spellings, so an upstream payload tweak degrades to fewer fields
+    rather than an exception.
+    """
+    raw: list = []
+    top = payload.get("alerts")
+    if isinstance(top, list):
+        raw = list(top)
+    else:
+        for net in payload.get("networks") or []:
+            if isinstance(net, dict) and isinstance(net.get("alerts"), list):
+                raw.extend(net["alerts"])
+    out: list[dict] = []
+    for a in raw:
+        if not isinstance(a, dict):
+            continue
+        out.append({
+            "id": a.get("alert_id") or a.get("id") or a.get("global_alert_id"),
+            "title": a.get("title") or a.get("header_text") or a.get("header"),
+            "description": a.get("description") or a.get("description_text"),
+            "severity": a.get("severity") or a.get("severity_level"),
+            "effect": a.get("effect"),
+            "url": a.get("url") or a.get("alert_url"),
+        })
+    return out
+
+
+def fetch_sorta_alerts(
+    *,
+    network_id: str | None = None,
+    force_refresh: bool = False,
+) -> list[dict]:
+    """Normalized SORTA service alerts, or ``[]`` when unavailable.
+
+    Resolves SORTA's network id (or uses the explicit ``network_id``
+    override), calls ``alerts_for_networks``, and flattens the payload
+    to ``{"id", "title", "description", "severity", "effect", "url"}``
+    dicts via :func:`_normalize_alerts`. Fail-open: no key, quota
+    exhausted, no SORTA match, or a malformed payload all yield ``[]``.
+    """
+    nid = network_id or resolve_sorta_network_id(force_refresh=force_refresh)
+    if not nid:
+        return []
+    payload = alerts_for_networks([nid], force_refresh=force_refresh)
+    if not payload:
+        return []
+    return _normalize_alerts(payload)
+
+
 __all__ = [
     "AUTH_HEADER",
     "CACHE_DIR",
@@ -537,6 +665,7 @@ __all__ = [
     "POWERED_BY_TRANSIT_ATTRIBUTION",
     "QUOTA_BUDGET_FRACTION",
     "RATE_LIMIT_PER_MINUTE",
+    "SORTA_NETWORK_HINTS",
     "TRANSIT_BASE_URL",
     "TTL_BY_ENDPOINT",
     "USAGE_FILE",
@@ -545,7 +674,9 @@ __all__ = [
     "alerts_for_networks",
     "available_networks",
     "cross_check_bus_stop_findings",
+    "fetch_sorta_alerts",
     "nearby_stops",
+    "resolve_sorta_network_id",
     "status",
     "stop_departures",
     "trip_plan",
