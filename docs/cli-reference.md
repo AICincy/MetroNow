@@ -29,6 +29,7 @@ pipeline.
 | `osm transit-budget` | Status | Per-day budget recommendation given remaining quota |
 | `osm transit-networks` | Status | List Transit App's network catalog; auto-resolve SORTA's `global_network_id` |
 | `osm transit-alerts` | Status | Print current SORTA (or `--network`) service alerts; cron-safe (no-ops without a key) |
+| `osm gtfs-rt` | Status | Fetch SORTA's direct GTFS-Realtime feed (`--feed vehicles\|trips`); no API key, no quota |
 | `osm motis-status` | Status | MOTIS instance reachability probe |
 | `osm report` | Output | Re-render the dashboard / XLSX / CSVs from existing scan results |
 
@@ -159,6 +160,7 @@ osm transit-status
 osm transit-budget [--calls N] [--per-day]
 osm transit-networks
 osm transit-alerts [--network <global_network_id>]
+osm gtfs-rt [--feed vehicles|trips] [--limit N]
 osm motis-status [--probe]
 ```
 
@@ -177,6 +179,16 @@ find the right `global_network_id` if the heuristic misses.
 API call, 5-minute-cached); pass `--network` to override the
 auto-resolved network. Both no-op cleanly without a Transit API key,
 so `transit-alerts` is safe to run from cron.
+
+**`osm gtfs-rt`** fetches SORTA's *direct* GTFS-Realtime feed straight
+from the Trapeze backend (`tmgtfsprd.sorttrpcloud.com`) — no API key,
+no quota, ~30-second freshness. `--feed vehicles` (default) prints
+live vehicle positions; `--feed trips` prints stop-time updates;
+`--limit N` caps the printout. Fail-open: prints a note and exits 0
+if the feed is unreachable or `gtfs-realtime-bindings` isn't installed.
+This is the low-latency real-time source — service *alerts* go through
+`osm transit-alerts` (the Transit App API path), which gives a
+normalized, multi-agency shape.
 
 **`osm motis-status`** reads `MOTIS_BASE` (default
 `http://localhost:8080`) and reports configuration; with `--probe`,
@@ -246,9 +258,10 @@ console-script entry point depends on a clean install).
 - [`src/osm/cli.py:1291`](../src/osm/cli.py#L1291): `transit-budget`.
 - [`src/osm/cli.py:1351`](../src/osm/cli.py#L1351): `transit-networks`.
 - [`src/osm/cli.py:1403`](../src/osm/cli.py#L1403): `transit-alerts`.
-- [`src/osm/cli.py:1444`](../src/osm/cli.py#L1444): `motis-status`.
-- [`src/osm/cli.py:1498`](../src/osm/cli.py#L1498): `preflight`.
-- [`src/osm/cli.py:1571`](../src/osm/cli.py#L1571): `report`.
+- [`src/osm/cli.py:1447`](../src/osm/cli.py#L1447): `gtfs-rt`.
+- [`src/osm/cli.py:1495`](../src/osm/cli.py#L1495): `motis-status`.
+- [`src/osm/cli.py:1549`](../src/osm/cli.py#L1549): `preflight`.
+- [`src/osm/cli.py:1622`](../src/osm/cli.py#L1622): `report`.
 
 ## See also
 

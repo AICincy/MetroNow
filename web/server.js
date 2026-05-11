@@ -763,6 +763,37 @@ app.get("/api/transit-alerts", async (_req, res) => {
   }
 });
 
+// ---- SORTA GTFS-Realtime (direct Trapeze feed; no API key, no quota) ----
+
+// `:feed` is one of {vehicles, trips}. The server-side fetch follows
+// redirects and parses the protobuf via osm.gtfs_rt (gtfs-realtime-bindings);
+// the browser only ever sees JSON, so the unusual `application/protocol-buffer`
+// content-type SORTA returns is handled entirely Python-side. Fail-open:
+// feed unreachable / empty / gtfs-realtime-bindings missing -> {count:0, items:[]}.
+// 30-second on-disk cache in the Python layer keeps polling polite.
+const GTFS_RT_FEEDS = new Set(["vehicles", "trips"]);
+app.get("/api/gtfs-rt/:feed", async (req, res) => {
+  const feed = req.params.feed;
+  if (!GTFS_RT_FEEDS.has(feed)) {
+    return res.status(400).json({ error: "Unknown feed (want vehicles|trips)" });
+  }
+  try {
+    const pyCode = [
+      "import json, sys, os",
+      "sys.path.insert(0, " + JSON.stringify(OSM_PKG) + ")",
+      "sys.stdout = open(os.devnull, 'w')",
+      "from osm.gtfs_rt import fetch",
+      "items = fetch(" + JSON.stringify(feed) + ")",
+      "sys.stdout = sys.__stdout__",
+      "print(json.dumps({'feed': " + JSON.stringify(feed) + ", 'count': len(items), 'items': items}))",
+    ].join("\n");
+    const out = await runPython(pyCode);
+    res.json(JSON.parse(out.trim()));
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
 // ---- history ----
 
 app.get("/api/history", (_req, res) => {

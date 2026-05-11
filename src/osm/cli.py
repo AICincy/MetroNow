@@ -1432,6 +1432,57 @@ def transit_alerts_cmd(network_id: str | None):
             click.echo(f"      {url}")
 
 
+# --- gtfs-rt ---
+
+@main.command(name="gtfs-rt")
+@click.option(
+    "--feed", type=click.Choice(["vehicles", "trips"]), default="vehicles",
+    help="Which SORTA GTFS-RT feed to fetch (vehicles = positions, "
+         "trips = stop-time updates).",
+)
+@click.option(
+    "--limit", type=int, default=20,
+    help="Max records to print (0 = all).",
+)
+def gtfs_rt_cmd(feed: str, limit: int):
+    """Fetch SORTA's direct GTFS-Realtime feed (Trapeze; no API key, no quota).
+
+    Reads straight from tmgtfsprd.sorttrpcloud.com — the low-latency
+    source for vehicle positions / trip updates (service alerts go
+    through `osm transit-alerts`). 30-second on-disk cache. Fail-open:
+    prints a note and exits 0 if the feed is unreachable or the
+    `gtfs-realtime-bindings` package is missing.
+    """
+    from . import gtfs_rt as _rt
+
+    rows = _rt.fetch(feed)
+    if not rows:
+        click.echo(
+            f"No GTFS-RT {feed} data (feed unreachable, empty, or "
+            "gtfs-realtime-bindings not installed)."
+        )
+        return
+    shown = rows if limit <= 0 else rows[:limit]
+    if feed == "vehicles":
+        click.echo(f"{len(rows):,} vehicle position(s)"
+                   + (f" (showing {len(shown)}):" if len(shown) < len(rows) else ":"))
+        for v in shown:
+            rt = v.get("route_id") or "?"
+            tid = v.get("trip_id") or "?"
+            lat, lon = v.get("lat"), v.get("lon")
+            loc = f"{lat:.5f},{lon:.5f}" if isinstance(lat, float) and isinstance(lon, float) else "?"
+            click.echo(f"  veh {v.get('vehicle_id') or '?'}  route {rt}  trip {tid}  @ {loc}")
+    else:  # trips
+        click.echo(f"{len(rows):,} trip update(s)"
+                   + (f" (showing {len(shown)}):" if len(shown) < len(rows) else ":"))
+        for t in shown:
+            stus = t.get("stop_time_updates") or []
+            click.echo(
+                f"  trip {t.get('trip_id') or '?'}  route {t.get('route_id') or '?'}"
+                f"  ({len(stus)} stop update(s))"
+            )
+
+
 # --- motis-status ---
 
 @main.command(name="motis-status")

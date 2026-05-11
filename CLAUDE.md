@@ -25,6 +25,10 @@ the routing tiles that ViaAlgo consumes for every MetroNow trip.
     `fetch_sorta_alerts()` + `resolve_sorta_network_id()` back
     `osm transit-alerts` / `osm transit-networks`; see
     [`docs/explainers/transit-quota.md`](docs/explainers/transit-quota.md)),
+    `gtfs_rt.py` (SORTA's direct GTFS-Realtime feeds — Trapeze
+    protobuf at `tmgtfsprd.sorttrpcloud.com`, no key/no quota;
+    `vehicle_positions()` + `trip_updates()`, 30 s on-disk cache,
+    fail-open; backs `osm gtfs-rt` and `GET /api/gtfs-rt/:feed`),
     `notes.py` (OSM Notes), `osmose.py` (Osmose quality issues)
   - Routing: `route_diff.py` (BRouter, default), `motis.py`
     (MOTIS `/api/v5/plan` prototype, opt-in via `MOTIS_BASE` env;
@@ -197,24 +201,30 @@ and where the cross-cutting workstreams fit.
   dispatcher in `route_diff.py` is the next-session item.
 - **Pre-flight automation**: ✅ `osm preflight --zone <key>` runs
   17 checks; FAIL/WARN/MANUAL exit codes; `--strict` escalates WARN.
-- **Transit App quota tooling**: ✅ `osm transit-status`,
-  `osm transit-budget [--calls N]`, `osm transit-networks`,
-  `osm transit-alerts [--network ID]`. Concurrent-safe usage counter
-  via `fcntl.flock`. The required attribution `"Powered by Transit"`
-  ships verbatim in the Atlas footer. Pipeline consumers live:
-  (1) `osm scan` Phase 2f cross-checks `misplaced_bus_stops` findings
-  against Transit's `nearby_stops` (one call per flagged stop,
-  `--with-transit-cross-check`, default on); (2) `osm transit-alerts`
-  surfaces SORTA service alerts via `fetch_sorta_alerts()` (network id
-  auto-resolved by a conservative name/onestop-ID heuristic over
-  `available_networks`; override with `--network`); (3) the Atlas web
-  UI fetches `GET /api/transit-alerts` on boot and shows a toast +
-  console line if any alert is active (server caches the alerts feed
-  5 min, the network catalog 7 days). All fail-open without an API
-  key. Not yet wired: alerts → static dashboard/XLSX reports,
-  real-time positions. The `/plan` "fix-impact sampling" line is
-  dropped per the CBO's caveat (see
-  `docs/community-prep/05-transit-api-compliance.md`).
+- **Transit data integration** (hybrid: Transit App API for discovery +
+  normalized alerts, SORTA direct GTFS-RT for real-time): ✅
+  - **Transit App API** (quota'd): `osm transit-status`,
+    `osm transit-budget [--calls N]`, `osm transit-networks`,
+    `osm transit-alerts [--network ID]`; concurrent-safe usage counter
+    via `fcntl.flock`; `"Powered by Transit"` ships verbatim in the
+    Atlas footer. Consumers: (1) `osm scan` Phase 2f cross-checks
+    `misplaced_bus_stops` findings against `nearby_stops` (one call per
+    flagged stop, `--with-transit-cross-check`, default on);
+    (2) `osm transit-alerts` via `fetch_sorta_alerts()` (network id
+    auto-resolved by a conservative name/onestop-ID heuristic over
+    `available_networks`; `--network` override); (3) the Atlas UI
+    fetches `GET /api/transit-alerts` on boot → toast + console line
+    if any alert is active.
+  - **SORTA direct GTFS-RT** (no key, no quota, `osm.gtfs_rt`):
+    `osm gtfs-rt --feed [vehicles|trips]` and `GET /api/gtfs-rt/:feed`
+    → normalized vehicle positions / trip updates from Trapeze
+    (`tmgtfsprd.sorttrpcloud.com`), 30 s on-disk cache.
+  - All paths fail-open. Not yet wired: real-time positions/trip
+    updates rendered on the Leaflet map, alerts → static
+    dashboard/XLSX reports, GTFS-RT alerts feed (alerts come through
+    the Transit App API). The `/plan` "fix-impact sampling" line is
+    dropped per the CBO's caveat (see
+    `docs/community-prep/05-transit-api-compliance.md`).
 - **CodeQL alerts**: #4, #6-10, #17, #24 fixed in code; #3
   (auth.py:120 OAuth URL print) flagged for "won't fix / false
   positive" UI dismissal: by RFC 6749 §4.1.1 the URL contains no
