@@ -14,6 +14,7 @@ dependencies = [
     "rich>=13.0",
     "httpx>=0.27",
     "shapely>=2.0",
+    "gtfs-realtime-bindings>=1.0",  # SORTA GTFS-RT protobuf parsing (osm.gtfs_rt)
 ]
 
 [project.scripts]

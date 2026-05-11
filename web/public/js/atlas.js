@@ -2131,6 +2131,28 @@
     wireSearch();
   }
 
+  // ------------------------------------------------- Transit service alerts
+  // One-shot on boot: surface active SORTA service alerts. Cheap on the
+  // Transit monthly quota (server caches alerts 5 min, the network catalog
+  // 7 days). Silent when there's no API key or no active alert. The
+  // "Powered by Transit" attribution required by the Transit App Public
+  // API ToS is shown here and verbatim in the footer. Swallows its own
+  // errors so it can never reject into boot().
+  async function loadTransitAlerts() {
+    try {
+      const data = await api("/api/transit-alerts");
+      if (!data || !data.has_key || !data.count) return;
+      toast(`⚠ ${data.count} SORTA service alert(s) active — Powered by Transit`, "warn");
+      consoleLog(`${data.count} SORTA service alert(s) — Powered by Transit`, "warn");
+      for (const a of data.alerts || []) {
+        const sev = a && a.severity ? ` [${a.severity}]` : "";
+        consoleLog(`  • ${(a && a.title) || "(untitled alert)"}${sev}`, "warn");
+      }
+    } catch (e) {
+      consoleLog("Transit alerts fetch failed: " + e.message, "warn");
+    }
+  }
+
   // --------------------------------------------------------------- boot
   async function boot() {
     initMap();
@@ -2141,6 +2163,7 @@
       fitToZoneBounds();
       await refreshAuth();
       await tryLoadExistingResults();
+      loadTransitAlerts();
     } catch (e) {
       consoleShow(true);
       consoleLog("Init failed: " + e.message, "error");

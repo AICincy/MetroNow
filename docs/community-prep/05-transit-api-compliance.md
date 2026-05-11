@@ -24,16 +24,19 @@ The client (`src/osm/transit.py:_load_api_key`) reads it on demand. If
 the file is missing or malformed, the client returns `None` for every
 endpoint call — the main scan/fix path is never blocked.
 
-## Free-tier limits (per Transit's email at issuance)
+## Quota limits (after the 2026-05-11 civic/accessibility uplift)
 
 | Limit | Value | Where enforced |
 |-------|-------|----------------|
-| Calls per month | 1,500 | `transit.py:_quota_exhausted()` (refuses at 80 % = 1,200) |
+| Calls per month | 5,000 | `transit.py:_quota_exhausted()` (refuses at 80 % = 4,000) |
 | Calls per minute | 5 | `transit.py:_rate_limit_pace()` (token bucket) |
 
-The 80 % monthly cap leaves headroom for the rest of the month and
-absorbs the unavoidable error-response counts. Increase only if
-Transit grants a higher quota.
+The default public tier is 1,500 calls/month; Transit's CBO
+(David Block-Schachter) granted this project the 5,000-call
+civic/accessibility uplift requested in the ToS-compliance email
+(see "Quota uplift" below). The 80 % monthly cap leaves headroom for
+the rest of the month and absorbs the unavoidable error-response
+counts. Increase only if Transit grants a further uplift.
 
 ## Terms of service obligations (verbatim from Transit's email)
 
@@ -96,18 +99,33 @@ Transit grants a higher quota.
       monthly. If approaching the cap, raise quota with Transit
       rather than evading the local guard.
 
-## When the quota uplift lands
+## Quota uplift (granted 2026-05-11)
 
-If Transit grants a higher quota (per the request email at
-`docs/community-prep/06-transit-quota-request.md` once that's
-also drafted), the only code change needed is:
+The ToS-compliance email to Transit asked for either a 5,000 call/month
+civic/accessibility free-tier uplift or a scoped MetroNow partnership.
+David Block-Schachter (Transit's Chief Business Officer) replied on
+2026-05-11: he noted a methodological caveat — Transit's MetroNow
+integration receives only the operator-supplied pickup/drop-off/ETA
+parameters, **not** Via's confirmed routing or confirmed trip, so the
+Transit `/plan` endpoint is not a faithful proxy for ViaAlgo's dispatch
+decisions — and granted the increased monthly allowance regardless.
+
+Code change applied:
 
 ```python
 # src/osm/transit.py
 MONTHLY_QUOTA_FREE_TIER = 5_000  # was 1_500
 ```
 
-The 80 % budget cap rescales automatically. No other code changes.
+The 80 % budget cap rescales automatically (4,000-call effective cap);
+no other code changes were needed.
+
+**Caveat to carry forward:** the email's "Strategic Utility of Transit
+Data Integration" section overclaimed on trip-planning. The
+`real-time positions`, `nearby-stops`, and `alerts` use cases still
+stand; the `/plan`-based "fix-impact sampling" line does not — it would
+measure Transit's own routing engine, not Via's. If a future quota
+request reuses that justification, drop the trip-planning claim.
 
 ## When in doubt
 

@@ -1,14 +1,17 @@
-"""Tests for the transit-status / transit-budget CLI subcommands.
+"""Tests for the transit-* CLI subcommands.
 
-The two commands are pure presentation layer over osm.transit.status()
-and a calendar-arithmetic budget calculator. These tests use the Click
-test runner with tmp_path-isolated KEY_FILE / USAGE_FILE so the
-maintainer's real ~/.config/osm files are never read or written.
+transit-status / transit-budget are presentation over osm.transit.status()
+and a calendar-arithmetic budget calculator; transit-networks /
+transit-alerts wrap the network-discovery and service-alert helpers.
+These tests use the Click test runner with tmp_path-isolated
+KEY_FILE / USAGE_FILE / CACHE_DIR so the maintainer's real
+~/.config/osm files are never read or written.
 """
 
 from __future__ import annotations
 
 import json
+from unittest import mock
 
 import pytest
 from click.testing import CliRunner
@@ -46,7 +49,7 @@ class TestTransitStatusCmd:
         assert result.exit_code == 0
         assert "NO" in result.output
         assert "Powered by Transit" in result.output
-        assert "1,500" in result.output
+        assert "5,000" in result.output
 
     def test_key_present_reports_yes(self, isolated_transit):
         isolated_transit.KEY_FILE.write_text(json.dumps({"api_key": "x"}))
@@ -87,10 +90,10 @@ class TestTransitBudgetCmd:
         assert "Fits" in result.output
 
     def test_calls_exceeding_budget_exits_1(self, isolated_transit):
-        # Budget is 1,500 * 0.80 = 1,200 by default.
+        # Budget is 5,000 * 0.80 = 4,000 by default.
         from osm.cli import main
         runner = CliRunner()
-        result = runner.invoke(main, ["transit-budget", "--calls", "5000"])
+        result = runner.invoke(main, ["transit-budget", "--calls", "9000"])
         assert result.exit_code == 1
         assert "DOES NOT FIT" in result.output
 
@@ -101,13 +104,105 @@ class TestTransitBudgetCmd:
         assert result.exit_code == 2
 
     def test_budget_with_used_quota(self, isolated_transit):
-        # 1100 used, budget is 1200 → only 100 remaining
-        _write_usage(isolated_transit, 1100)
+        # 3900 used, budget is 4000 → only 100 remaining
+        _write_usage(isolated_transit, 3900)
         from osm.cli import main
         runner = CliRunner()
         result = runner.invoke(main, ["transit-budget", "--calls", "150"])
         assert result.exit_code == 1
         assert "Short by 50" in result.output
+
+
+# ---------------------------------------------------------------------------
+# transit-networks
+# ---------------------------------------------------------------------------
+
+class TestTransitNetworksCmd:
+
+    def test_no_key_exits_1(self, isolated_transit):
+        from osm.cli import main
+        result = CliRunner().invoke(main, ["transit-networks"])
+        assert result.exit_code == 1
+        assert "No Transit API key" in result.output
+
+    def test_lists_networks_and_marks_sorta(self, isolated_transit):
+        isolated_transit.KEY_FILE.write_text(json.dumps({"api_key": "x"}))
+        from osm import transit
+        from osm.cli import main
+        payload = {"networks": [
+            {"global_network_id": "MSP", "network_name": "Metro Transit"},
+            {"global_network_id": "SORTA",
+             "network_name": "Metro (Southwest Ohio Regional Transit Authority)"},
+        ]}
+        with mock.patch.object(transit, "available_networks", autospec=True,
+                               return_value=payload):
+            result = CliRunner().invoke(main, ["transit-networks"])
+        assert result.exit_code == 0
+        assert "Transit networks: 2" in result.output
+        assert "MSP" in result.output and "SORTA" in result.output
+        assert "matched as SORTA" in result.output
+        assert "Auto-resolved SORTA network id: SORTA" in result.output
+
+    def test_empty_payload_exits_1(self, isolated_transit):
+        isolated_transit.KEY_FILE.write_text(json.dumps({"api_key": "x"}))
+        from osm import transit
+        from osm.cli import main
+        with mock.patch.object(transit, "available_networks", autospec=True,
+                               return_value=None):
+            result = CliRunner().invoke(main, ["transit-networks"])
+        assert result.exit_code == 1
+        assert "returned nothing" in result.output
+
+
+# ---------------------------------------------------------------------------
+# transit-alerts
+# ---------------------------------------------------------------------------
+
+class TestTransitAlertsCmd:
+
+    def test_no_key_is_noop_exit_0(self, isolated_transit):
+        from osm.cli import main
+        result = CliRunner().invoke(main, ["transit-alerts"])
+        assert result.exit_code == 0
+        assert "not configured" in result.output
+
+    def test_prints_alerts(self, isolated_transit):
+        isolated_transit.KEY_FILE.write_text(json.dumps({"api_key": "x"}))
+        from osm import transit
+        from osm.cli import main
+        with mock.patch.object(
+            transit, "fetch_sorta_alerts", autospec=True,
+            return_value=[{
+                "id": "a", "title": "Detour on Rt 4", "severity": "WARNING",
+                "description": "Closed for repaving", "effect": None,
+                "url": "https://x",
+            }],
+        ):
+            result = CliRunner().invoke(main, ["transit-alerts"])
+        assert result.exit_code == 0
+        assert "1 service alert" in result.output
+        assert "Detour on Rt 4" in result.output
+        assert "WARNING" in result.output
+        assert "https://x" in result.output
+
+    def test_no_alerts_message(self, isolated_transit):
+        isolated_transit.KEY_FILE.write_text(json.dumps({"api_key": "x"}))
+        from osm import transit
+        from osm.cli import main
+        with mock.patch.object(transit, "fetch_sorta_alerts", autospec=True,
+                               return_value=[]):
+            result = CliRunner().invoke(main, ["transit-alerts"])
+        assert result.exit_code == 0
+        assert "No service alerts" in result.output
+
+    def test_network_flag_passed_through(self, isolated_transit):
+        isolated_transit.KEY_FILE.write_text(json.dumps({"api_key": "x"}))
+        from osm import transit
+        from osm.cli import main
+        with mock.patch.object(transit, "fetch_sorta_alerts", autospec=True,
+                               return_value=[]) as m:
+            CliRunner().invoke(main, ["transit-alerts", "--network", "SORTA-X"])
+        m.assert_called_once_with(network_id="SORTA-X")
 
 
 # ---------------------------------------------------------------------------

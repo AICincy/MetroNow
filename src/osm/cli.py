@@ -132,12 +132,25 @@ def auth_status():
         "skips the fetch."
     ),
 )
+@click.option(
+    "--with-transit-cross-check/--no-transit-cross-check",
+    default=True,
+    help=(
+        "Cross-check misplaced_bus_stops findings against Transit App's "
+        "nearby-stops data — one API call per flagged stop. A finding "
+        "Transit corroborates within 50 m is suppressed as a valid "
+        "off-curb placement (same false-positive class as the GTFS "
+        "cross-check). On by default; no-ops without a Transit API key "
+        "at ~/.config/osm/transit_api.json. Consumes Transit quota."
+    ),
+)
 def scan(
     zone: str, from_cache: bool, skip_history: bool, import_only: bool,
     with_conflation: bool, tiger_only: bool, with_route_diff: bool,
     route_diff_profile: str, include_unnamed_service: bool,
     with_gtfs_cross_check: bool,
     with_bus_route_corroboration: bool,
+    with_transit_cross_check: bool,
 ):
     """Fetch OSM data, analyse history, classify defects, and generate reports."""
     from rich.progress import Progress
@@ -374,6 +387,43 @@ def scan(
                 )
             except Exception as exc:  # noqa: BLE001
                 click.echo(f"  Route-diff failed: {exc}")
+
+        # Phase 2f: Transit App cross-check on misplaced_bus_stops findings.
+        # One nearby-stops call per flagged stop; a finding Transit
+        # corroborates within 50 m is dropped as a valid off-curb shelter.
+        # Fail-open: no API key / quota-exhausted / network error → no-op.
+        if with_transit_cross_check:
+            from . import transit as _transit
+            if not _transit.status().has_key:
+                click.echo(
+                    "\nPhase 2f: Transit cross-check SKIPPED "
+                    "(no Transit API key at ~/.config/osm/transit_api.json)"
+                )
+            else:
+                click.echo(
+                    "\nPhase 2f: Transit App cross-check (misplaced_bus_stops)..."
+                )
+                try:
+                    findings = classified.get("extra_findings") or []
+                    before = sum(
+                        1 for f in findings
+                        if f.get("kind") == "bus_stop_misplaced"
+                    )
+                    kept, n_suppressed = _transit.cross_check_bus_stop_findings(
+                        findings
+                    )
+                    classified["extra_findings"] = kept
+                    classified.setdefault("summary_stats", {})
+                    classified["summary_stats"]["transit_bus_stop_suppressed"] = (
+                        n_suppressed
+                    )
+                    click.echo(
+                        f"  Misplaced-bus-stop findings: {before:,} before, "
+                        f"{n_suppressed:,} suppressed by Transit, "
+                        f"{before - n_suppressed:,} kept"
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    click.echo(f"  Transit cross-check failed: {exc}", err=True)
 
         # Phase 3: Reports
         click.echo("\nPhase 3: Generating reports...")
@@ -1293,6 +1343,144 @@ def transit_budget_cmd(calls: int | None, per_day: bool):
                 f"request a quota uplift before running."
             )
             raise SystemExit(1)
+
+
+# --- transit-networks / transit-alerts ---
+
+@main.command(name="transit-networks")
+def transit_networks_cmd():
+    """List the transit networks Transit App knows about (discovery/debug).
+
+    Use this to find SORTA's global_network_id when the auto-resolver in
+    osm.transit can't match it (or matches the wrong one). One API call,
+    cached 7 days. Exits 1 without a Transit API key.
+    """
+    from . import transit as _transit
+
+    if not _transit.status().has_key:
+        click.echo(
+            "No Transit API key at ~/.config/osm/transit_api.json.", err=True,
+        )
+        raise SystemExit(1)
+    payload = _transit.available_networks()
+    if not payload:
+        click.echo(
+            "Transit available_networks returned nothing "
+            "(network error or quota exhausted).",
+            err=True,
+        )
+        raise SystemExit(1)
+    networks = payload.get("networks") or []
+    resolved = _transit.resolve_sorta_network_id()
+    click.echo(f"Transit networks: {len(networks):,}")
+    for net in networks:
+        if not isinstance(net, dict):
+            continue
+        nid = (
+            net.get("global_network_id")
+            or net.get("network_id")
+            or net.get("id")
+            or "?"
+        )
+        name = net.get("network_name") or net.get("name") or ""
+        marker = "  <-- matched as SORTA" if nid == resolved else ""
+        click.echo(f"  {nid}\t{name}{marker}")
+    click.echo("")
+    if resolved:
+        click.echo(f"Auto-resolved SORTA network id: {resolved}")
+    else:
+        click.echo(
+            "Auto-resolver did not match SORTA. Pass --network to "
+            "'osm transit-alerts' explicitly with the id above."
+        )
+
+
+@main.command(name="transit-alerts")
+@click.option(
+    "--network", "network_id", default=None,
+    help="Transit global_network_id to query (default: auto-resolve SORTA)",
+)
+def transit_alerts_cmd(network_id: str | None):
+    """Print current SORTA (or --network) service alerts from Transit App.
+
+    Resolves SORTA's network automatically unless --network is given.
+    One API call, cached 5 minutes. No-ops (prints a note, exits 0)
+    without a Transit API key, so it is safe to run from cron.
+    """
+    from . import transit as _transit
+
+    if not _transit.status().has_key:
+        click.echo("Transit API key not configured; no alerts fetched.")
+        return
+    alerts = _transit.fetch_sorta_alerts(network_id=network_id)
+    if not alerts:
+        click.echo(
+            "No service alerts (or Transit unavailable / SORTA network "
+            "unresolved — try 'osm transit-networks')."
+        )
+        return
+    click.echo(f"{len(alerts):,} service alert(s):")
+    for a in alerts:
+        title = a.get("title") or "(untitled)"
+        sev = a.get("severity")
+        click.echo(f"  - {title}" + (f"  [{sev}]" if sev else ""))
+        desc = a.get("description")
+        if desc:
+            click.echo(f"      {desc}")
+        url = a.get("url")
+        if url:
+            click.echo(f"      {url}")
+
+
+# --- gtfs-rt ---
+
+@main.command(name="gtfs-rt")
+@click.option(
+    "--feed", type=click.Choice(["vehicles", "trips"]), default="vehicles",
+    help="Which SORTA GTFS-RT feed to fetch (vehicles = positions, "
+         "trips = stop-time updates).",
+)
+@click.option(
+    "--limit", type=int, default=20,
+    help="Max records to print (0 = all).",
+)
+def gtfs_rt_cmd(feed: str, limit: int):
+    """Fetch SORTA's direct GTFS-Realtime feed (Trapeze; no API key, no quota).
+
+    Reads straight from tmgtfsprd.sorttrpcloud.com — the low-latency
+    source for vehicle positions / trip updates (service alerts go
+    through `osm transit-alerts`). 30-second on-disk cache. Fail-open:
+    prints a note and exits 0 if the feed is unreachable or the
+    `gtfs-realtime-bindings` package is missing.
+    """
+    from . import gtfs_rt as _rt
+
+    rows = _rt.fetch(feed)
+    if not rows:
+        click.echo(
+            f"No GTFS-RT {feed} data (feed unreachable, empty, or "
+            "gtfs-realtime-bindings not installed)."
+        )
+        return
+    shown = rows if limit <= 0 else rows[:limit]
+    if feed == "vehicles":
+        click.echo(f"{len(rows):,} vehicle position(s)"
+                   + (f" (showing {len(shown)}):" if len(shown) < len(rows) else ":"))
+        for v in shown:
+            rt = v.get("route_id") or "?"
+            tid = v.get("trip_id") or "?"
+            lat, lon = v.get("lat"), v.get("lon")
+            loc = f"{lat:.5f},{lon:.5f}" if isinstance(lat, float) and isinstance(lon, float) else "?"
+            click.echo(f"  veh {v.get('vehicle_id') or '?'}  route {rt}  trip {tid}  @ {loc}")
+    else:  # trips
+        click.echo(f"{len(rows):,} trip update(s)"
+                   + (f" (showing {len(shown)}):" if len(shown) < len(rows) else ":"))
+        for t in shown:
+            stus = t.get("stop_time_updates") or []
+            click.echo(
+                f"  trip {t.get('trip_id') or '?'}  route {t.get('route_id') or '?'}"
+                f"  ({len(stus)} stop update(s))"
+            )
 
 
 # --- motis-status ---

@@ -1,9 +1,9 @@
 """Transit App API v4 client (rate-limited, quota-tracked, fail-open).
 
 Phase 4c follow-up: a defensive client for the Transit App developer
-API (https://api-doc.transitapp.com/v4.html). The public/free tier
-allocates 1,500 calls/month and 5 calls/minute — so this client is
-designed around quota preservation:
+API (https://api-doc.transitapp.com/v4.html). The tier here is
+5,000 calls/month (uplifted from the 1,500 public tier) and 5
+calls/minute — so this client is designed around quota preservation:
 
 * Aggressive on-disk caching keyed by endpoint + query, with TTLs
   matched to each endpoint class (24 h for static metadata, 30 s
@@ -55,9 +55,9 @@ log = logging.getLogger(__name__)
 
 TRANSIT_BASE_URL = "https://external.transitapp.com/v4/public"
 
-# Per Transit's email at API key issuance.
+# Per Transit's email at API key issuance, plus the 2026-05-11 uplift.
 RATE_LIMIT_PER_MINUTE = 5
-MONTHLY_QUOTA_FREE_TIER = 1_500
+MONTHLY_QUOTA_FREE_TIER = 5_000  # 1,500 public tier + civic uplift
 QUOTA_BUDGET_FRACTION = 0.80  # refuse calls past 80 % of quota
 
 # Header name from api-doc.transitapp.com/v4.html (securitySchemes.apiKey).
@@ -436,6 +436,233 @@ def trip_plan(
     )
 
 
+# ---------------------------------------------------------------------------
+# Pipeline integration — cross-checks that consume the endpoint helpers
+# ---------------------------------------------------------------------------
+
+def _stop_latlon(stop: dict) -> tuple[float, float] | None:
+    """Pull (lat, lon) from a Transit ``nearby_stops`` stop record.
+
+    The v4 payload uses ``stop_lat`` / ``stop_lon``; tolerate the bare
+    ``lat`` / ``lon`` spelling too so a payload-shape tweak upstream
+    doesn't silently disable the cross-check.
+    """
+    raw_lat = stop.get("stop_lat")
+    if raw_lat is None:
+        raw_lat = stop.get("lat")
+    raw_lon = stop.get("stop_lon")
+    if raw_lon is None:
+        raw_lon = stop.get("lon")
+    if raw_lat is None or raw_lon is None:
+        return None
+    try:
+        return float(raw_lat), float(raw_lon)
+    except (TypeError, ValueError):
+        return None
+
+
+def cross_check_bus_stop_findings(
+    findings: list[dict],
+    *,
+    match_threshold_m: float = 50.0,
+    max_distance_m: int = 200,
+) -> tuple[list[dict], int]:
+    """Suppress ``bus_stop_misplaced`` findings that Transit corroborates.
+
+    For each ``kind == "bus_stop_misplaced"`` finding with usable
+    coordinates, query Transit's ``nearby_stops`` around it. If Transit
+    knows a stop within ``match_threshold_m``, the OSM placement is a
+    valid off-curb shelter — the same false-positive class the GTFS
+    cross-check in :func:`osm.detectors.detect_misplaced_bus_stops`
+    suppresses — so the finding is dropped.
+
+    Returns ``(kept_findings, n_suppressed)``. One ``nearby_stops`` call
+    per flagged candidate; flagged stops are a small subset of all stops
+    in a zone, so this stays well inside the monthly quota. Fail-open:
+    when the client has no key, is quota-exhausted, or errors,
+    ``nearby_stops`` returns ``None`` and the finding is kept untouched.
+    Non-``bus_stop_misplaced`` findings and findings without a usable
+    coordinate pass through without an API call.
+    """
+    if not findings:
+        return findings, 0
+
+    from .geo import haversine_m, valid_latlon
+
+    kept: list[dict] = []
+    n_suppressed = 0
+    for f in findings:
+        if f.get("kind") != "bus_stop_misplaced":
+            kept.append(f)
+            continue
+        lat = f.get("lat")
+        lon = f.get("lon")
+        if lat is None or lon is None:
+            kept.append(f)
+            continue
+        try:
+            flat, flon = float(lat), float(lon)
+        except (TypeError, ValueError):
+            kept.append(f)
+            continue
+        if not valid_latlon(flat, flon):
+            kept.append(f)
+            continue
+
+        resp = nearby_stops(flat, flon, max_distance=max_distance_m)
+        if not resp:
+            kept.append(f)
+            continue
+
+        best: float | None = None
+        for stop in resp.get("stops") or []:
+            sll = _stop_latlon(stop) if isinstance(stop, dict) else None
+            if sll is None or not valid_latlon(*sll):
+                continue
+            d = haversine_m(flat, flon, sll[0], sll[1])
+            if best is None or d < best:
+                best = d
+        if best is not None and best <= match_threshold_m:
+            n_suppressed += 1
+            continue
+        kept.append(f)
+    return kept, n_suppressed
+
+
+# SORTA's identity in Transit's network catalog. Transit's v4 docs don't
+# publish the per-agency global_network_id, so resolve_sorta_network_id()
+# matches network metadata against these (case-insensitive) substrings;
+# `osm transit-networks` dumps the full catalog if the heuristic misses.
+# Kept conservative on purpose — a wrong match would fetch some other
+# agency's alerts. SORTA = Southwest Ohio Regional Transit Authority,
+# brand "Cincinnati Metro" (go-metro.com). Catalog IDs that should
+# match: Transitland operator `o-dngy-southwestohioregionaltransitauthority`
+# (geohash prefix `dngy` = the Cincinnati cell) and feed
+# `f-cincinnatimetro` / `f-cincinnatimetro~rt`; Mobility Database
+# `mdb-366`. Bare "metro" is deliberately excluded — far too broad.
+SORTA_NETWORK_HINTS: tuple[str, ...] = (
+    "sorta",
+    "cincinnatimetro",
+    "cincinnati metro",
+    "southwest ohio regional transit",
+    "go-metro",
+    "gometro",
+    "dngy",
+)
+
+
+def _network_id(net: dict) -> str | None:
+    """First non-empty network-id-shaped field in a catalog record."""
+    for key in ("global_network_id", "network_id", "id"):
+        v = net.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
+def _network_match_fields(net: dict) -> list[str]:
+    """Lowercased strings from a network record to match SORTA against."""
+    out: list[str] = []
+    for key in (
+        "global_network_id", "network_id", "id",
+        "network_name", "name", "network_short_name", "short_name",
+    ):
+        v = net.get(key)
+        if isinstance(v, str) and v.strip():
+            out.append(v.strip().lower())
+    for agency in net.get("agencies") or []:
+        if isinstance(agency, dict):
+            v = agency.get("agency_name") or agency.get("name")
+            if isinstance(v, str) and v.strip():
+                out.append(v.strip().lower())
+    return out
+
+
+def resolve_sorta_network_id(*, force_refresh: bool = False) -> str | None:
+    """Best-effort lookup of SORTA's ``global_network_id`` in Transit's catalog.
+
+    Calls ``available_networks`` (itself 7-day-cached, so this is cheap)
+    and returns the id of the first network whose metadata matches a
+    :data:`SORTA_NETWORK_HINTS` substring. Returns ``None`` when Transit
+    is unavailable or nothing matched — callers treat that as "alerts
+    unavailable" and degrade. Run ``osm transit-networks`` to inspect
+    the catalog if the heuristic picks the wrong network or nothing.
+    """
+    payload = available_networks(force_refresh=force_refresh)
+    if not payload:
+        return None
+    networks = payload.get("networks")
+    if not isinstance(networks, list):
+        return None
+    for net in networks:
+        if not isinstance(net, dict):
+            continue
+        fields = _network_match_fields(net)
+        if any(hint in field for field in fields for hint in SORTA_NETWORK_HINTS):
+            nid = _network_id(net)
+            if nid:
+                log.info("Transit: resolved SORTA network id to %s", nid)
+                return nid
+    log.warning(
+        "Transit: no network matched SORTA hints in available_networks; "
+        "run 'osm transit-networks' to inspect the catalog.",
+    )
+    return None
+
+
+def _normalize_alerts(payload: dict) -> list[dict]:
+    """Flatten a Transit ``alerts_for_networks`` payload to plain dicts.
+
+    Tolerates the top-level ``{"alerts": [...]}`` shape and the nested
+    ``{"networks": [{"alerts": [...]}, ...]}`` shape, and several field
+    spellings, so an upstream payload tweak degrades to fewer fields
+    rather than an exception.
+    """
+    raw: list = []
+    top = payload.get("alerts")
+    if isinstance(top, list):
+        raw = list(top)
+    else:
+        for net in payload.get("networks") or []:
+            if isinstance(net, dict) and isinstance(net.get("alerts"), list):
+                raw.extend(net["alerts"])
+    out: list[dict] = []
+    for a in raw:
+        if not isinstance(a, dict):
+            continue
+        out.append({
+            "id": a.get("alert_id") or a.get("id") or a.get("global_alert_id"),
+            "title": a.get("title") or a.get("header_text") or a.get("header"),
+            "description": a.get("description") or a.get("description_text"),
+            "severity": a.get("severity") or a.get("severity_level"),
+            "effect": a.get("effect"),
+            "url": a.get("url") or a.get("alert_url"),
+        })
+    return out
+
+
+def fetch_sorta_alerts(
+    *,
+    network_id: str | None = None,
+    force_refresh: bool = False,
+) -> list[dict]:
+    """Normalized SORTA service alerts, or ``[]`` when unavailable.
+
+    Resolves SORTA's network id (or uses the explicit ``network_id``
+    override), calls ``alerts_for_networks``, and flattens the payload
+    to ``{"id", "title", "description", "severity", "effect", "url"}``
+    dicts via :func:`_normalize_alerts`. Fail-open: no key, quota
+    exhausted, no SORTA match, or a malformed payload all yield ``[]``.
+    """
+    nid = network_id or resolve_sorta_network_id(force_refresh=force_refresh)
+    if not nid:
+        return []
+    payload = alerts_for_networks([nid], force_refresh=force_refresh)
+    if not payload:
+        return []
+    return _normalize_alerts(payload)
+
+
 __all__ = [
     "AUTH_HEADER",
     "CACHE_DIR",
@@ -444,6 +671,7 @@ __all__ = [
     "POWERED_BY_TRANSIT_ATTRIBUTION",
     "QUOTA_BUDGET_FRACTION",
     "RATE_LIMIT_PER_MINUTE",
+    "SORTA_NETWORK_HINTS",
     "TRANSIT_BASE_URL",
     "TTL_BY_ENDPOINT",
     "USAGE_FILE",
@@ -451,7 +679,10 @@ __all__ = [
     "TransitClientStatus",
     "alerts_for_networks",
     "available_networks",
+    "cross_check_bus_stop_findings",
+    "fetch_sorta_alerts",
     "nearby_stops",
+    "resolve_sorta_network_id",
     "status",
     "stop_departures",
     "trip_plan",
